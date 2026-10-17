@@ -7,8 +7,12 @@ function factorFrame(candles){const closes=candles.map(c=>c.close), fast=ema(clo
   let flowBuy=0,flowSell=0;for(let j=Math.max(0,i-19);j<=i;j++){const cj=candles[j],r=Math.max(1e-12,cj.high-cj.low);if(Number.isFinite(cj.takerBuyQuoteVolume)&&Number.isFinite(cj.quoteVolume)){flowBuy+=cj.takerBuyQuoteVolume;flowSell+=Math.max(0,cj.quoteVolume-cj.takerBuyQuoteVolume);}else{const portion=Math.max(0,Math.min(1,(cj.close-cj.low)/r));const vol=cj.quoteVolume||cj.volume||0;flowBuy+=vol*portion;flowSell+=vol*(1-portion);}}
   const flowTotal=flowBuy+flowSell,flowPct=flowTotal?(flowBuy-flowSell)/flowTotal*100:0;
   let high=-Infinity,low=Infinity;for(let j=Math.max(0,i-20);j<i;j++){high=Math.max(high,candles[j].high);low=Math.min(low,candles[j].low);}
-  let score=0;if(fast[i]!=null&&slow[i]!=null)score+=fast[i]>slow[i]?1:-1;if(signal[i]!=null)score+=macd[i]>=signal[i]?1:-1;if(osc[i]!=null)score+=osc[i]<35?1:osc[i]>70?-1:0;score+=flowPct>=15?1:flowPct<=-15?-1:0;if(c.close>high)score++;else if(c.close<low)score--;
-  return{score,flowPct,rsi:osc[i],atr:atrAt(candles,i),emaFast:fast[i],emaSlow:slow[i]};
+  const channelLong=c.close>high,channelShort=c.close<low;
+  const swing=candles.slice(Math.max(0,i-100),i);let swingHigh=-Infinity,swingLow=Infinity;for(const x of swing){swingHigh=Math.max(swingHigh,x.high);swingLow=Math.min(swingLow,x.low);}
+  const width=swingHigh-swingLow,trendUp=fast[i]!=null&&slow[i]!=null&&fast[i]>slow[i],levels=trendUp?[.382,.5,.618].map(r=>swingHigh-width*r):[.382,.5,.618].map(r=>swingLow+width*r),tolerance=Math.max(atrAt(candles,i)*.22,c.close*.0015),prev=candles[i-1];
+  const fibLong=trendUp&&levels.some(level=>c.low<=level+tolerance&&c.close>level&&prev.close<=level),fibShort=!trendUp&&levels.some(level=>c.high>=level-tolerance&&c.close<level&&prev.close>=level);
+  let score=0;if(fast[i]!=null&&slow[i]!=null)score+=trendUp?1:-1;if(signal[i]!=null)score+=macd[i]>=signal[i]?1:-1;if(osc[i]!=null)score+=osc[i]<35?1:osc[i]>70?-1:0;score+=flowPct>=15?1:flowPct<=-15?-1:0;if(channelLong)score++;else if(channelShort)score--;if(fibLong)score++;else if(fibShort)score--;
+  return{score,flowPct,rsi:osc[i],atr:atrAt(candles,i),emaFast:fast[i],emaSlow:slow[i],channelLong,channelShort,fibLong,fibShort};
 });}
 function runBacktest({symbol,candles,riskPct=1,initialBalance=10000,feeRate=.001}){
  if(!Array.isArray(candles)||candles.length<80)throw new Error('برای بک‌تست معتبر حداقل ۸۰ کندل لازم است.');
@@ -21,7 +25,7 @@ function runBacktest({symbol,candles,riskPct=1,initialBalance=10000,feeRate=.001
      if(stopHit){const fill=position.side>0?Math.min(stop,candles[i].open):Math.max(stop,candles[i].open);close(i,fill,'حد ضرر ATR');closedAtProtectiveLevel=true;}
      else if(targetHit){close(i,target,'حد سود ۲R');closedAtProtectiveLevel=true;}
    }
-   const signal=frames[i].score>=3?1:frames[i].score<=-3?-1:0;
+   const signal=frames[i].score>=3&&(frames[i].channelLong||frames[i].fibLong)?1:frames[i].score<=-3&&(frames[i].channelShort||frames[i].fibShort)?-1:0;
    if(signal&&position&&signal!==position.side)close(i,candles[i].close,'چرخش امتیاز چندعاملی');
    if(signal&&!position&&!closedAtProtectiveLevel){const atr=frames[i].atr;const stopPct=Math.min(.08,Math.max(.004,atr/candles[i].close*1.5));const targetPct=stopPct*2;const notional=Math.min(balance*.95,balance*risk/stopPct);position={side:signal,entry:candles[i].close,index:i,notional,stopPct,targetPct};}
    const mark=position?balance+position.side*(candles[i].close-position.entry)/position.entry*position.notional:balance;equity.push(mark);peak=Math.max(peak,mark);maxDd=Math.max(maxDd,(peak-mark)/peak);

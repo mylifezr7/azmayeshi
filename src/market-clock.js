@@ -1,7 +1,5 @@
-function marketClock(now = new Date()) {
- const zone=Intl.DateTimeFormat().resolvedOptions().timeZone||'local';
- const parts=new Intl.DateTimeFormat('fa-IR',{timeZone:zone,weekday:'long',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
- const values=Object.fromEntries(parts.map(x=>[x.type,x.value]));
- return{marketOpen:true,market:'بازار رمزارزها · شبانه‌روزی',timeZone:zone,localTime:`${values.weekday} ${values.hour}:${values.minute}`,note:'کریپتو ۲۴/۷ معامله می‌شود؛ برنامه‌ریزی تحلیل بر اساس ساعت محلی دستگاه است.'};
-}
-module.exports={marketClock};
+function partsIn(date,timeZone,locale='en-US'){return Object.fromEntries(new Intl.DateTimeFormat(locale,{timeZone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date).map(x=>[x.type,x.value]));}
+function localWallTimeToUtc(y,m,d,hour,minute,timeZone){let utc=Date.UTC(y,m-1,d,hour,minute);for(let i=0;i<3;i++){const p=partsIn(new Date(utc),timeZone);const represented=Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute));const desired=Date.UTC(y,m-1,d,hour,minute);utc+=desired-represented;}return new Date(utc);}
+function nextUsOpen(now=new Date()){for(let offset=0;offset<12;offset++){const day=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()+offset,12));const p=partsIn(day,'America/New_York');if(p.weekday==='Sat'||p.weekday==='Sun')continue;const open=localWallTimeToUtc(Number(p.year),Number(p.month),Number(p.day),9,30,'America/New_York');if(open>now)return open;}return null;}
+function marketClock(now=new Date()){const tehran=partsIn(now,'Asia/Tehran','fa-IR'),ny=partsIn(now,'America/New_York');const next=nextUsOpen(now);return{marketOpen:true,market:'بازار رمزارزها · شبانه‌روزی',tehranTime:`${tehran.hour}:${tehran.minute}`,tehranDate:`${tehran.year}/${tehran.month}/${tehran.day}`,timeZone:'Asia/Tehran',usTime:`${ny.weekday} ${ny.hour}:${ny.minute}`,nextUsOpenUtc:next?.toISOString()||null,nextUsOpenTehran:next?new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',weekday:'long',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(next):null,note:'سشن سهام آمریکا در ۰۹:۳۰ منطقه زمانی نیویورک شروع می‌شود. ساعت متناظر تهران با تغییر ساعت تابستانی آمریکا تغییر می‌کند؛ کریپتو ۲۴/۷ است.'};}
+module.exports={marketClock,partsIn,nextUsOpen,localWallTimeToUtc};
