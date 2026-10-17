@@ -2,7 +2,7 @@
   "name": "trading-platform2",
   "version": "0.1.0",
   "private": true,
-  "description": "Modular strategy backtesting and paper-trading platform",
+  "description": "Technical and fundamental analysis dashboard for US equities",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
