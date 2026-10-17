@@ -1,0 +1,12 @@
+{
+  "name": "trading-platform2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modular strategy backtesting and paper-trading platform",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" }
+}
