@@ -1,60 +1,46 @@
-const http = require('node:http');
-const fs = require('node:fs');
-const path = require('node:path');
-const { URL } = require('node:url');
-const { createProvider } = require('./src/providers');
-const { analyze, marketClock } = require('./src/analysis');
-
-const ROOT = __dirname;
-const PORT = Number(process.env.PORT || 3000);
-function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); }
-function serveStatic(res, pathname) {
-  const requested = pathname === '/' ? '/public/index.html' : `/public${pathname}`;
-  const file = path.resolve(ROOT, `.${requested}`);
-  if (!file.startsWith(path.join(ROOT, 'public') + path.sep)) return json(res, 403, { error: 'دسترسی غیرمجاز' });
-  fs.readFile(file, (err, content) => {
-    if (err) return json(res, 404, { error: 'فایل پیدا نشد' });
-    const ext = path.extname(file);
-    const type = ext === '.css' ? 'text/css' : ext === '.js' ? 'text/javascript' : 'text/html';
-    res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` }); res.end(content);
-  });
+const http=require('node:http');const fs=require('node:fs');const path=require('node:path');const {URL}=require('node:url');
+const {createProvider}=require('./src/providers');const {analyze}=require('./src/analysis');const {runBacktest}=require('./src/backtest');const {marketClock}=require('./src/market-clock');
+const ROOT=__dirname,PORT=Number(process.env.PORT||3000);
+function json(res,status,body){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(body));}
+function serveStatic(res,pathname){const requested=pathname==='/'?'/public/index.html':`/public${pathname}`,file=path.resolve(ROOT,`.${requested}`);if(!file.startsWith(path.join(ROOT,'public')+path.sep))return json(res,403,{error:'دسترسی غیرمجاز'});fs.readFile(file,(err,content)=>{if(err)return json(res,404,{error:'فایل پیدا نشد'});const ext=path.extname(file),type=ext==='.css'?'text/css':ext==='.js'?'text/javascript':'text/html';res.writeHead(200,{'Content-Type':`${type}; charset=utf-8`});res.end(content);});}
+async function mapLimit(items,limit,fn){const out=Array(items.length);let cursor=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(true){const i=cursor++;if(i>=items.length)return;try{out[i]=await fn(items[i],i);}catch(error){out[i]={symbol:items[i].symbol,error:error.message,quoteVolume24h:items[i].quoteVolume};}}}));return out;}
+async function analyzeAsset(provider,symbol,{timeframe='1h',risk=1,balance=10000,limit=500}={}){
+ const candles=await provider.getCandles({symbol,timeframe,limit});
+ const [ticker,orderBook,aggTrades,fundamentalsBySymbol,news]=await Promise.allSettled([
+  provider.getTicker(symbol),provider.getOrderBook(symbol),provider.getAggTrades(symbol),provider.getFundamentals([symbol]),provider.getNews(symbol)
+ ]);
+ const fundamentals=fundamentalsBySymbol.status==='fulfilled'?fundamentalsBySymbol.value[symbol]:null;
+ const newsData=news.status==='fulfilled'?news.value:{items:[],status:news.reason?.message||'منبع خبر دردسترس نیست.'};
+ const result=analyze({symbol,candles,ticker:ticker.status==='fulfilled'?ticker.value:{price:candles.at(-1).close,source:'آخرین کندل'},orderBook:orderBook.status==='fulfilled'?orderBook.value:null,aggTrades:aggTrades.status==='fulfilled'?aggTrades.value:null,fundamentals,news:newsData,riskPct:risk,balance,timeframe});
+ return{...result,candles};
 }
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  try {
-    if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { ok: true, product: 'analysis-only', realOrders: false, fundamentals: Boolean(process.env.FINNHUB_API_KEY) });
-    if (req.method === 'GET' && url.pathname === '/api/providers') return json(res, 200, [
-      { id: 'demo', name: 'دمو', available: true, description: 'کندل مصنوعی؛ برای بررسی عملکرد رابط و محاسبات' },
-      { id: 'finnhub', name: 'Finnhub', available: Boolean(process.env.FINNHUB_API_KEY), description: 'کندل، قیمت، مشخصات بنیادی و خبر با کلید API شخصی' }
-    ]);
-    if (req.method === 'GET' && url.pathname === '/api/market-clock') return json(res, 200, marketClock());
-    if (req.method === 'GET' && url.pathname === '/api/analysis') {
-      const symbol = (url.searchParams.get('symbol') || 'AAPL').trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9.\-]{0,11}$/.test(symbol)) return json(res, 400, { error: 'نماد معتبر نیست.' });
-      const timeframe = url.searchParams.get('timeframe') || '15m';
-      if (!['5m','15m','30m','1h','1d'].includes(timeframe)) return json(res, 400, { error: 'بازهٔ زمانی پشتیبانی نمی‌شود.' });
-      const providerId = url.searchParams.get('provider') || 'demo';
-      const provider = createProvider(providerId);
-      const candles = await provider.getCandles({ symbol, timeframe, limit: 260 });
-      const [quoteResult, fundamentalsResult, newsResult] = await Promise.allSettled([
-        provider.getQuote({ symbol, candles }), provider.getFundamentals({ symbol }), provider.getNews({ symbol })
-      ]);
-      const quote = quoteResult.status === 'fulfilled' ? quoteResult.value : { price: candles.at(-1).close, previousClose: candles.at(-2)?.close, source: `${providerId} · قیمت کندل` };
-      const fundamentals = fundamentalsResult.status === 'fulfilled' ? fundamentalsResult.value : null;
-      const news = newsResult.status === 'fulfilled' ? newsResult.value : [];
-      const result = analyze({ symbol, candles, quote, fundamentals, news, riskPct: url.searchParams.get('risk'), balance: url.searchParams.get('balance'), timeframe });
-      result.dataStatus = {
-        provider: providerId,
-        quote: quoteResult.status === 'fulfilled' ? 'وصل' : 'استفاده از آخرین کندل',
-        fundamentals: fundamentals ? 'وصل' : 'دردسترس نیست',
-        news: news.length ? 'وصل' : 'خبر تازه/دردسترس نیست',
-        fundamentalsError: fundamentalsResult.status === 'rejected' ? fundamentalsResult.reason.message : null,
-        newsError: newsResult.status === 'rejected' ? newsResult.reason.message : null
-      };
-      return json(res, 200, result);
-    }
-    if (req.method === 'GET') return serveStatic(res, url.pathname);
-    return json(res, 404, { error: 'مسیر پیدا نشد' });
-  } catch (error) { return json(res, error.status || 400, { error: error.message || 'خطای غیرمنتظره' }); }
+const server=http.createServer(async(req,res)=>{
+ const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
+ try{
+  if(req.method==='GET'&&url.pathname==='/api/health')return json(res,200,{ok:true,market:'crypto-24/7',provider:'Binance public market data',realOrders:false,news:Boolean(process.env.CRYPTOPANIC_API_KEY)});
+  if(req.method==='GET'&&url.pathname==='/api/market-clock')return json(res,200,marketClock());
+  if(req.method==='GET'&&url.pathname==='/api/universe'){
+   const provider=createProvider(url.searchParams.get('provider')||'binance');const assets=await provider.getUniverse();return json(res,200,{assets,source:(url.searchParams.get('provider')||'binance')==='demo'?'دادهٔ نمایشی':'حجم معاملات ۲۴ساعتهٔ جفت‌های USDT در Binance',updatedAt:new Date().toISOString(),note:'BTC به‌علاوهٔ ۱۰ جفت دیگر با بیشترین حجم Quote Volume؛ استیبل‌کوین‌ها و توکن‌های اهرمی حذف شده‌اند.'});
+  }
+  if(req.method==='GET'&&url.pathname==='/api/analysis'){
+   const symbol=(url.searchParams.get('symbol')||'BTCUSDT').toUpperCase();if(!/^[A-Z0-9]{2,16}USDT$/.test(symbol))return json(res,400,{error:'نماد باید جفت معتبر USDT باشد؛ نمونه BTCUSDT.'});
+   const provider=createProvider(url.searchParams.get('provider')||'binance');const result=await analyzeAsset(provider,symbol,{timeframe:url.searchParams.get('timeframe')||'1h',risk:url.searchParams.get('risk'),balance:url.searchParams.get('balance')});delete result.candles;return json(res,200,result);
+  }
+  if(req.method==='POST'&&url.pathname==='/api/portfolio-run'){
+   let body='';for await(const chunk of req){body+=chunk;if(body.length>100_000)throw new Error('درخواست خیلی بزرگ است.');}const input=body?JSON.parse(body):{};
+   const providerId=input.provider||'binance',provider=createProvider(providerId),timeframe=input.timeframe||'1h',risk=Math.min(3,Math.max(.1,Number(input.risk)||1)),balance=Math.max(100,Number(input.balance)||10000);
+   const universe=await provider.getUniverse(),symbols=universe.map(x=>x.symbol),fundamentals=await provider.getFundamentals(symbols);
+   const rows=await mapLimit(universe,3,async asset=>{
+    const candles=await provider.getCandles({symbol:asset.symbol,timeframe,limit:500});
+    const [ticker,book,flow,news]=await Promise.allSettled([provider.getTicker(asset.symbol),provider.getOrderBook(asset.symbol),provider.getAggTrades(asset.symbol),provider.getNews(asset.symbol)]);
+    const context=analyze({symbol:asset.symbol,candles,ticker:ticker.status==='fulfilled'?ticker.value:{price:candles.at(-1).close},orderBook:book.status==='fulfilled'?book.value:null,aggTrades:flow.status==='fulfilled'?flow.value:null,fundamentals:fundamentals[asset.symbol]||null,news:news.status==='fulfilled'?news.value:{items:[]},riskPct:risk,balance,timeframe});
+    const backtest=runBacktest({symbol:asset.symbol,candles,riskPct:risk,initialBalance:balance,feeRate:input.feeRate});
+    return{symbol:asset.symbol,volumeRank:asset.volumeRank,quoteVolume24h:asset.quoteVolume,change24hPct:asset.change24hPct,analysis:context,backtest:backtest.summary,candlesCount:backtest.candlesCount,from:backtest.from,to:backtest.to};
+   });
+   return json(res,200,{source:providerId==='binance'?'Binance · بازار واقعی':'دادهٔ مصنوعی دمو',timeframe,riskPct:risk,balance,universe:universe.map(x=>({symbol:x.symbol,quoteVolume24h:x.quoteVolume,change24hPct:x.change24hPct,volumeRank:x.volumeRank})),results:rows,completedAt:new Date().toISOString(),disclaimer:'بک‌تست روی کندل‌های تاریخی و فشار taker ثبت‌شده در کندل انجام می‌شود. دفتر سفارش، اخبار و فاندامنتال تاریخی در API عمومی تاریخچهٔ کامل ندارند؛ این داده‌های جاری فقط در بخش تحلیل لحظه‌ای آمده‌اند. کارمزد فرضی ۰.۱٪ هر سمت است؛ اسلیپیج/فاندینگ/تاخیر مدل نشده‌اند. نتایج تضمین‌کننده آینده نیستند.'});
+  }
+  if(req.method==='GET')return serveStatic(res,url.pathname);
+  return json(res,404,{error:'مسیر پیدا نشد'});
+ }catch(error){return json(res,error.status||400,{error:error.message||'خطای غیرمنتظره'});}
 });
-server.listen(PORT, '0.0.0.0', () => console.log(`Market analysis listening on 0.0.0.0:${PORT}`));
+server.listen(PORT,'0.0.0.0',()=>console.log(`Crypto analysis listening on 0.0.0.0:${PORT}`));

@@ -2,7 +2,7 @@
   "name": "trading-platform2",
   "version": "0.1.0",
   "private": true,
-  "description": "Technical and fundamental analysis dashboard for US equities",
+  "description": "Crypto market analysis and multi-asset backtesting dashboard",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",

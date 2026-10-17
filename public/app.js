@@ -1,110 +1,17 @@
-const $ = selector => document.querySelector(selector);
-const fmt = (value, digits = 2) => value == null || !Number.isFinite(Number(value)) ? '—' : new Intl.NumberFormat('fa-IR', { maximumFractionDigits: digits }).format(Number(value));
-const money = (value, digits = 2) => value == null || !Number.isFinite(Number(value)) ? '—' : '$' + new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(Number(value));
-let toastTimer;
-function toast(message) { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 4200); }
-async function api(url) { const response = await fetch(url); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'خطا در دریافت داده'); return data; }
-function safe(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
-function fmtPrice(price) { if (price == null) return '—'; const decimals = Number(price) < 1 ? 4 : 2; return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(price); }
-function refreshHeaderSession(session) {
-  $('#session-label').textContent = session.phase;
-  $('#header-session').textContent = session.regularSession ? 'سشن اصلی باز است' : 'سشن اصلی بسته است';
-  $('#banner-session').textContent = session.phase;
-  $('#banner-session-note').textContent = session.regularSession ? 'پنجرهٔ اصلی معامله باز است: روز کاری، ۹:۳۰ تا ۱۶:۰۰ نیویورک.' : `بازگشایی بعدی (تقریبی): ${session.nextOpenUtc ? new Intl.DateTimeFormat('fa-IR', { timeZone: 'America/New_York', weekday: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(session.nextOpenUtc)) + ' به وقت نیویورک' : 'نامشخص'} · تعطیلات رسمی لحاظ نشده‌اند.`;
-}
-function renderFundamentals(fundamentals, status) {
-  const available = Boolean(fundamentals && fundamentals.available);
-  $('#fundamental-status').textContent = available ? 'داده دریافت شد' : 'داده در دسترس نیست';
-  $('#fundamental-status').className = `state ${available ? 'ready' : 'planned'}`;
-  const fields = [
-    ['ارزش بازار', fundamentals?.marketCap != null ? `$${fmt(fundamentals.marketCap / 1000, 1)} B` : '—'],
-    ['P/E دوازده‌ماهه', fmt(fundamentals?.pe)], ['EPS', fundamentals?.eps != null ? money(fundamentals.eps) : '—'],
-    ['رشد درآمد سالانه', fundamentals?.revenueGrowth != null ? `${fmt(fundamentals.revenueGrowth)}٪` : '—'],
-    ['ROE', fundamentals?.roe != null ? `${fmt(fundamentals.roe)}٪` : '—'], ['بدهی / حقوق صاحبان سهام', fmt(fundamentals?.debtToEquity)]
-  ];
-  $('#fundamental-cards').innerHTML = fields.map(([label, value]) => `<div class="fundamental-metric"><small>${label}</small><b>${safe(value)}</b></div>`).join('');
-  $('#fundamental-foot').textContent = available ? `منبع: ${fundamentals.source || 'Finnhub'} · ارز ${fundamentals.currency || 'USD'} · این شاخص‌ها باید با گزارش رسمی شرکت تطبیق داده شوند.` : status?.fundamentalsError || 'برای دریافت اطلاعات بنیادی زنده، Finnhub API Key را روی سرور محلی تنظیم کن. در حالت دمو هیچ مقدار بنیادی ساختگی نمایش داده نمی‌شود.';
-}
-function renderNews(news, status) {
-  const items = news?.items || [];
-  $('#news-status').textContent = items.length ? `${fmt(items.length, 0)} تیتر` : 'داده نیست';
-  $('#news-status').className = `state ${items.length ? 'public' : 'planned'}`;
-  $('#news-list').innerHTML = items.length ? items.map(item => {
-    const when = item.time ? new Intl.DateTimeFormat('fa-IR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(item.time)) : '';
-    const tag = item.sentiment.startsWith('مثبت') ? 'news-positive' : item.sentiment.startsWith('منفی') ? 'news-negative' : 'news-neutral';
-    const title = item.url && /^https:\/\//.test(item.url) ? `<a href="${safe(item.url)}" target="_blank" rel="noopener noreferrer">${safe(item.headline)}</a>` : safe(item.headline);
-    return `<article class="news-item"><span class="news-tag ${tag}">${safe(item.sentiment)}</span><div><b>${title}</b><small>${safe(item.source || 'خبر')} · ${safe(when)}</small></div></article>`;
-  }).join('') : `<div class="empty-news">${safe(status?.newsError || 'برای تیترهای تازه، Finnhub API Key را تنظیم کن. حالت دمو خبر واقعی یا ساختگی نشان نمی‌دهد.')}</div>`;
-}
-function renderAnalysis(data) {
-  $('#connection-status').innerHTML = `<i></i> ${data.dataStatus?.provider === 'finnhub' ? 'منبع Finnhub' : 'حالت دمو'}`;
-  $('#company-title').textContent = data.symbol;
-  $('#company-subtitle').textContent = data.fundamentals?.name ? `${data.fundamentals.name} · ${data.fundamentals.exchange || 'US'}` : `بازه ${data.timeframe} · ${data.dataStatus?.provider === 'demo' ? 'کندل مصنوعی' : 'داده بازار'}`;
-  $('#quote-source').textContent = `· ${data.quote.source || '—'}`;
-  $('#quote-price').textContent = fmtPrice(data.quote.price);
-  $('#quote-change').textContent = data.quote.changePct == null ? (data.quote.previousClose != null ? `بسته قبلی ${fmtPrice(data.quote.previousClose)}` : 'تغییر روزانه در دسترس نیست') : `${data.quote.changePct >= 0 ? '+' : ''}${fmt(data.quote.changePct)}٪ ${data.quote.changeLabel || 'تغییر قیمت'}`;
-  $('#quote-change').className = data.quote.changePct == null ? '' : data.quote.changePct >= 0 ? 'positive' : 'negative';
-  refreshHeaderSession(data.session);
-  $('#data-badge').textContent = data.dataStatus?.provider === 'demo' ? 'دمو · مصنوعی' : 'دادهٔ بیرونی';
-  $('#trend-value').textContent = data.technical.trend;
-  $('#trend-icon').textContent = data.technical.trend === 'صعودی' ? '↗' : '↘';
-  $('#trend-icon').className = `trend-icon ${data.technical.trend === 'صعودی' ? 'positive' : 'negative'}`;
-  $('#rsi-pill').textContent = `RSI ${fmt(data.technical.rsi, 1)}`;
-  $('#rsi-pill').className = `neutral-pill ${data.technical.rsi < 35 ? 'pill-positive' : data.technical.rsi > 70 ? 'pill-negative' : ''}`;
-  const factors = [
-    ['MACD histogram', data.technical.macdHistogram == null ? '—' : `${data.technical.macdHistogram >= 0 ? '+' : ''}${fmt(data.technical.macdHistogram, 3)}`],
-    ['حمایت تقریبی · ۲۰ کندل', fmtPrice(data.technical.support)], ['مقاومت تقریبی · ۲۰ کندل', fmtPrice(data.technical.resistance)],
-    ['ATR · دامنه واقعی', `${fmt(data.technical.atrPct)}٪`]
-  ];
-  $('#indicator-list').innerHTML = factors.map(([k,v]) => `<div><span>${safe(k)}</span><b>${safe(v)}</b></div>`).join('');
-  $('#technical-score').textContent = `${data.technical.score > 0 ? '+' : ''}${fmt(data.technical.score, 0)} / ۴`;
-  $('#pressure-label').textContent = data.pressure.label;
-  $('#pressure-value').textContent = `${data.pressure.pressurePct >= 0 ? '+' : ''}${fmt(data.pressure.pressurePct)}٪ خالص تقریبی`;
-  $('#buy-bar').style.width = `${Math.min(100, Math.max(0, data.pressure.buySharePct))}%`;
-  $('#buy-share').textContent = `${fmt(data.pressure.buySharePct)}٪`;
-  $('#sell-share').textContent = `${fmt(data.pressure.sellSharePct)}٪`;
-  $('#pressure-note').textContent = data.pressure.note;
-  $('#decision-label').textContent = data.decision.direction;
-  $('#confidence-badge').textContent = `قدرت اکتشافی ${fmt(data.decision.confidencePct, 0)}٪`;
-  $('#decision-meter-fill').style.width = `${data.decision.confidencePct}%`;
-  $('#decision-meter-fill').style.background = data.decision.score > 0 ? '#62d9ad' : data.decision.score < 0 ? '#ff7e8b' : '#a99cff';
-  $('#decision-note').textContent = data.decision.note;
-  $('#combined-score').textContent = `${data.decision.score > 0 ? '+' : ''}${fmt(data.decision.score, 0)}`;
-  $('#entry-price').textContent = fmtPrice(data.plan.referenceEntry);
-  $('#entry-note').textContent = data.decision.score <= 0 ? 'سناریوی خرید فعال نیست؛ این قیمت صرفاً مرجع تحلیل است.' : data.session.regularSession ? 'سناریوی صعودی در سشن اصلی؛ پیش از اقدام مستقل تأیید کن.' : 'سشن اصلی بسته است؛ سطح مرجع است و قیمت اجرایی نیست.';
-  $('#stop-price').textContent = fmtPrice(data.plan.stopLoss);
-  $('#stop-percent').textContent = `${fmt(data.plan.stopPct)}٪ فاصله از قیمت مرجع`;
-  $('#target-price').textContent = fmtPrice(data.plan.takeProfit);
-  $('#target-percent').textContent = `۲R · ${fmt(data.plan.targetPct)}٪ فاصله`;
-  $('#shares-count').textContent = data.plan.shares > 0 ? `${fmt(data.plan.shares, 0)} سهم · سناریوی صعودی` : 'ورود خرید پیشنهاد نمی‌شود';
-  $('#risk-dollars').textContent = data.plan.shares > 0 ? `زیان هدف تقریبی ${money(data.plan.riskAmount)} · ارزش موقعیت ${money(data.plan.estimatedPositionValue)}` : 'در حالت خنثی/نزولی، حجم خرید محاسبه نمی‌شود.';
-  $('#risk-warning').textContent = `${data.plan.note} حدضرر مبتنی بر ATR ${fmt(data.plan.stopPct)}٪ است؛ ${data.session.note}`;
-  renderFundamentals(data.fundamentals, data.dataStatus);
-  renderNews(data.news, data.dataStatus);
-  $('#provider-note').textContent = data.dataStatus?.provider === 'demo' ? data.dataNotice : `${data.dataStatus?.fundamentals} فاندامنتال · ${data.dataStatus?.news} خبر · ${data.dataStatus?.quote} قیمت`;
-  $('#overview-placeholder')?.remove();
-}
-async function analyzeSymbol() {
-  const symbol = $('#symbol').value.trim().toUpperCase();
-  if (!/^[A-Z][A-Z0-9.\-]{0,11}$/.test(symbol)) { toast('نماد معتبر وارد کن؛ مانند AAPL یا BRK.B.'); return; }
-  $('#symbol').value = symbol;
-  const btn = $('#analyze-btn'); btn.disabled = true; btn.innerHTML = '<span>◌</span> در حال تحلیل…';
-  try {
-    const query = new URLSearchParams({ symbol, timeframe: $('#timeframe').value, provider: $('#provider').value, risk: $('#risk').value, balance: $('#balance').value });
-    const result = await api(`/api/analysis?${query}`);
-    renderAnalysis(result);
-    if (result.dataStatus?.provider === 'finnhub' && (!result.fundamentals?.available || !result.news?.available)) toast(`تحلیل قیمت انجام شد؛ ${result.dataStatus.fundamentals} بنیادی / ${result.dataStatus.news} خبر.`);
-  } catch (error) { toast(error.message); }
-  finally { btn.disabled = false; btn.innerHTML = '<span>⌕</span> تحلیل این نماد <b>←</b>'; }
-}
-async function loadClock() { try { const clock = await api('/api/market-clock'); refreshHeaderSession(clock); } catch {} }
-$('#analyze-btn').addEventListener('click', analyzeSymbol);
-$('#symbol').addEventListener('keydown', e => { if (e.key === 'Enter') analyzeSymbol(); });
-$('#provider').addEventListener('change', () => { const real = $('#provider').value === 'finnhub'; $('#provider-note').textContent = real ? 'Finnhub نیاز به API Key سروری دارد؛ کلید را داخل صفحه وارد نکن.' : 'دمو برای نمایش رابط است؛ قیمت و تحلیل آن واقعی نیست.'; });
-$('#risk').addEventListener('input', e => { $('#risk-label').textContent = `${fmt(e.target.value, 1)}٪`; });
-$('#timeframe').addEventListener('change', () => { const tf = $('#timeframe').value; if (tf === '1d') $('#provider-note').textContent = 'بازه روزانه برای تحلیل میان‌مدت است؛ ساعت بازار همچنان در America/New_York محاسبه می‌شود.'; });
-$('#balance').addEventListener('change', analyzeSymbol);
-$('#risk').addEventListener('change', analyzeSymbol);
-loadClock(); analyzeSymbol();
-setInterval(() => { if (!document.hidden) loadClock(); }, 60_000);
-setInterval(() => { if (!document.hidden && $('#provider').value === 'finnhub') analyzeSymbol(); }, 5 * 60_000);
+const $=s=>document.querySelector(s),fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?'—':new Intl.NumberFormat('fa-IR',{maximumFractionDigits:d}).format(Number(v)),usd=(v,d=2)=>v==null||!Number.isFinite(Number(v))?'—':'$'+new Intl.NumberFormat('en-US',{maximumFractionDigits:d}).format(Number(v));let toastTimer,universe=[],dailyRunning=false;
+function toast(text){const x=$('#toast');x.textContent=text;x.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>x.classList.remove('show'),4500)}
+function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function request(url,options){const r=await fetch(url,options);const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`خطای سرور ${r.status}`);return data}
+function price(v){return v==null?'—':'$'+new Intl.NumberFormat('en-US',{minimumFractionDigits:v<1?4:2,maximumFractionDigits:v<1?6:2}).format(v)}
+function localStamp(d=new Date()){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function setClock(){const d=new Date();$('#local-clock').textContent=`ساعت محلی: ${new Intl.DateTimeFormat('fa-IR',{hour:'2-digit',minute:'2-digit'}).format(d)}`;$('#timezone-label').textContent=Intl.DateTimeFormat().resolvedOptions().timeZone||'ساعت محلی';}
+function setScheduler(){const time=$('#schedule-time').value||'03:00',enabled=$('#schedule-enabled').checked;localStorage.setItem('crypto-analysis-time',time);localStorage.setItem('crypto-analysis-enabled',String(enabled));$('#schedule-status').textContent=`${enabled?'فعال':'خاموش'} · ${time} محلی`;}
+async function loadUniverse(){const provider=$('#provider').value;try{const data=await request(`/api/universe?provider=${provider}`);universe=data.assets;const previous=$('#coin-select').value;$('#coin-select').innerHTML=universe.map((x,i)=>`<option value="${esc(x.symbol)}">${esc(x.base)} / USDT · ${i===0?'BTC':`رتبه حجم ${i}`}</option>`).join('');if(universe.some(x=>x.symbol===previous))$('#coin-select').value=previous;$('#provider-note').textContent=provider==='binance'?data.note:'دمو: همه قیمت‌ها و حجم‌ها ساختگی‌اند و رتبه واقعی بازار نیست.';$('#connection-status').innerHTML=`<i></i> ${provider==='binance'?'Binance · بازار عمومی':'دمو · مصنوعی'}`;return true;}catch(e){universe=[];$('#coin-select').innerHTML='<option value="BTCUSDT">BTC / USDT</option>';toast(`فهرست بازار دریافت نشد: ${e.message} · در صورت نیاز دمو را انتخاب کن.`);$('#connection-status').innerHTML='<i></i> اتصال ناموفق';return false;}}
+function showFundamentals(f){$('#fundamental-status').textContent=f?.marketCapUsd?'CoinGecko · دریافت شد':'دردسترس نیست';$('#fundamental-status').className=`state ${f?.marketCapUsd?'ready':'planned'}`;const fields=[['رتبه ارزش بازار',f?.marketCapRank?`#${fmt(f.marketCapRank,0)}`:'—'],['ارزش بازار',f?.marketCapUsd?usd(f.marketCapUsd,0):'—'],['FDV',f?.fullyDilutedValuationUsd?usd(f.fullyDilutedValuationUsd,0):'—'],['حجم ۲۴ساعت',f?.totalVolume24hUsd?usd(f.totalVolume24hUsd,0):'—'],['عرضه در گردش',f?.circulatingSupply?fmt(f.circulatingSupply,0):'—'],['درصد عرضه شناور',f?.supplyFloatPct!=null?`${fmt(f.supplyFloatPct)}٪`:'—'],['تغییر ۷روزه',f?.priceChange7dPct!=null?`${f.priceChange7dPct>=0?'+':''}${fmt(f.priceChange7dPct)}٪`:'—']];$('#fundamental-cards').innerHTML=fields.map(([k,v])=>`<div class="fundamental-metric"><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('');$('#fundamental-foot').textContent=f?`نام دارایی: ${f.name} · منبع CoinGecko؛ متریک عرضه ممکن است کامل نباشد.`:'داده بنیادی در این لحظه موجود نیست؛ محدودیت API یا نبودن دارایی در فهرست CoinGecko را بررسی کن.';}
+function showNews(news){const items=news?.items||[];$('#news-status').textContent=items.length?`${fmt(items.length,0)} خبر`:'وصل نیست';$('#news-status').className=`state ${items.length?'public':'planned'}`;$('#news-list').innerHTML=items.length?items.map(x=>{const tag=String(x.sentiment).startsWith('مثبت')?'news-positive':String(x.sentiment).startsWith('منفی')?'news-negative':'news-neutral';const link=/^https:\/\//.test(x.url||'')?`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.headline)}</a>`:esc(x.headline);const time=x.time?new Intl.DateTimeFormat('fa-IR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(x.time)):'';return`<article class="news-item"><span class="news-tag ${tag}">${esc(x.sentiment)}</span><div><b>${link}</b><small>${esc(x.source)} · ${esc(time)}</small></div></article>`}).join(''):`<div class="empty-news">${esc(news?.status||'برای خبر واقعی CRYPTOPANIC_API_KEY تنظیم کنید.')}</div>`;}
+function renderAnalysis(d){$('#selected-symbol').textContent=d.symbol;$('#selected-subtitle').textContent=`${d.timeframe} · ${d.quote.source}`;$('#quote-price').textContent=price(d.quote.price);$('#quote-change').textContent=`${d.quote.change24hPct>=0?'+':''}${fmt(d.quote.change24hPct)}٪ · ۲۴ساعت`;$('#quote-change').className=d.quote.change24hPct>=0?'positive':'negative';const asset=universe.find(x=>x.symbol===d.symbol);$('#volume-rank').textContent=asset?`${asset.volumeRank==='BTC'?'BTC':`حجم #${asset.volumeRank}`} · ${usd(asset.quoteVolume24h,0)}`:'بازار';$('#decision-label').textContent=d.decision.direction;$('#decision-note').textContent=d.decision.note;$('#confidence-badge').textContent=`قدرت اکتشافی ${fmt(d.decision.confidencePct,0)}٪`;$('#decision-meter-fill').style.width=`${Math.min(100,d.decision.confidencePct)}%`;$('#decision-meter-fill').style.background=d.decision.score>0?'#62d9ad':d.decision.score<0?'#ff7e8b':'#a99cff';$('#layers').innerHTML=d.decision.layers.map(x=>`<div><span>${esc(x.label)}</span><b>${x.score>0?'+':''}${fmt(x.score,0)}</b></div>`).join('');$('#combined-score').textContent=`${d.decision.score>0?'+':''}${fmt(d.decision.score,0)}`;$('#trend-value').textContent=d.technical.trend;$('#trend-icon').textContent=d.technical.trend==='صعودی'?'↗':'↘';$('#trend-icon').className=`trend-icon ${d.technical.trend==='صعودی'?'positive':'negative'}`;$('#rsi-pill').textContent=`RSI ${fmt(d.technical.rsi,1)}`;$('#rsi-pill').className=`neutral-pill ${d.technical.rsi<35?'pill-positive':d.technical.rsi>70?'pill-negative':''}`;$('#indicator-list').innerHTML=[['MACD histogram',fmt(d.technical.macdHistogram,5)],['حمایت ۲۰ کندل',price(d.technical.support)],['مقاومت ۲۰ کندل',price(d.technical.resistance)],['ATR / قیمت',`${fmt(d.technical.atrPct)}٪`]].map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('');$('#technical-score').textContent=`${d.technical.score>0?'+':''}${fmt(d.technical.score,0)}`;$('#pressure-label').textContent=d.pressure.label;$('#pressure-value').textContent=`${d.pressure.takerImbalancePct>=0?'+':''}${fmt(d.pressure.takerImbalancePct)}٪ taker`;const bought=d.pressure.buyNotionalUsd||0,sold=d.pressure.sellNotionalUsd||0,buyShare=bought+sold?bought/(bought+sold)*100:50;$('#buy-bar').style.width=`${buyShare}%`;$('#buy-share').textContent=`${fmt(buyShare)}٪`;$('#sell-share').textContent=`${fmt(100-buyShare)}٪`;$('#orderbook-note').textContent=d.pressure.orderBookBidUsd==null?'snapshot دفتر سفارش در دسترس نیست.':`Bid ${usd(d.pressure.orderBookBidUsd,0)} در برابر Ask ${usd(d.pressure.orderBookAskUsd,0)} · imbalance ${fmt(d.pressure.orderBookImbalancePct)}٪`;$('#large-trades').textContent=`${fmt(d.pressure.largeBuyTrades,0)} خرید / ${fmt(d.pressure.largeSellTrades,0)} فروش` ;$('#whale-note').textContent=`معامله‌های بسیار بزرگ ≥ $100k در ۵۰۰ معامله اخیر: ${fmt(d.pressure.veryLargeBuyTrades,0)} خرید / ${fmt(d.pressure.veryLargeSellTrades,0)} فروش؛ شناسایی نهنگ/کیف‌پول نیست.`;const p=d.plan;$('#entry-price').textContent=price(p.referenceEntry);$('#entry-note').textContent=p.quantity?`سناریوی لانگ · قیمت مرجع، نه دستور خرید`:'ورود لانگ تأیید نشده؛ قیمت فقط مرجع است.';$('#stop-price').textContent=`L ${price(p.longStop)} · S ${price(p.shortStop)}`;$('#stop-percent').textContent=`${fmt(p.stopPct)}٪ فاصلهٔ ATR`;$('#target-price').textContent=`L ${price(p.longTarget)} · S ${price(p.shortTarget)}`;$('#target-percent').textContent=`${fmt(p.targetPct)}٪ · نسبت ۲R`;$('#quantity').textContent=p.quantity?`${fmt(p.quantity,0)} واحد · لانگ`:'ورود لانگ ندارد';$('#risk-amount').textContent=p.quantity?`ریسک اسمی ${usd(p.riskAmount)} · ارزش ${usd(p.estimatedNotional)}`:'برای جهت خنثی/نزولی حجم لانگ پیشنهاد نمی‌شود.';$('#risk-warning').textContent=`ریسک انتخابی ${fmt(p.riskPct)}٪؛ حدها روی ATR پویا هستند. حدضرر تضمین جلوگیری از لغزش/گپ نیست؛ سفارش خودکار نداریم.`;showFundamentals(d.fundamentals);showNews(d.news);}
+async function analyzeSelected(){const symbol=$('#coin-select').value||'BTCUSDT';$('#connection-status').innerHTML='<i></i> دریافت تحلیل…';try{const q=new URLSearchParams({symbol,timeframe:$('#timeframe').value,provider:$('#provider').value,risk:$('#risk').value,balance:$('#balance').value});const d=await request(`/api/analysis?${q}`);renderAnalysis(d);$('#connection-status').innerHTML=`<i></i> ${d.quote.source}`;}catch(e){$('#connection-status').innerHTML='<i></i> اتصال ناموفق';toast(`تحلیل ${symbol} ناموفق بود: ${e.message}`);}}
+function renderPortfolio(data){const rows=data.results||[];const good=rows.filter(x=>x.backtest);$('#backtest-meta').textContent=`${data.source} · ${data.timeframe} · ${new Date(data.completedAt).toLocaleString()}`;if(!good.length){$('#backtest-summary').innerHTML=`<div class="empty-news">برای هیچ نمادی تاریخچهٔ کافی دریافت نشد.</div>`;return;}const avg=good.reduce((s,x)=>s+x.backtest.returnPct,0)/good.length,best=[...good].sort((a,b)=>b.backtest.returnPct-a.backtest.returnPct)[0],wins=good.filter(x=>x.backtest.returnPct>0).length;$('#backtest-summary').innerHTML=`<div class="summary-chip"><small>نمادهای موفق</small><b>${fmt(good.length,0)} / ۱۱</b></div><div class="summary-chip"><small>میانگین بازده</small><b class="${avg>=0?'positive':'negative'}">${avg>=0?'+':''}${fmt(avg)}٪</b></div><div class="summary-chip"><small>نمادهای مثبت</small><b>${fmt(wins,0)}</b></div><div class="summary-chip"><small>بهترین تاریخی</small><b>${esc(best.symbol)} · ${best.backtest.returnPct>=0?'+':''}${fmt(best.backtest.returnPct)}٪</b></div>`;$('#portfolio-body').innerHTML=rows.map((x,i)=>{if(x.error)return`<tr><td>${i?'#'+i:'BTC'}</td><td><b>${esc(x.symbol)}</b></td><td>${usd(x.quoteVolume24h,0)}</td><td colspan="7" class="negative">خطا: ${esc(x.error)}</td></tr>`;const b=x.backtest,a=x.analysis;return`<tr><td>${i?'#'+i:'BTC'}</td><td><button class="coin-row-button" data-symbol="${esc(x.symbol)}">${esc(x.symbol)}</button></td><td>${usd(x.quoteVolume24h,0)}<small>${x.change24hPct>=0?'+':''}${fmt(x.change24hPct)}٪</small></td><td>${esc(a.decision.direction)}</td><td>${a.pressure.takerImbalancePct>=0?'+':''}${fmt(a.pressure.takerImbalancePct)}٪</td><td class="${b.returnPct>=0?'positive':'negative'}">${b.returnPct>=0?'+':''}${fmt(b.returnPct)}٪</td><td>${fmt(b.maxDrawdownPct)}٪</td><td>${fmt(b.winRatePct)}٪</td><td>${b.profitFactor==null?'∞':fmt(b.profitFactor)}</td><td>${fmt(b.trades,0)}</td></tr>`}).join('');document.querySelectorAll('[data-symbol]').forEach(btn=>btn.addEventListener('click',()=>{$('#coin-select').value=btn.dataset.symbol;analyzeSelected();$('#technical').scrollIntoView({behavior:'smooth'});}));}
+async function runPortfolio(scheduled=false){if(dailyRunning)return;dailyRunning=true;const btn=$('#run-button');if(btn){btn.disabled=true;btn.innerHTML='<span>◌</span> در حال دریافت ۱۱ بازار…';}$('#connection-status').innerHTML='<i></i> اسکن ۱۱ ارز…';try{const data=await request('/api/portfolio-run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#provider').value,timeframe:$('#timeframe').value,risk:Number($('#risk').value),balance:Number($('#balance').value)})});renderPortfolio(data);const btc=data.results.find(x=>x.symbol==='BTCUSDT');if(btc?.analysis){$('#coin-select').value='BTCUSDT';renderAnalysis(btc.analysis);}$('#backtest-results').scrollIntoView({behavior:'smooth',block:'start'});$('#connection-status').innerHTML='<i></i> تحلیل سبد کامل شد';toast(scheduled?'اجرای زمان‌بندی‌شدهٔ ساعت محلی کامل شد.':'تحلیل و بک‌تست سبد انجام شد.');}catch(e){toast(`اجرای ۱۱ ارز ناموفق بود: ${e.message}`);}finally{dailyRunning=false;if(btn){btn.disabled=false;btn.innerHTML='<span>▶</span> تحلیل و بک‌تست ۱۱ ارز <b>←</b>';}}}
+async function checkSchedule(){if(dailyRunning||document.hidden||!$('#schedule-enabled').checked)return;const now=new Date(),selected=$('#schedule-time').value||'03:00',current=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;if(current===selected&&localStorage.getItem('crypto-last-run')!==localStamp(now)){localStorage.setItem('crypto-last-run',localStamp(now));await runPortfolio(true);}}
+$('#run-button').addEventListener('click',()=>runPortfolio(false));$('#coin-select').addEventListener('change',analyzeSelected);$('#timeframe').addEventListener('change',analyzeSelected);$('#provider').addEventListener('change',async()=>{await loadUniverse();analyzeSelected();});$('#risk').addEventListener('input',e=>$('#risk-label').textContent=`${fmt(e.target.value,1)}٪`);$('#risk').addEventListener('change',analyzeSelected);$('#balance').addEventListener('change',analyzeSelected);$('#schedule-time').value=localStorage.getItem('crypto-analysis-time')||'03:00';$('#schedule-enabled').checked=localStorage.getItem('crypto-analysis-enabled')!=='false';$('#schedule-time').addEventListener('change',setScheduler);$('#schedule-enabled').addEventListener('change',setScheduler);setScheduler();setClock();setInterval(setClock,15000);setInterval(checkSchedule,15000);loadUniverse().then(async()=>{await analyzeSelected();await checkSchedule();});
