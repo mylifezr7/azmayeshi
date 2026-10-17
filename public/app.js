@@ -106,3 +106,5 @@ $('#timeframe').addEventListener('change', () => { const tf = $('#timeframe').va
 $('#balance').addEventListener('change', analyzeSymbol);
 $('#risk').addEventListener('change', analyzeSymbol);
 loadClock(); analyzeSymbol();
+setInterval(() => { if (!document.hidden) loadClock(); }, 60_000);
+setInterval(() => { if (!document.hidden && $('#provider').value === 'finnhub') analyzeSymbol(); }, 5 * 60_000);
