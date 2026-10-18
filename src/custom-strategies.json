@@ -1,0 +1,30 @@
+[
+  {
+    "id": "custom-mvcvhxss",
+    "name": "ردیابی فعالیت نهنگ ها",
+    "short": "ردیابی فعالیت نهنگ ها",
+    "category": "سفارشی",
+    "description": "ستاپ سفارشی مبتنی بر الگوی انتخاب‌شده.",
+    "params": {
+      "lookback": 20
+    },
+    "type": "breakout",
+    "color": "#9b8cff",
+    "riskHint": "نیازمند ارزیابی مستقل"
+  },
+  {
+    "id": "custom-mvcvkaox",
+    "name": "ردیابی فعالیت نهنگ ها",
+    "short": "ردیابی فعالیت نهنگ ها",
+    "category": "سفارشی",
+    "description": "گرفتن اطلاعات نهنگ ها از سایت hyperstats ",
+    "params": {
+      "period": 14,
+      "oversold": 30,
+      "overbought": 70
+    },
+    "type": "rsi-reversal",
+    "color": "#9b8cff",
+    "riskHint": "نیازمند ارزیابی مستقل"
+  }
+]
