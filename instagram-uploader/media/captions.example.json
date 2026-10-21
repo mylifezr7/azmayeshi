@@ -1,0 +1,10 @@
+{
+  "_راهنما": "کلید = نام فایل ویدیو (یا نام بدون پسوند). مقدار = متن کپشن یا آبجکت {caption, cover, thumb_offset}. کلید _default برای همهٔ ویدیوهای بدون کپشن استفاده می‌شود.",
+  "_default": "",
+  "clip1.mp4": "🎬 اولین کلیپ\n\nاین متن مستقیم از captions.json خوانده می‌شود.",
+  "clip2.mp4": {
+    "caption": "کپشن دوم با کاور سفارشی",
+    "cover": "https://example.com/cover.jpg",
+    "thumb_offset": 1500
+  }
+}

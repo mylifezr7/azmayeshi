@@ -6,7 +6,14 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "ig:check": "node instagram-uploader/cli.js check",
+    "ig:list": "node instagram-uploader/cli.js list",
+    "ig:post": "node instagram-uploader/cli.js post",
+    "ig:watch": "node instagram-uploader/cli.js watch",
+    "ig:serve": "node instagram-uploader/cli.js serve",
+    "ig:status": "node instagram-uploader/cli.js status",
+    "ig:test": "node --test instagram-uploader/test/*.test.js"
   },
   "engines": { "node": ">=18" }
 }

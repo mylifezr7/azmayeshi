@@ -45,6 +45,21 @@ npm start
 
 **محدودیت صریح بک‌تست:** تاریخچهٔ کامل order book، اخبار گذشته و snapshot بنیادی CoinGecko برای همان لحظه‌های تاریخی در منبع عمومی استفاده‌شده موجود نیست. بنابراین این عوامل فقط در تحلیل جاری و ورود مجازی هم‌زمان اعمال می‌شوند و در بک‌تست تاریخی ادعای بازسازی نمی‌شوند؛ استفاده از مقدار امروز برای تاریخچه باعث look-ahead bias می‌شد. کارمزد بک‌تست ۰.۱٪ هر سمت است؛ لغزش، funding و اثر بازار مدل نشده‌اند.
 
+## ربات انتشار ویدیو در اینستاگرام
+
+ماژول مستقل `instagram-uploader/` ویدیوهای یک پوشه را با کپشن‌شان به‌صورت ریلز در پیج اینستاگرام منتشر می‌کند (API رسمی، بدون لاگین با رمز/کوکی).
+
+```bash
+cd instagram-uploader
+cp .env.example .env        # IG_USER_ID، IG_ACCESS_TOKEN، IG_PUBLIC_BASE_URL
+node cli.js check           # بررسی توکن، سهمیه و دسترسی عمومی فایل
+node cli.js list            # ویدیوها و کپشن هرکدام
+node cli.js post --dry-run  # شبیه‌سازی
+node cli.js watch --archive # رصد مداوم پوشهٔ media/ و انتشار خودکار
+```
+
+کپشن از `media/captions.json`، سپس فایل کنار ویدیو (`clip1.txt`)، سپس `IG_DEFAULT_CAPTION` خوانده می‌شود. راهنمای کامل: [instagram-uploader/README.md](instagram-uploader/README.md).
+
 ## اجزای پروژه
 
 - `src/providers.js`: Binance، CoinGecko، CryptoPanic و Demo.
@@ -53,6 +68,7 @@ npm start
 - `src/paper.js`: ثبت و مانیتور معاملات مجازی.
 - `src/market-clock.js`: تبدیل ۰۹:۳۰ نیویورک به زمان ایران با لحاظ DST.
 - `server.js`: API محلی؛ `public/`: رابط RTL.
+- `instagram-uploader/`: ربات انتشار ریلز اینستاگرام از روی پوشهٔ ویدیوها (CLI مستقل، بدون وابستگی npm).
 
 ## هشدار
 
