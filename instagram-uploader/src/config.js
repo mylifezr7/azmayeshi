@@ -8,9 +8,14 @@ const crypto = require('node:crypto');
 const MODULE_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(MODULE_ROOT, '..');
 
-function loadEnvFile(file) {
+// Values already present in the real environment always win over .env files.
+// Inside/between .env files the LAST occurrence wins, so appending a corrected
+// line at the end of .env is enough to override an older one.
+const OS_ENV_KEYS = new Set(Object.keys(process.env));
+
+function parseEnvFile(file, target) {
   if (!fs.existsSync(file)) return;
-  const text = fs.readFileSync(file, 'utf8');
+  const text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
@@ -20,13 +25,20 @@ function loadEnvFile(file) {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    if (process.env[match[1]] === undefined) process.env[match[1]] = value;
+    target.set(match[1], value);
+  }
+}
+
+function applyEnvFiles(...files) {
+  const merged = new Map();
+  for (const file of files) parseEnvFile(file, merged);
+  for (const [key, value] of merged) {
+    if (!OS_ENV_KEYS.has(key)) process.env[key] = value;
   }
 }
 
 // Repo root first, then the module's own .env wins for anything still unset.
-loadEnvFile(path.join(REPO_ROOT, '.env'));
-loadEnvFile(path.join(MODULE_ROOT, '.env'));
+applyEnvFiles(path.join(REPO_ROOT, '.env'), path.join(MODULE_ROOT, '.env'));
 
 function toBool(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;

@@ -87,6 +87,24 @@ async function commandCheck(config, options) {
     return 1;
   }
 
+  const token = config.accessToken;
+  const usesInstagramLogin = /graph\.instagram\.com/i.test(config.graphBaseUrl);
+  const tokenProblems = [];
+  if (/^IGAA/i.test(token)) {
+    tokenProblems.push(
+      'این توکن از «API Setup» قدیمی (Instagram Basic Display) است که از دسامبر ۲۰۲۴ مرده و هیچ پستی نمی‌پذیرد. ' +
+        'باید از Instagram → API setup with Instagram login ساخته شود.'
+    );
+  } else if (/^IGQ/i.test(token) && !usesInstagramLogin) {
+    tokenProblems.push('توکن از نوع Instagram Login است ولی IG_GRAPH_BASE_URL روی graph.facebook.com است؛ آن را https://graph.instagram.com بگذار.');
+  } else if (/^EAA/i.test(token) && usesInstagramLogin) {
+    tokenProblems.push('توکن از نوع Facebook است ولی IG_GRAPH_BASE_URL روی graph.instagram.com است؛ آن را https://graph.facebook.com بگذار.');
+  }
+  if (tokenProblems.length) {
+    console.log('⛔ مشکل توکن:\n' + tokenProblems.map((p) => `  - ${p}`).join('\n'));
+    return 1;
+  }
+
   console.log('🔑 بررسی توکن و نوع اکانت…');
   const client = makeClient(config);
   const account = await client.getAccount();
