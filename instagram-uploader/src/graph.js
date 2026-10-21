@@ -197,6 +197,58 @@ function createGraphClient({
   };
 }
 
+// Finds which Instagram account a token belongs to, so the user never has to
+// look up the numeric account id by hand. Tries both API bases:
+//   graph.instagram.com  -> GET /me
+//   graph.facebook.com   -> GET /me/accounts (page -> instagram_business_account)
+async function identifyAccount({
+  accessToken,
+  baseUrl = 'https://graph.instagram.com',
+  version = 'v23.0',
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!accessToken) throw new Error('accessToken لازم است.');
+  const root = `${baseUrl.replace(/\/+$/, '')}/${version}`;
+  const get = async (endpoint, params) => {
+    const url = new URL(`${root}/${endpoint}`);
+    for (const [key, value] of Object.entries({ ...params, access_token: accessToken })) url.searchParams.set(key, value);
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.error) {
+      const info = payload.error || {};
+      throw new GraphError(redact(info.error_user_msg || info.message || `HTTP ${response.status}`), { code: info.code });
+    }
+    return payload;
+  };
+
+  try {
+    const me = await get('me', { fields: 'id,user_id,username,account_type,followers_count' });
+    const id = me.user_id || me.id;
+    if (id) {
+      return { id: String(id), username: me.username || null, accountType: me.account_type || null, via: 'instagram-login' };
+    }
+  } catch (error) {
+    if (baseUrl.includes('facebook.com')) {
+      // fall through to the page lookup
+    } else {
+      throw error;
+    }
+  }
+
+  const pages = await get('me/accounts', { fields: 'name,instagram_business_account{id,username}' });
+  const page = (pages.data || []).find((item) => item.instagram_business_account?.id);
+  if (!page) {
+    throw new GraphError('هیچ اکانت اینستاگرامی به توکن وصل نیست. اکانت را به یک صفحهٔ فیسبوک وصل کن یا از مسیر Instagram Login استفاده کن.');
+  }
+  return {
+    id: String(page.instagram_business_account.id),
+    username: page.instagram_business_account.username || null,
+    accountType: null,
+    via: 'facebook-login',
+    pageName: page.name || null,
+  };
+}
+
 // Instagram-Login long-lived tokens can be extended by 60 days when they are at
 // least 24 hours old and not yet expired. Requires no app secret.
 async function refreshLongLivedToken({
@@ -223,4 +275,4 @@ async function refreshLongLivedToken({
   };
 }
 
-module.exports = { createGraphClient, refreshLongLivedToken, GraphError, sleep, redact };
+module.exports = { createGraphClient, identifyAccount, refreshLongLivedToken, GraphError, sleep, redact };

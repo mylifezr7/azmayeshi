@@ -90,6 +90,8 @@ function loadConfig(overrides = {}) {
     igUserId: env.IG_USER_ID || '',
     graphVersion: env.IG_GRAPH_VERSION || 'v23.0',
     graphBaseUrl: env.IG_GRAPH_BASE_URL || 'https://graph.facebook.com',
+    // true when the base URL was chosen by the user/proxy, not our default
+    graphBaseUrlExplicit: Boolean(env.IG_GRAPH_BASE_URL),
     tokenBaseUrl: env.IG_TOKEN_BASE_URL || 'https://graph.instagram.com',
     publicBaseUrl: (env.IG_PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
     mediaSecret: secret,

@@ -7,7 +7,7 @@ const path = require('node:path');
 const { createMediaServer, parseRange } = require('../src/media-server');
 const { loadCaptionSources, resolveCaption, trimToLimit, appendHashtags, CAPTION_LIMIT } = require('../src/captions');
 const { listVideoFiles, loadState, saveState, recordPosted, recordFailure, postsInLast24h, pendingFiles, isPosted, archiveFile } = require('../src/library');
-const { createGraphClient, refreshLongLivedToken, GraphError } = require('../src/graph');
+const { createGraphClient, identifyAccount, refreshLongLivedToken, GraphError } = require('../src/graph');
 const { publishOnce } = require('../src/publisher');
 const { loadConfig, parseHashtags } = require('../src/config');
 
@@ -225,6 +225,28 @@ test('waitForContainer fails fast when Instagram reports ERROR', async () => {
   const fetchImpl = async () => new Response(JSON.stringify({ status_code: 'ERROR', status: 'bad file' }), { status: 200 });
   const client = createGraphClient({ accessToken: 't', igUserId: '1', fetchImpl });
   await assert.rejects(() => client.waitForContainer('c', { intervalMs: 1 }), /شکست خورد/);
+});
+
+test('identifyAccount resolves the account id for both API bases', async () => {
+  const seen = [];
+  const igFetch = async (url) => {
+    seen.push(String(url));
+    return new Response(JSON.stringify({ id: '17841400000000000', user_id: '17841400000000000', username: 'my.page', account_type: 'BUSINESS' }), { status: 200 });
+  };
+  const ig = await identifyAccount({ accessToken: 'IGQ_x', baseUrl: 'https://graph.instagram.com', fetchImpl: igFetch });
+  assert.deepEqual(ig, { id: '17841400000000000', username: 'my.page', accountType: 'BUSINESS', via: 'instagram-login' });
+  assert.match(seen[0], /graph\.instagram\.com\/v23\.0\/me\?fields=.*username/);
+
+  const fbFetch = async (url) => {
+    const href = String(url);
+    if (href.includes('/me/accounts')) {
+      return new Response(JSON.stringify({ data: [{ name: 'Page', instagram_business_account: { id: '999', username: 'via_page' } }] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: { message: 'unknown path' } }), { status: 400 });
+  };
+  const fb = await identifyAccount({ accessToken: 'EAA_x', baseUrl: 'https://graph.facebook.com', fetchImpl: fbFetch });
+  assert.equal(fb.id, '999');
+  assert.equal(fb.via, 'facebook-login');
 });
 
 test('publishing limit and token refresh read the documented endpoints', async () => {

@@ -5,7 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadConfig, validateForPublishing } = require('./src/config');
-const { createGraphClient, refreshLongLivedToken } = require('./src/graph');
+const { createGraphClient, identifyAccount, refreshLongLivedToken } = require('./src/graph');
 const { loadCaptionSources, resolveCaption } = require('./src/captions');
 const { listVideoFiles, loadState, saveState, postsInLast24h, isPosted, emptyState } = require('./src/library');
 const { probeVideo, checkReelConstraints } = require('./src/probe');
@@ -16,6 +16,7 @@ const HELP = `
 ربات انتشار ویدیو در پیج اینستاگرام (API رسمی Graph / Reels)
 
 دستورها:
+  whoami           توکن را بده، خودش اکانت و شناسه را پیدا و (با --save) ذخیره می‌کند
   check            بررسی تنظیمات، توکن و دسترسی عمومی به فایل ویدیو
   list             نمایش ویدیوهای پوشه، وضعیت انتشار و کپشن هرکدام
   post             انتشار ویدیوهای جدید (یک‌بار)
@@ -33,7 +34,8 @@ const HELP = `
   --force          ویدیوهای قبلاً منتشرشده را هم دوباره بفرست
   --archive        بعد از انتشار موفق، فایل را به پوشهٔ posted/ منتقل کن
   --quiet          لاگ کمتر
-  --save           (فقط refresh-token) توکن تازه را در .env ذخیره کن
+  --save           ذخیرهٔ نتیجه در .env (whoami و refresh-token)
+  --token TOKEN    توکن را مستقیم بده (whoami) به‌جای خواندن از .env
 
 نمونه:
   node instagram-uploader/cli.js list
@@ -355,19 +357,73 @@ async function commandServe(config) {
   return 0;
 }
 
-function saveTokenToEnvFile(token, file) {
-  const line = `IG_ACCESS_TOKEN=${token}`;
+// Writes KEY=value pairs at the END of .env: the loader lets the last
+// occurrence win, so this also fixes an older, wrong line above it.
+function saveEnvValues(values, file) {
   let text = '';
   try {
-    text = fs.readFileSync(file, 'utf8');
+    text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
   } catch {
-    /* create new file */
+    /* first write */
   }
-  const updated = /^IG_ACCESS_TOKEN=.*$/m.test(text)
-    ? text.replace(/^IG_ACCESS_TOKEN=.*$/m, line)
-    : `${text.trimEnd()}\n${line}\n`;
-  fs.writeFileSync(file, updated.startsWith('\n') ? updated.slice(1) : updated, { mode: 0o600 });
+  const lines = Object.entries(values)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${key}=${String(value).replace(/[\r\n]/g, '')}`);
+  if (!lines.length) return file;
+  const updated = `${text.trimEnd()}\n${lines.join('\n')}\n`.replace(/^\n/, '');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, updated, { mode: 0o600 });
   return file;
+}
+
+async function commandWhoami(config, options) {
+  const token = typeof options.token === 'string' ? options.token.trim() : config.accessToken;
+  if (!token) {
+    console.log('توکن نداری. با --token بده یا اول IG_ACCESS_TOKEN را در .env بگذار.');
+    return 1;
+  }
+  if (/^IGAA/i.test(token)) {
+    console.log('⛔ این توکن از «API Setup» قدیمی است و از دسامبر ۲۰۲۴ کار نمی‌کند. توکن تازه از «API setup with Instagram login» بگیر.');
+    return 1;
+  }
+  const preferred = config.graphBaseUrlExplicit
+    ? config.graphBaseUrl
+    : /^IGQ/i.test(token)
+      ? 'https://graph.instagram.com'
+      : 'https://graph.facebook.com';
+  console.log(`🔍 در حال پیدا کردن اکانت (${preferred}) …`);
+  let account;
+  let usedBase = preferred;
+  try {
+    account = await identifyAccount({ accessToken: token, baseUrl: preferred, version: config.graphVersion });
+  } catch (error) {
+    const alternative = preferred.includes('graph.instagram.com') ? 'https://graph.facebook.com' : 'https://graph.instagram.com';
+    try {
+      account = await identifyAccount({ accessToken: token, baseUrl: alternative, version: config.graphVersion });
+      usedBase = alternative;
+    } catch {
+      throw error;
+    }
+  }
+
+  console.log(`✅ پیدا شد: @${account.username || 'نامشخص'}${account.accountType ? ` (${account.accountType})` : ''}`);
+  console.log(`   شناسهٔ اکانت (IG_USER_ID): ${account.id}`);
+  console.log(`   آدرس API درست: ${usedBase}`);
+
+  const envFile = path.join(__dirname, '.env');
+  if (options.save) {
+    const values = { IG_ACCESS_TOKEN: token, IG_USER_ID: account.id, IG_GRAPH_BASE_URL: usedBase };
+    if (/graph\.instagram\.com/.test(usedBase)) values.IG_GRAPH_BASE_URL = 'https://graph.instagram.com';
+    saveEnvValues(values, envFile);
+    console.log(`💾 ذخیره شد در ${envFile}`);
+  } else {
+    console.log('برای ذخیرهٔ خودکار همین مقادیر: دوباره با --save اجرا کن.');
+  }
+  return 0;
+}
+
+function saveTokenToEnvFile(token, file) {
+  return saveEnvValues({ IG_ACCESS_TOKEN: token }, file);
 }
 
 async function commandRefreshToken(config, options) {
@@ -450,6 +506,8 @@ async function main() {
       return commandWatch(config, options);
     case 'serve':
       return commandServe(config);
+    case 'whoami':
+      return commandWhoami(config, options);
     case 'refresh-token':
       return commandRefreshToken(config, options);
     case 'reset':

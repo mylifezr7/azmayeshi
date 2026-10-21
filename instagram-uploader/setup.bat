@@ -5,43 +5,23 @@ cd /d "%~dp0"
 
 echo.
 echo ============================================
-echo   تنظیم ربات اینستاگرام - فقط یک بار
+echo    تنظیم ربات اینستاگرام  -  یک بار
 echo ============================================
 echo.
 
 where node >nul 2>nul
 if errorlevel 1 (
   echo [X] Node.js نصب نیست.
-  echo     برو به https://nodejs.org و نسخه LTS را نصب کن، بعد این فایل را دوباره اجرا کن.
+  echo     برو به https://nodejs.org نسخه LTS را نصب کن، بعد این فایل را دوباره اجرا کن.
   pause
   exit /b 1
 )
 
-if not exist .env (
-  if exist .env.example (
-    copy .env.example .env >nul
-    echo [OK] فایل .env ساخته شد.
-  ) else (
-    echo [X] فایل .env.example پیدا نشد. مطمئن شو کل پوشه instagram-uploader را داری.
-    pause
-    exit /b 1
-  )
-)
+if not exist .env copy .env.example .env >nul 2>nul
 
-echo.
-echo --- قدم 1: شناسهٔ اکانت اینستاگرام ---
-echo (یک عدد بلند است، نه اسم پیج)
-set /p IG_ID=شناسه را اینجا بچسبان و Enter بزن: 
-if "!IG_ID!"=="" (
-  echo [X] خالی بود.
-  pause
-  exit /b 1
-)
-
-echo.
-echo --- قدم 2: توکن دسترسی ---
-echo (رشتهٔ بلندی که با IGQ شروع می‌شود)
-set /p IG_TOKEN=توکن را اینجا بچسبان و Enter بزن: 
+echo --- قدم 1 از 2: توکن ---
+echo توکنی که با IGQ شروع می‌شود را اینجا بچسبان (کلیک راست = چسباندن)
+set /p IG_TOKEN=توکن: 
 if "!IG_TOKEN!"=="" (
   echo [X] خالی بود.
   pause
@@ -49,22 +29,34 @@ if "!IG_TOKEN!"=="" (
 )
 
 echo.
-echo --- قدم 3: آدرس عمومی ---
-echo اگر تونل را بالا آورده‌ای، آدرسش را بچسبان (مثل https://xxxx.trycloudflare.com)
-echo اگر هنوز نداری، فقط Enter بزن.
+echo --- قدم 2 از 2: آدرس عمومی ---
+echo اگر پنجرهٔ cloudflared باز است، آدرس https://....trycloudflare.com را بچسبان.
+echo اگر هنوز نداری فقط Enter بزن (بعداً می‌شود اضافه کرد).
 set /p IG_PUBLIC=آدرس: 
 
-echo.>>.env
-echo IG_USER_ID=!IG_ID!>>.env
-echo IG_ACCESS_TOKEN=!IG_TOKEN!>>.env
-if not "!IG_PUBLIC!"=="" echo IG_PUBLIC_BASE_URL=!IG_PUBLIC!>>.env
+echo.
+echo [..] شناسهٔ اکانت را خودم پیدا می‌کنم...
+node cli.js whoami --save --token=!IG_TOKEN!
+if errorlevel 1 (
+  echo.
+  echo [X] با این توکن اکانتی پیدا نشد. توکن را دوباره از Instagram - API setup with Instagram login بگیر.
+  pause
+  exit /b 1
+)
+
+if not "!IG_PUBLIC!"=="" (
+  echo.
+  echo IG_PUBLIC_BASE_URL=!IG_PUBLIC!>>.env
+  echo [OK] آدرس عمومی ذخیره شد.
+)
 
 echo.
-echo [OK] ذخیره شد در .env
-echo.
-echo --- بررسی تنظیمات ---
+echo [..] بررسی نهایی...
 node cli.js check
 echo.
-echo اگر همه چیز سبز بود، برای انتشار واقعی:  post.bat
+echo ============================================
+echo  اگر بالا پیام @اسم_پیج و HTTP 200 دیدی، آماده است.
+echo  بعدش: ویدیو را در پوشهٔ media بگذار و post.bat را بزن.
+echo ============================================
 echo.
 pause
