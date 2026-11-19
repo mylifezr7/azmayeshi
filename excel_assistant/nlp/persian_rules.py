@@ -119,6 +119,7 @@ class PersianRuleParser:
             )
 
         # 8. Column Arithmetic: ضرب، جمع، تفریق، تقسیم
+        # e.g.: ستون B را در C ضرب کن و در D قرار بده
         # e.g.: ستون A را در ستون B ضرب کن و جواب را در C بنویس
         # e.g.: ستون قیمت را در ستون تعداد ضرب کن
         arith_ops = {
@@ -129,6 +130,7 @@ class PersianRuleParser:
             "به علاوه": "add",
             "+": "add",
             "منهای": "subtract",
+            "منها": "subtract",
             "تفریق": "subtract",
             "-": "subtract",
             "تقسیم": "divide",
@@ -142,28 +144,71 @@ class PersianRuleParser:
                 break
 
         if detected_op:
-            # Look for column matches
-            cols_found = re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
-            resolved_cols = []
-            for c_str in cols_found:
-                res = resolve_column(c_str, header_map)
-                if res:
-                    resolved_cols.append(res)
+            text_clean = text.strip()
 
-            # Also check if target column was specified (e.g. "در C بنویس" or "جواب را در C" or "در ستون C")
-            target_candidates = re.findall(r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)', text)
+            # Step 1: Detect target column if present
             target_c = None
-            for cand_raw in reversed(target_candidates):
-                cand = resolve_column(cand_raw, header_map)
-                if cand and cand not in (resolved_cols[:2]):
-                    target_c = cand
-                    break
+            target_match = re.search(
+                r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)\s*(?:قرار\s*بده|قرار\s*ده|قرار\s*بگذار|بنویس|درج\s*کن|بریز|بگذار|ثبت\s*کن|قرار\s*بگیرد|بذار)?\s*[.]*$',
+                text_clean
+            )
 
-            if len(resolved_cols) >= 2:
-                c1 = resolved_cols[0]
-                c2 = resolved_cols[1]
-                if not target_c and len(resolved_cols) >= 3:
-                    target_c = resolved_cols[2]
+            target_end_pos = len(text_clean)
+            if target_match:
+                cand_target = resolve_column(target_match.group(1), header_map)
+                if cand_target:
+                    target_c = cand_target
+                    target_end_pos = target_match.start()
+
+            prefix_text = text_clean[:target_end_pos]
+
+            # Find columns mentioned in prefix (with 'ستون' or as isolated letters/headers)
+            prefix_cols = []
+            # Check explicit 'ستون X'
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in prefix_cols:
+                    prefix_cols.append(res)
+
+            # Check isolated Latin letters in prefix (e.g. 'در C ضرب کن')
+            for c_letter in re.findall(r'\b([A-Za-z]{1,2})\b', prefix_text):
+                c_up = c_letter.upper()
+                if c_up not in prefix_cols:
+                    prefix_cols.append(c_up)
+
+            # Check headers in prefix
+            if header_map:
+                for h_name, col_let in header_map.items():
+                    if h_name in prefix_text and col_let not in prefix_cols:
+                        prefix_cols.append(col_let)
+
+            if len(prefix_cols) >= 2:
+                c1, c2 = prefix_cols[0], prefix_cols[1]
+                op_fa = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}[detected_op]
+                return ColumnArithmeticAction(
+                    operation=detected_op,
+                    col1=c1,
+                    col2=c2,
+                    target_col=target_c,
+                    as_formula=True,
+                    description_persian=f"{op_fa} ستون {c1} با ستون {c2}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
+                )
+
+            # Fallback check across whole text
+            all_cols = []
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text_clean):
+                res = resolve_column(c_str, header_map)
+                if res and res not in all_cols:
+                    all_cols.append(res)
+            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text_clean):
+                c_up = c_let.upper()
+                if c_up not in all_cols:
+                    all_cols.append(c_up)
+
+            if len(all_cols) >= 2:
+                c1, c2 = all_cols[0], all_cols[1]
+                if not target_c and len(all_cols) >= 3:
+                    target_c = all_cols[2]
                 op_fa = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}[detected_op]
                 return ColumnArithmeticAction(
                     operation=detected_op,

@@ -1,13 +1,37 @@
 """
 Chat Widget and Message Bubbles for Persian Excel Assistant.
 """
+import html
+import re
 import time
 from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextBrowser,
-    QPushButton, QFrame, QScrollArea, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QPushButton, QFrame, QScrollArea
 )
+
+
+def format_markdown_to_rich_text(text: str) -> str:
+    """Converts basic markdown (bold, code, line breaks) to clean Qt HTML."""
+    if not text:
+        return ""
+    # Escape HTML special chars first
+    escaped = html.escape(text)
+
+    # Convert **bold** to <b>bold</b>
+    escaped = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', escaped)
+
+    # Convert `code` to formatted span
+    escaped = re.sub(
+        r'`(.+?)`',
+        r'<span style="background-color: rgba(255,255,255,0.08); color: #4ADE80; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace;">\1</span>',
+        escaped
+    )
+
+    # Convert newlines to <br>
+    escaped = escaped.replace('\n', '<br>')
+    return f"<div style='line-height: 1.6; font-size: 13px;'>{escaped}</div>"
 
 
 class MessageBubble(QFrame):
@@ -17,6 +41,7 @@ class MessageBubble(QFrame):
                  is_confirmation: bool = False, on_confirm: Optional[Callable] = None,
                  on_cancel: Optional[Callable] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
+        self.setObjectName("messageBubble")
         self.is_user = is_user
         self.setLayoutDirection(Qt.RightToLeft)
 
@@ -28,34 +53,40 @@ class MessageBubble(QFrame):
         time_str = time.strftime("%H:%M")
         header_text = f"👤 {sender} ({time_str})" if is_user else f"🤖 {sender} ({time_str})"
         header_lbl = QLabel(header_text)
-        header_lbl.setStyleSheet("font-size: 11px; color: #94A3B8; font-weight: bold;")
+        header_lbl.setStyleSheet("font-size: 11px; color: #94A3B8; font-weight: bold; border: none; background: transparent;")
         layout.addWidget(header_lbl)
 
-        # Body text
-        body_lbl = QLabel(text)
+        # Body text (Rich Text)
+        body_lbl = QLabel()
+        body_lbl.setTextFormat(Qt.RichText)
+        body_lbl.setText(format_markdown_to_rich_text(text))
         body_lbl.setWordWrap(True)
         body_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        body_lbl.setStyleSheet("font-size: 13px; line-height: 1.4; color: #FFFFFF;")
+        body_lbl.setStyleSheet("border: none; background: transparent; color: #FFFFFF;")
         layout.addWidget(body_lbl)
 
-        # Set bubble styles
+        # Set bubble styles using specific ID selector to avoid child QLabel border inheritance
         if is_confirmation:
             self.setStyleSheet("""
-                QFrame {
-                    background-color: #3D2D1E;
+                QFrame#messageBubble {
+                    background-color: #382718;
                     border: 1px solid #D97706;
                     border-radius: 12px;
+                }
+                QLabel {
+                    border: none;
+                    background: transparent;
                 }
             """)
             btn_box = QHBoxLayout()
             btn_box.setSpacing(10)
             btn_confirm = QPushButton("✅ تأیید و اجرا")
-            btn_confirm.setStyleSheet("background-color: #107C41; color: white; padding: 6px 14px; border-radius: 6px;")
+            btn_confirm.setStyleSheet("background-color: #107C41; color: white; padding: 6px 14px; border-radius: 6px; font-weight: bold;")
             if on_confirm:
                 btn_confirm.clicked.connect(on_confirm)
 
             btn_cancel = QPushButton("❌ انصراف")
-            btn_cancel.setStyleSheet("background-color: #7F1D1D; color: white; padding: 6px 14px; border-radius: 6px;")
+            btn_cancel.setStyleSheet("background-color: #7F1D1D; color: white; padding: 6px 14px; border-radius: 6px; font-weight: bold;")
             if on_cancel:
                 btn_cancel.clicked.connect(on_cancel)
 
@@ -66,18 +97,26 @@ class MessageBubble(QFrame):
 
         elif is_user:
             self.setStyleSheet("""
-                QFrame {
+                QFrame#messageBubble {
                     background-color: #1E293B;
                     border: 1px solid #334155;
                     border-radius: 12px;
                 }
+                QLabel {
+                    border: none;
+                    background: transparent;
+                }
             """)
         else:
             self.setStyleSheet("""
-                QFrame {
+                QFrame#messageBubble {
                     background-color: #132E20;
                     border: 1px solid #107C41;
                     border-radius: 12px;
+                }
+                QLabel {
+                    border: none;
+                    background: transparent;
                 }
             """)
 

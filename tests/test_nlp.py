@@ -30,6 +30,15 @@ def test_persian_rule_parser_all_user_prompts():
     assert act1.col2 == "B"
     assert act1.target_col == "C"
 
+    # 1.1 Colloquial user command from live screenshot: ستون B را در C ضرب کن و در D قرار بده
+    cmd1_1 = "ستون B را در C ضرب کن و در D قرار بده"
+    act1_1 = parser.parse(cmd1_1)
+    assert isinstance(act1_1, ColumnArithmeticAction)
+    assert act1_1.operation == "multiply"
+    assert act1_1.col1 == "B"
+    assert act1_1.col2 == "C"
+    assert act1_1.target_col == "D"
+
     # 2. میانگین ستون D را حساب کن
     cmd2 = "میانگین ستون D را حساب کن."
     act2 = parser.parse(cmd2)
