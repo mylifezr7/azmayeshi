@@ -108,23 +108,38 @@ class OpenpyxlSheet(ISheet):
         except Exception as e:
             raise ActionExecutionError(f"Failed to get formula from {cell_or_range}: {e}")
 
-    def set_formula(self, cell_or_range: str, formula: str) -> None:
-        if not formula.startswith('='):
-            formula = '=' + formula
+    def set_formula(self, cell_or_range: str, formula: Any) -> None:
         r1, c1, r2, c2 = parse_range_address(cell_or_range)
         import re
-        for r in range(r1, r2 + 1):
-            # If formula contains row references for r1, adapt for current row r
-            current_formula = formula
-            if r > r1:
-                # Adjust cell coordinates if formula has simple relative references e.g. =A2*B2 -> =A3*B3
-                def replace_row(match):
-                    col_let = match.group(1)
-                    orig_r = int(match.group(2))
-                    return f"{col_let}{orig_r + (r - r1)}"
-                current_formula = re.sub(r'([A-Za-z]+)(\d+)', replace_row, formula)
-            for c in range(c1, c2 + 1):
-                self._ws.cell(row=r, column=c).value = current_formula
+        if isinstance(formula, (list, tuple)):
+            for r_offset, row_f in enumerate(formula):
+                r = r1 + r_offset
+                if r > r2:
+                    break
+                if isinstance(row_f, (list, tuple)):
+                    for c_offset, f_str in enumerate(row_f):
+                        c = c1 + c_offset
+                        if c > c2:
+                            break
+                        f_val = str(f_str)
+                        if not f_val.startswith('='):
+                            f_val = '=' + f_val
+                        self._ws.cell(row=r, column=c).value = f_val
+                else:
+                    f_val = str(row_f)
+                    if not f_val.startswith('='):
+                        f_val = '=' + f_val
+                    self._ws.cell(row=r, column=c1).value = f_val
+        else:
+            formula_str = str(formula)
+            if not formula_str.startswith('='):
+                formula_str = '=' + formula_str
+            for r in range(r1, r2 + 1):
+                cur = formula_str
+                if r > r1:
+                    cur = re.sub(r'([A-Za-z]+)(\d+)', lambda m: f"{m.group(1)}{int(m.group(2)) + (r - r1)}", formula_str)
+                for c in range(c1, c2 + 1):
+                    self._ws.cell(row=r, column=c).value = cur
 
     def get_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
         res = []

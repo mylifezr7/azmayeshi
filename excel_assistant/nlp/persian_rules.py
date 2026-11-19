@@ -162,10 +162,16 @@ class PersianRuleParser:
 
             prefix_text = text_clean[:target_end_pos]
 
-            # Find columns mentioned in prefix (with 'ستون' or as isolated letters/headers)
+            # Find columns mentioned in prefix (with 'ستون' or after prepositions or as isolated letters/headers)
             prefix_cols = []
             # Check explicit 'ستون X'
             for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in prefix_cols:
+                    prefix_cols.append(res)
+
+            # Check after prepositions (e.g. 'در C', 'در سی', 'با B', 'با بی')
+            for c_str in re.findall(r'(?:در|با|ضربدر|منهای|تقسیم بر|به علاوه|و)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
                 res = resolve_column(c_str, header_map)
                 if res and res not in prefix_cols:
                     prefix_cols.append(res)

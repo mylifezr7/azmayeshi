@@ -64,24 +64,55 @@ def normalize_persian_text(text: str) -> str:
 
 def extract_column_identifier(token: str) -> Optional[str]:
     """
-    Extracts column identifier (e.g. 'A', 'B', 'AA', or 1, 2) from a token.
+    Extracts column identifier (e.g. 'A', 'B', 'AA', or Persian phonetic 'دی', 'سی', 'بی', 1, 2) from a token.
     """
-    clean = token.strip().upper()
-    # If standard English column letter
-    if re.match(r'^[A-Z]{1,3}$', clean):
-        return clean
-    # If Persian column letter transliteration (e.g. 'الف' -> 'A', 'ب' -> 'B', 'ج' -> 'C', 'د' -> 'D')
+    if not token:
+        return None
+    clean = token.strip()
+
+    # Check numeric index e.g. "1" -> "A", "2" -> "B"
+    if clean.isdigit():
+        num = int(clean)
+        if 1 <= num <= 26:
+            return chr(64 + num)
+
+    clean_up = clean.upper()
+    # If standard English column letter (A, B, C, ..., Z, AA, AB...)
+    if re.match(r'^[A-Z]{1,3}$', clean_up):
+        return clean_up
+
+    # Comprehensive Persian phonetic and transliteration map for columns
     persian_col_map = {
-        'الف': 'A',
-        'ب': 'B',
-        'پ': 'C',
-        'ج': 'C',
-        'ت': 'D',
-        'د': 'D',
-        'ه': 'E',
+        'الف': 'A', 'آ': 'A', 'ای': 'A', 'اِی': 'A', 'اول': 'A', 'یک': 'A', '۱': 'A',
+        'بی': 'B', 'ب': 'B', 'دوم': 'B', 'دو': 'B', '۲': 'B',
+        'سی': 'C', 'ج': 'C', 'پ': 'C', 'سوم': 'C', 'سه': 'C', '۳': 'C',
+        'دی': 'D', 'د': 'D', 'چهارم': 'D', 'چهار': 'D', '۴': 'D',
+        'ئی': 'E', 'ه': 'E', 'پنجم': 'E', 'پنج': 'E', '۵': 'E',
+        'اف': 'F', 'ف': 'F', 'ششم': 'F', 'شش': 'F', '۶': 'F',
+        'جی': 'G', 'گ': 'G', 'هفتم': 'G', 'هفت': 'G', '۷': 'G',
+        'اچ': 'H', 'ح': 'H', 'هشتم': 'H', 'هشت': 'H', '۸': 'H',
+        'آی': 'I', 'ط': 'I', 'نهم': 'I', 'نه': 'I', '۹': 'I',
+        'جی_جی': 'J', 'دهم': 'J', 'ده': 'J', '۱۰': 'J',
+        'کی': 'K', 'کا': 'K', 'ک': 'K',
+        'ال': 'L', 'ل': 'L',
+        'ام': 'M', 'م': 'M',
+        'ان': 'N', 'ن': 'N',
+        'او': 'O',
+        'پی': 'P',
+        'کیو': 'Q',
+        'آر': 'R', 'ار': 'R', 'ر': 'R',
+        'اس': 'S', 'س': 'S',
+        'تی': 'T', 'ت': 'T',
+        'یو': 'U',
+        'وی': 'V',
+        'دبلیو': 'W', 'دابلیو': 'W',
+        'ایکس': 'X',
+        'وای': 'Y',
+        'زد': 'Z', 'ز': 'Z',
     }
-    if clean in persian_col_map:
-        return persian_col_map[clean]
+    clean_norm = clean.lower()
+    if clean_norm in persian_col_map:
+        return persian_col_map[clean_norm]
     return None
 
 

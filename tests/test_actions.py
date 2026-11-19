@@ -72,6 +72,15 @@ def test_column_arithmetic_execution(test_session):
     assert sheet.get_formula("E3") == "=B3*C3"
     assert sheet.get_value("E1") is not None
 
+    # Test colloquial Persian "ستون دی": ستون B را در C ضرب کن و در ستون دی قرار بده
+    cmd2 = "ستون B را در C ضرب کن و در ستون دی قرار بده"
+    act2 = parser.parse(cmd2, sheet_analysis=analysis)
+    assert act2.target_col == "D"
+    res2 = executor.execute(act2, ctx)
+    assert res2.success is True
+    assert sheet.get_formula("D2") == "=B2*C2"
+    assert sheet.get_formula("D3") == "=B3*C3"
+
 
 def test_column_stats_execution(test_session):
     manager, sheet, executor, parser = test_session

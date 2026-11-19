@@ -19,42 +19,108 @@ class MathActionHandler:
     def execute_arithmetic(cls, action: ColumnArithmeticAction, ctx: ActionContext) -> ActionResult:
         sheet = ctx.sheet
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
-        header_r = 1
 
         c1 = action.col1.upper()
         c2 = action.col2.upper()
 
-        # If target column not specified, append as new column after max_c
-        if not action.target_col:
-            target_col = col_index_to_letter(max_c + 1)
-        else:
+        # Target column determination
+        if action.target_col:
             target_col = action.target_col.upper()
+        else:
+            # Safely pick the next empty column after all operands and used range
+            next_idx = max(col_letter_to_index(c1), col_letter_to_index(c2), max_c) + 1
+            target_col = col_index_to_letter(next_idx)
 
         op_symbols = {"multiply": "*", "add": "+", "subtract": "-", "divide": "/"}
         op_symbol = op_symbols.get(action.operation, "*")
         op_fa_names = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}
         op_fa = op_fa_names.get(action.operation, "محاسبه")
 
-        # Set target column header
-        header_title = f"{op_fa} {c1} و {c2}"
-        sheet.set_value(f"{target_col}{header_r}", header_title)
-        sheet.set_font(f"{target_col}{header_r}", bold=True)
+        # Determine whether row 1 contains header text or numeric data
+        val1_r1 = sheet.get_value(f"{c1}1")
+        val2_r1 = sheet.get_value(f"{c2}1")
 
-        start_row = header_r + 1
-        end_row = max(max_r, start_row)
+        def is_numeric_value(v):
+            if v is None:
+                return False
+            if isinstance(v, (int, float)):
+                return True
+            try:
+                float(str(v).replace(',', '').strip())
+                return True
+            except ValueError:
+                return False
 
-        # High-speed batch formula assignment
-        if end_row >= start_row:
+        has_header = not (is_numeric_value(val1_r1) or is_numeric_value(val2_r1))
+
+        if has_header:
+            start_row = 2
+            # Add header to target column
+            header_title = f"{op_fa} {c1} و {c2}"
+            sheet.set_value(f"{target_col}1", header_title)
+            sheet.set_font(f"{target_col}1", bold=True)
+        else:
+            start_row = 1
+
+        # Determine last row with actual data in either c1 or c2
+        col1_vals = sheet.get_column_values(c1, include_header=True)
+        col2_vals = sheet.get_column_values(c2, include_header=True)
+        data_len = max(len(col1_vals), len(col2_vals))
+        last_row = start_row
+        for r_i in range(data_len, 0, -1):
+            v1 = col1_vals[r_i - 1] if r_i <= len(col1_vals) else None
+            v2 = col2_vals[r_i - 1] if r_i <= len(col2_vals) else None
+            if (v1 is not None and str(v1).strip() != "") or (v2 is not None and str(v2).strip() != ""):
+                last_row = max(start_row, r_i)
+                break
+        end_row = last_row
+
+        # Circular Reference Guard: If target column is one of the source columns
+        is_circular = (target_col == c1 or target_col == c2)
+
+        if is_circular:
+            # Compute values in Python and write numeric results so values are never zeroed
+            calc_matrix = []
+            for r in range(start_row, end_row + 1):
+                v1 = sheet.get_value(f"{c1}{r}")
+                v2 = sheet.get_value(f"{c2}{r}")
+                try:
+                    n1 = float(str(v1).replace(',', '').strip()) if v1 is not None else 0.0
+                    n2 = float(str(v2).replace(',', '').strip()) if v2 is not None else 0.0
+                    if action.operation == "multiply":
+                        res_val = n1 * n2
+                    elif action.operation == "add":
+                        res_val = n1 + n2
+                    elif action.operation == "subtract":
+                        res_val = n1 - n2
+                    elif action.operation == "divide":
+                        res_val = (n1 / n2) if n2 != 0 else "#DIV/0!"
+                    else:
+                        res_val = 0.0
+                except Exception:
+                    res_val = 0.0
+                calc_matrix.append([res_val])
             target_range = f"{target_col}{start_row}:{target_col}{end_row}"
-            base_formula = f"={c1}{start_row}{op_symbol}{c2}{start_row}"
-            sheet.set_formula(target_range, base_formula)
+            sheet.set_value(target_range, calc_matrix)
+        else:
+            # Set exact formula matrix for each row
+            formula_matrix = [[f"={c1}{r}{op_symbol}{c2}{r}"] for r in range(start_row, end_row + 1)]
+            target_range = f"{target_col}{start_row}:{target_col}{end_row}"
+            sheet.set_formula(target_range, formula_matrix)
 
         sheet.auto_fit_columns([target_col])
         affected = f"{target_col}{start_row}:{target_col}{end_row}"
 
+        # Trigger Excel calculation refresh if running via xlwings COM
+        try:
+            if hasattr(sheet, "_sheet") and hasattr(sheet._sheet, "book"):
+                sheet._sheet.book.app.calculate()
+        except Exception:
+            pass
+
         msg = (
             f"✅ عملیات **{op_fa}** ستون `{c1}` در ستون `{c2}` با موفقیت انجام شد.\n"
-            f"📌 نتیجه به صورت فرمول خودکار در ستون `{target_col}` (محدوده `{affected}`) درج شد."
+            f"📌 نتیجه در ستون `{target_col}` (محدوده `{affected}`) درج شد."
         )
         return ActionResult(success=True, message_persian=msg, affected_range=affected)
 
