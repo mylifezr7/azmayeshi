@@ -101,11 +101,25 @@ class XlwingsSheet(ISheet):
         except Exception as e:
             raise ActionExecutionError(f"Failed to get formula from '{cell_or_range}': {e}")
 
-    def set_formula(self, cell_or_range: str, formula: str) -> None:
+    def set_formula(self, cell_or_range: str, formula: Any) -> None:
         try:
-            if not formula.startswith('='):
-                formula = '=' + formula
-            self._sheet.range(cell_or_range).formula = formula
+            if isinstance(formula, (list, tuple)):
+                cleaned = []
+                for row in formula:
+                    if isinstance(row, (list, tuple)):
+                        cleaned.append([
+                            (str(f) if str(f).startswith('=') else f"={f}") if f is not None else ""
+                            for f in row
+                        ])
+                    else:
+                        f_val = (str(row) if str(row).startswith('=') else f"={row}") if row is not None else ""
+                        cleaned.append([f_val])
+                self._sheet.range(cell_or_range).formula = cleaned
+            else:
+                f_str = str(formula)
+                if not f_str.startswith('='):
+                    f_str = '=' + f_str
+                self._sheet.range(cell_or_range).formula = f_str
         except Exception as e:
             raise ActionExecutionError(f"Failed to set formula on '{cell_or_range}': {e}")
 
