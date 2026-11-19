@@ -169,9 +169,19 @@ class MainWindow(QMainWindow):
         if not text:
             return
         self.input_edit.clear()
-        self.chat_widget.add_user_message(text)
-        self.history_panel.add_command(text)
-        self.process_command(text)
+        self.btn_send.setEnabled(False)
+        self.btn_send.setText("⏳ در حال اجرا...")
+        QApplication.processEvents()
+
+        try:
+            self.chat_widget.add_user_message(text)
+            self.history_panel.add_command(text)
+            QApplication.processEvents()
+            self.process_command(text)
+        finally:
+            self.btn_send.setEnabled(True)
+            self.btn_send.setText("ارسال دستور")
+            self.input_edit.setFocus()
 
     def process_command(self, raw_command: str, confirmed: bool = False):
         if not self.manager.is_connected():

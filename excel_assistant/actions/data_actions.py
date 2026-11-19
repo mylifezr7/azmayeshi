@@ -20,16 +20,15 @@ class DataActionHandler:
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
         header_r = min_r
 
+        matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
         empty_rows: List[int] = []
+
         for r in range(header_r + 1, max_r + 1):
-            is_empty = True
-            for c in range(min_c, max_c + 1):
-                val = sheet.get_value(f"{col_index_to_letter(c)}{r}")
-                if val is not None and str(val).strip() != "":
-                    is_empty = False
-                    break
-            if is_empty:
-                empty_rows.append(r)
+            r_offset = r - min_r
+            if r_offset < len(matrix):
+                row_vals = matrix[r_offset]
+                if all(v is None or str(v).strip() == "" for v in row_vals):
+                    empty_rows.append(r)
 
         if not empty_rows:
             return ActionResult(success=True, message_persian="ℹ️ هیچ ردیف کاملاً خالی در بین داده‌ها یافت نشد.")
@@ -44,22 +43,25 @@ class DataActionHandler:
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
         header_r = min_r
 
+        matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
         seen: Set[str] = set()
         duplicate_rows: List[int] = []
 
         for r in range(header_r + 1, max_r + 1):
-            if action.target_col:
-                col_letter = action.target_col.upper()
-                v = sheet.get_value(f"{col_letter}{r}")
-                key = str(v).strip().lower() if v is not None else ""
-            else:
-                row_vals = [sheet.get_value(f"{col_index_to_letter(c)}{r}") for c in range(min_c, max_c + 1)]
-                key = "|".join(str(v).strip().lower() for v in row_vals if v is not None)
+            r_offset = r - min_r
+            if r_offset < len(matrix):
+                row_vals = matrix[r_offset]
+                if action.target_col:
+                    target_idx = (col_letter_to_index(action.target_col) - min_c)
+                    val = row_vals[target_idx] if 0 <= target_idx < len(row_vals) else None
+                    key = str(val).strip().lower() if val is not None else ""
+                else:
+                    key = "|".join(str(v).strip().lower() for v in row_vals if v is not None)
 
-            if key in seen:
-                duplicate_rows.append(r)
-            else:
-                seen.add(key)
+                if key in seen:
+                    duplicate_rows.append(r)
+                else:
+                    seen.add(key)
 
         if not duplicate_rows:
             return ActionResult(success=True, message_persian="ℹ️ هیچ ردیف تکراری برای حذف یافت نشد.")

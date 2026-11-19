@@ -55,32 +55,36 @@ class SheetInspector:
         row_count = max_r - min_r + 1
         col_count = max_c - min_c + 1
 
+        # Fetch entire sheet matrix in a single batch call (massive speedup)
+        matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
+
+        # Helper to get cell value from in-memory matrix (1-based coordinates)
+        def get_mat_val(row_1b, col_1b):
+            r_idx = row_1b - min_r
+            c_idx = col_1b - min_c
+            if 0 <= r_idx < len(matrix) and 0 <= c_idx < len(matrix[r_idx]):
+                return matrix[r_idx][c_idx]
+            return None
+
         # Detect header row: first row with non-empty content
         header_row_idx = min_r
         headers_list: List[Tuple[str, str, str]] = []
         columns_dict: Dict[str, ColumnSummary] = {}
         header_to_col_dict: Dict[str, str] = {}
 
-        # Read sample matrix
-        sample_rows = []
-        for r in range(min_r, min(min_r + 15, max_r + 1)):
-            row_data = []
-            for c in range(min_c, max_c + 1):
-                val = sheet.get_value(f"{col_index_to_letter(c)}{r}")
-                row_data.append(val)
-            sample_rows.append(row_data)
+        # Sample matrix for preview (up to 15 rows)
+        sample_rows = matrix[:15] if matrix else []
 
-        # Detect headers and analyze columns
+        # Detect headers and analyze columns in memory
         for c_idx in range(min_c, max_c + 1):
             letter = col_index_to_letter(c_idx)
-            header_cell_val = sheet.get_value(f"{letter}{header_row_idx}")
+            header_cell_val = get_mat_val(header_row_idx, c_idx)
             header_title = str(header_cell_val).strip() if header_cell_val is not None else f"Column {letter}"
 
-            # Fetch column values below header
+            # Fetch column values below header from in-memory matrix
             col_vals = []
             for r_idx in range(header_row_idx + 1, max_r + 1):
-                v = sheet.get_value(f"{letter}{r_idx}")
-                col_vals.append(v)
+                col_vals.append(get_mat_val(r_idx, c_idx))
 
             col_summary = analyze_column(
                 column_letter=letter,
@@ -92,17 +96,17 @@ class SheetInspector:
             headers_list.append((letter, header_title, col_summary.detected_type))
             header_to_col_dict[header_title.lower()] = letter
 
-        # Check empty rows and duplicate rows
+        # Check empty rows and duplicate rows in memory
         empty_rows = []
         row_hashes: Dict[str, int] = {}
         duplicate_rows = []
 
         for r_idx in range(header_row_idx + 1, max_r + 1):
-            row_vals = [sheet.get_value(f"{col_index_to_letter(c)}{r_idx}") for c in range(min_c, max_c + 1)]
+            row_vals = [get_mat_val(r_idx, c) for c in range(min_c, max_c + 1)]
             if all(v is None or str(v).strip() == "" for v in row_vals):
                 empty_rows.append(r_idx)
             else:
-                row_str = "|".join(str(v).strip() for v in row_vals)
+                row_str = "|".join(str(v).strip() for v in row_vals if v is not None)
                 if row_str in row_hashes:
                     duplicate_rows.append(r_idx)
                 else:

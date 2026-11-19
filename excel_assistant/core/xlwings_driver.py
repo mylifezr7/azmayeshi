@@ -37,13 +37,50 @@ class XlwingsSheet(ISheet):
     def get_used_range_bounds(self) -> Tuple[int, int, int, int]:
         try:
             used = self._sheet.used_range
-            min_row = used.row
-            min_col = used.column
-            max_row = min_row + used.rows.count - 1
-            max_col = min_col + used.columns.count - 1
+            min_row = max(1, used.row)
+            min_col = max(1, used.column)
+            # Guard against Excel whole-column selection returning 1,048,576
+            max_row = min(min_row + used.rows.count - 1, 50000)
+            max_col = min(min_col + used.columns.count - 1, 500)
+            # Check if sheet is actually completely empty
+            if max_row == 1 and max_col == 1 and self._sheet.range("A1").value is None:
+                return 1, 1, 1, 1
             return min_row, min_col, max_row, max_col
         except Exception:
             return 1, 1, 1, 1
+
+    def get_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
+        try:
+            r_str = bounds_to_range_str(min_row, min_col, max_row, max_col)
+            val = self._sheet.range(r_str).value
+            if not isinstance(val, list):
+                return [[val]]
+            if val and not isinstance(val[0], list):
+                if min_row == max_row:
+                    return [val]
+                else:
+                    return [[x] for x in val]
+            return val
+        except Exception:
+            return [[None]]
+
+    def get_formula_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
+        try:
+            r_str = bounds_to_range_str(min_row, min_col, max_row, max_col)
+            val = self._sheet.range(r_str).formula
+            if not isinstance(val, list):
+                return [[val if isinstance(val, str) and val.startswith('=') else None]]
+            if val and not isinstance(val[0], list):
+                if min_row == max_row:
+                    return [[x if isinstance(x, str) and x.startswith('=') else None for x in val]]
+                else:
+                    return [[[x if isinstance(x, str) and x.startswith('=') else None] for x in val]]
+            res = []
+            for row in val:
+                res.append([x if isinstance(x, str) and x.startswith('=') else None for x in row])
+            return res
+        except Exception:
+            return [[None]]
 
     def get_value(self, cell_or_range: str) -> Any:
         try:

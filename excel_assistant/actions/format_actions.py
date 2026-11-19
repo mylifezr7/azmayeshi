@@ -34,27 +34,33 @@ class FormatActionHandler:
         matched_cells: List[str] = []
         thresh = float(action.value) if action.value is not None else 0.0
 
+        # Fast in-memory evaluation using batch matrix
+        matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
+
         for c in target_cols:
             col_letter = col_index_to_letter(c)
+            c_offset = c - min_c
             for r in range(start_r, max_r + 1):
-                addr = f"{col_letter}{r}"
-                val = sheet.get_value(addr)
-                if val is not None and not str(val).startswith('='):
-                    try:
-                        num = float(str(val).replace(',', '').strip())
-                        is_match = False
-                        if action.condition in ("gt", "gte"):
-                            is_match = (num >= thresh) if action.condition == "gte" else (num > thresh)
-                        elif action.condition in ("lt", "lte"):
-                            is_match = (num <= thresh) if action.condition == "lte" else (num < thresh)
-                        elif action.condition == "eq":
-                            is_match = (num == thresh)
+                r_offset = r - min_r
+                if r_offset < len(matrix) and c_offset < len(matrix[r_offset]):
+                    val = matrix[r_offset][c_offset]
+                    if val is not None and not str(val).startswith('='):
+                        try:
+                            num = float(str(val).replace(',', '').strip())
+                            is_match = False
+                            if action.condition in ("gt", "gte"):
+                                is_match = (num >= thresh) if action.condition == "gte" else (num > thresh)
+                            elif action.condition in ("lt", "lte"):
+                                is_match = (num <= thresh) if action.condition == "lte" else (num < thresh)
+                            elif action.condition == "eq":
+                                is_match = (num == thresh)
 
-                        if is_match:
-                            sheet.set_cell_color(addr, action.color_hex)
-                            matched_cells.append(addr)
-                    except ValueError:
-                        pass
+                            if is_match:
+                                addr = f"{col_letter}{r}"
+                                sheet.set_cell_color(addr, action.color_hex)
+                                matched_cells.append(addr)
+                        except ValueError:
+                            pass
 
         cond_fa = {"gt": "بیشتر از", "lt": "کمتر از", "eq": "مساوی با"}.get(action.condition, "مطابق شرط")
         msg = (
@@ -76,19 +82,23 @@ class FormatActionHandler:
             target_cols = list(range(min_c, max_c + 1))
 
         highlighted_cells: List[str] = []
+        matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
 
         for c in target_cols:
             col_letter = col_index_to_letter(c)
+            c_offset = c - min_c
             cell_map = {}
             counts = Counter()
 
             for r in range(start_r, max_r + 1):
-                addr = f"{col_letter}{r}"
-                val = sheet.get_value(addr)
-                if val is not None and str(val).strip() != "":
-                    norm_val = str(val).strip().lower()
-                    counts[norm_val] += 1
-                    cell_map.setdefault(norm_val, []).append(addr)
+                r_offset = r - min_r
+                if r_offset < len(matrix) and c_offset < len(matrix[r_offset]):
+                    val = matrix[r_offset][c_offset]
+                    if val is not None and str(val).strip() != "":
+                        addr = f"{col_letter}{r}"
+                        norm_val = str(val).strip().lower()
+                        counts[norm_val] += 1
+                        cell_map.setdefault(norm_val, []).append(addr)
 
             # Highlight cells whose value count > 1
             for norm_val, count in counts.items():

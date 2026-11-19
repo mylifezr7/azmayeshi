@@ -19,38 +19,34 @@ class SheetSnapshot:
         self.sheet_name = sheet.name
         self.bounds = sheet.get_used_range_bounds()
         min_r, min_c, max_r, max_c = self.bounds
-        self.cell_values: Dict[Tuple[int, int], Any] = {}
-        self.cell_formulas: Dict[Tuple[int, int], Any] = {}
-
-        for r in range(min_r, max_r + 1):
-            for c in range(min_c, max_c + 1):
-                from excel_assistant.core.utils import col_index_to_letter
-                addr = f"{col_index_to_letter(c)}{r}"
-                val = sheet.get_value(addr)
-                formula = sheet.get_formula(addr)
-                self.cell_values[(r, c)] = copy.deepcopy(val)
-                self.cell_formulas[(r, c)] = formula
+        # Fast single batch read
+        self.matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
+        self.formula_matrix = sheet.get_formula_matrix(min_r, min_c, max_r, max_c)
 
     def restore_to(self, sheet: ISheet) -> None:
         """Restores values and formulas into the sheet."""
-        # Clear currently used range values
         curr_bounds = sheet.get_used_range_bounds()
         min_r, min_c, max_r, max_c = curr_bounds
         from excel_assistant.core.utils import col_index_to_letter
 
+        # Clear currently used range values
         for r in range(min_r, max_r + 1):
             for c in range(min_c, max_c + 1):
                 addr = f"{col_index_to_letter(c)}{r}"
                 sheet.set_value(addr, None)
 
-        # Restore snapshotted cells
-        for (r, c), formula in self.cell_formulas.items():
-            addr = f"{col_index_to_letter(c)}{r}"
-            if formula:
-                sheet.set_formula(addr, formula)
-            else:
-                val = self.cell_values.get((r, c))
-                if val is not None:
+        # Restore from snapshotted matrix
+        orig_min_r, orig_min_c, orig_max_r, orig_max_c = self.bounds
+        for r_offset, row in enumerate(self.matrix):
+            r = orig_min_r + r_offset
+            f_row = self.formula_matrix[r_offset] if r_offset < len(self.formula_matrix) else []
+            for c_offset, val in enumerate(row):
+                c = orig_min_c + c_offset
+                addr = f"{col_index_to_letter(c)}{r}"
+                formula = f_row[c_offset] if c_offset < len(f_row) else None
+                if formula:
+                    sheet.set_formula(addr, formula)
+                elif val is not None:
                     sheet.set_value(addr, val)
 
 

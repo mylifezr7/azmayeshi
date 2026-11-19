@@ -32,12 +32,18 @@ def check_sheet_formulas_and_errors(sheet: ISheet) -> FormulaReport:
     min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
     report = FormulaReport(total_formulas=0)
 
-    # Scan all cells in used range
-    for r in range(min_r, max_r + 1):
-        for c in range(min_c, max_c + 1):
+    # High-speed batch read
+    matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
+    formula_matrix = sheet.get_formula_matrix(min_r, min_c, max_r, max_c)
+
+    # Scan all cells in used range via in-memory matrices
+    for r_offset, row in enumerate(matrix):
+        r = min_r + r_offset
+        f_row = formula_matrix[r_offset] if r_offset < len(formula_matrix) else []
+        for c_offset, val in enumerate(row):
+            c = min_c + c_offset
             cell_addr = f"{col_index_to_letter(c)}{r}"
-            val = sheet.get_value(cell_addr)
-            formula = sheet.get_formula(cell_addr)
+            formula = f_row[c_offset] if c_offset < len(f_row) else None
 
             # Check if formula exists
             if formula:

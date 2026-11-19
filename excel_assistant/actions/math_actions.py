@@ -43,11 +43,11 @@ class MathActionHandler:
         start_row = header_r + 1
         end_row = max(max_r, start_row)
 
-        # Write formulas for each row
-        for r in range(start_row, end_row + 1):
-            cell_ref = f"{target_col}{r}"
-            formula = f"={c1}{r}{op_symbol}{c2}{r}"
-            sheet.set_formula(cell_ref, formula)
+        # High-speed batch formula assignment
+        if end_row >= start_row:
+            target_range = f"{target_col}{start_row}:{target_col}{end_row}"
+            base_formula = f"={c1}{start_row}{op_symbol}{c2}{start_row}"
+            sheet.set_formula(target_range, base_formula)
 
         sheet.auto_fit_columns([target_col])
         affected = f"{target_col}{start_row}:{target_col}{end_row}"

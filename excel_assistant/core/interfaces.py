@@ -112,6 +112,16 @@ class ISheet(ABC):
         """Convert range to Excel Table/ListObject."""
         pass
 
+    @abstractmethod
+    def get_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
+        """Fetch 2D array of cell values in a single high-speed batch call."""
+        pass
+
+    @abstractmethod
+    def get_formula_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
+        """Fetch 2D array of cell formulas in a single high-speed batch call."""
+        pass
+
 
 class IExcelDriver(ABC):
     """Abstract interface for Excel application automation drivers."""

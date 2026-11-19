@@ -112,9 +112,38 @@ class OpenpyxlSheet(ISheet):
         if not formula.startswith('='):
             formula = '=' + formula
         r1, c1, r2, c2 = parse_range_address(cell_or_range)
+        import re
         for r in range(r1, r2 + 1):
+            # If formula contains row references for r1, adapt for current row r
+            current_formula = formula
+            if r > r1:
+                # Adjust cell coordinates if formula has simple relative references e.g. =A2*B2 -> =A3*B3
+                def replace_row(match):
+                    col_let = match.group(1)
+                    orig_r = int(match.group(2))
+                    return f"{col_let}{orig_r + (r - r1)}"
+                current_formula = re.sub(r'([A-Za-z]+)(\d+)', replace_row, formula)
             for c in range(c1, c2 + 1):
-                self._ws.cell(row=r, column=c).value = formula
+                self._ws.cell(row=r, column=c).value = current_formula
+
+    def get_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
+        res = []
+        for r in range(min_row, max_row + 1):
+            row = []
+            for c in range(min_col, max_col + 1):
+                row.append(self._ws.cell(row=r, column=c).value)
+            res.append(row)
+        return res
+
+    def get_formula_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
+        res = []
+        for r in range(min_row, max_row + 1):
+            row = []
+            for c in range(min_col, max_col + 1):
+                val = self._ws.cell(row=r, column=c).value
+                row.append(str(val) if isinstance(val, str) and val.startswith('=') else None)
+            res.append(row)
+        return res
 
     def get_column_values(self, col: Union[int, str], include_header: bool = False) -> List[Any]:
         col_idx = col if isinstance(col, int) else col_letter_to_index(col)
