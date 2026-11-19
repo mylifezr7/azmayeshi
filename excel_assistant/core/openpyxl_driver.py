@@ -318,6 +318,14 @@ class OpenpyxlDriver(IExcelDriver):
             return [os.path.basename(self.file_path)]
         return ["Book1.xlsx"] if self._wb else []
 
+    def open_workbook(self, file_path: str) -> WorkbookInfo:
+        return self.connect(file_path)
+
+    def switch_workbook(self, workbook_name: str) -> WorkbookInfo:
+        if self.file_path and os.path.basename(self.file_path) == workbook_name:
+            return self.get_workbook_info()
+        return self.connect(workbook_name)
+
     def get_workbook_info(self) -> WorkbookInfo:
         if not self._wb:
             raise WorkbookNotFoundError("No workbook is open.")

@@ -142,6 +142,16 @@ class IExcelDriver(ABC):
         pass
 
     @abstractmethod
+    def open_workbook(self, file_path: str) -> WorkbookInfo:
+        """Opens an existing Excel workbook file and makes it active."""
+        pass
+
+    @abstractmethod
+    def switch_workbook(self, workbook_name: str) -> WorkbookInfo:
+        """Switches to another currently open workbook by name."""
+        pass
+
+    @abstractmethod
     def get_workbook_info(self) -> WorkbookInfo:
         """Get metadata for the currently active workbook."""
         pass

@@ -86,6 +86,20 @@ class ExcelConnectionManager:
     def is_connected(self) -> bool:
         return self.active_driver is not None and self.active_driver.is_connected()
 
+    def open_workbook(self, file_path: str) -> WorkbookInfo:
+        """Opens an existing Excel workbook file and makes it active."""
+        if not self.active_driver:
+            return self.connect(file_path)
+        info = self.active_driver.open_workbook(file_path)
+        return info
+
+    def switch_workbook(self, workbook_name: str) -> WorkbookInfo:
+        """Switches active focus to another open workbook."""
+        if not self.active_driver:
+            return self.connect(workbook_name)
+        info = self.active_driver.switch_workbook(workbook_name)
+        return info
+
     def get_workbook_info(self) -> WorkbookInfo:
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")

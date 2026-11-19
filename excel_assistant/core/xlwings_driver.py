@@ -267,30 +267,59 @@ class XlwingsDriver(IExcelDriver):
 
             # 2. Find or open target workbook
             if workbook_name_or_path:
-                # Check if already open by name
-                found = False
-                base_target = os.path.basename(workbook_name_or_path).lower()
-                for b in self._app.books:
-                    if b.name.lower() == base_target:
-                        self._book = b
-                        found = True
-                        break
-                if not found:
-                    if os.path.exists(workbook_name_or_path):
-                        self._book = self._app.books.open(workbook_name_or_path)
-                    else:
-                        self._book = self._app.books.add()
-                        self._book.save(workbook_name_or_path)
+                return self.open_workbook(workbook_name_or_path)
             else:
                 # Connect to currently active workbook if open
                 if len(self._app.books) > 0:
-                    self._book = self._app.books.active
+                    chosen = self._app.books.active
+                    # If active is empty Book1 and other real workbooks exist, prioritize the real file
+                    if len(self._app.books) > 1 and chosen.name.lower().startswith("book"):
+                        for b in self._app.books:
+                            if not b.name.lower().startswith("book"):
+                                chosen = b
+                                break
+                    self._book = chosen
                 else:
                     self._book = self._app.books.add()
 
             return self.get_workbook_info()
         except Exception as e:
             raise ExcelConnectionError(f"Failed to connect to Microsoft Excel 2024: {e}")
+
+    def open_workbook(self, file_path: str) -> WorkbookInfo:
+        """Opens an existing workbook file in live Excel or attaches to it."""
+        if not self._app:
+            if len(xw.apps) > 0:
+                self._app = xw.apps.active
+            else:
+                self._app = xw.App(visible=True, add_book=False)
+
+        base_target = os.path.basename(file_path).lower()
+        # Check if already open
+        for b in self._app.books:
+            if b.name.lower() == base_target or (b.fullname and os.path.abspath(b.fullname).lower() == os.path.abspath(file_path).lower()):
+                self._book = b
+                b.activate()
+                return self.get_workbook_info()
+
+        # Open file
+        if os.path.exists(file_path):
+            self._book = self._app.books.open(os.path.abspath(file_path))
+            self._book.activate()
+            return self.get_workbook_info()
+        else:
+            raise WorkbookNotFoundError(f"فایل اکسل '{file_path}' یافت نشد.")
+
+    def switch_workbook(self, workbook_name: str) -> WorkbookInfo:
+        """Switches active focus to another open workbook."""
+        if not self._app:
+            raise ExcelConnectionError("Excel is not running.")
+        for b in self._app.books:
+            if b.name.lower() == workbook_name.lower():
+                self._book = b
+                b.activate()
+                return self.get_workbook_info()
+        raise WorkbookNotFoundError(f"ورک‌بوک '{workbook_name}' در میان فایل‌های باز اکسل یافت نشد.")
 
     def is_connected(self) -> bool:
         if not self._app or not self._book:

@@ -67,7 +67,8 @@ class AssistantUIController:
                 "driver": None,
                 "file_name": "-",
                 "active_sheet": "-",
-                "sheets": []
+                "sheets": [],
+                "open_workbooks": []
             }
         info = self.manager.get_workbook_info()
         return {
@@ -75,8 +76,21 @@ class AssistantUIController:
             "driver": self.manager.driver_type,
             "file_name": info.name,
             "active_sheet": info.active_sheet,
-            "sheets": info.sheets
+            "sheets": info.sheets,
+            "open_workbooks": self.manager.list_open_workbooks()
         }
+
+    def open_workbook(self, file_path: str) -> str:
+        info = self.manager.open_workbook(file_path)
+        msg = f"📂 فایل اکسل **`{info.name}`** باز شد و دستیار به آن متصل گردید.\n📑 شیت فعال: **`{info.active_sheet}`**"
+        self.add_message("assistant", msg)
+        return msg
+
+    def switch_workbook(self, wb_name: str) -> str:
+        info = self.manager.switch_workbook(wb_name)
+        msg = f"🔄 ورک‌بوک فعال به **`{info.name}`** تغییر یافت."
+        self.add_message("assistant", msg)
+        return msg
 
     def switch_sheet(self, sheet_name: str) -> str:
         self.manager.activate_sheet(sheet_name)

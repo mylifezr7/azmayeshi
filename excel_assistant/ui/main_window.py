@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
         self.resize(1050, 720)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(QSS_STYLE)
+        self.setAcceptDrops(True)
 
         # Core components
         self.manager = manager or ExcelConnectionManager()
@@ -122,6 +123,8 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         self.status_bar_widget.reconnect_requested.connect(self._perform_initial_connection)
         self.status_bar_widget.sheet_switched.connect(self._on_sheet_switched)
+        self.status_bar_widget.workbook_switched.connect(self._on_workbook_switched)
+        self.status_bar_widget.open_file_requested.connect(self._on_open_file_clicked)
         self.history_panel.command_selected.connect(self._on_history_item_selected)
         self.history_panel.undo_requested.connect(self._on_undo_clicked)
         self.history_panel.analyze_requested.connect(self._on_analyze_clicked)
@@ -130,12 +133,13 @@ class MainWindow(QMainWindow):
         try:
             info = self.manager.connect()
             desc = "Microsoft Excel 2024 (COM)" if self.manager.driver_type == "xlwings" else "موتور مستقل اکسل"
+            open_wbs = self.manager.list_open_workbooks()
             self.status_bar_widget.set_connected(True, desc)
-            self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet)
+            self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
             self.chat_widget.add_assistant_message(
                 f"سلام! من دستیار هوشمند Microsoft Excel هستم.\n"
-                f"اتصال به فایل **`{info.name}`** و شیت **`{info.active_sheet}`** با موفقیت برقرار شد.\n"
-                f"می‌توانید هر دستوری را به زبان فارسی بنویسید تا مستقیماً روی اکسل اجرا کنم."
+                f"اتصال به فایل **`{info.name}`** و شیت **`{info.active_sheet}`** برقرار شد.\n"
+                f"💡 برای کار روی فایل دیگر، روی دکمهٔ **«📂 باز کردن فایل اکسل...»** در نوار بالا کلیک کنید."
             )
         except Exception as e:
             self.status_bar_widget.set_connected(False)
@@ -143,6 +147,52 @@ class MainWindow(QMainWindow):
                 f"⚠️ خطا در اتصال به اکسل: {e}\n"
                 f"لطفاً مطمئن شوید Microsoft Excel باز است یا فایلی برای کار انتخاب شده است."
             )
+
+    def _on_open_file_clicked(self):
+        from PySide6.QtWidgets import QFileDialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "انتخاب و اتصال به فایل اکسل",
+            "",
+            "فایل‌های اکسل (*.xlsx *.xls *.xlsm *.csv);;همه فایل‌ها (*)"
+        )
+        if file_path:
+            try:
+                info = self.manager.open_workbook(file_path)
+                open_wbs = self.manager.list_open_workbooks()
+                self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
+                self.chat_widget.add_assistant_message(
+                    f"📂 فایل اکسل **`{info.name}`** باز شد و دستیار به آن متصل گردید.\n"
+                    f"📑 شیت فعال: **`{info.active_sheet}`**"
+                )
+            except Exception as e:
+                self.chat_widget.add_assistant_message(f"❌ خطا در باز کردن فایل اکسل: {e}")
+
+    def _on_workbook_switched(self, wb_name: str):
+        try:
+            info = self.manager.switch_workbook(wb_name)
+            open_wbs = self.manager.list_open_workbooks()
+            self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
+            self.chat_widget.add_assistant_message(f"🔄 اتصال به فایل **`{info.name}`** برقرار گردید.")
+        except Exception as e:
+            self.chat_widget.add_assistant_message(f"❌ خطا در جابه‌جایی فایل: {e}")
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        if urls:
+            local_path = urls[0].toLocalFile()
+            if local_path.lower().endswith(('.xlsx', '.xls', '.xlsm', '.csv')):
+                try:
+                    info = self.manager.open_workbook(local_path)
+                    open_wbs = self.manager.list_open_workbooks()
+                    self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
+                    self.chat_widget.add_assistant_message(f"📂 فایل اکسل **`{info.name}`** بارگذاری شد.")
+                except Exception as e:
+                    self.chat_widget.add_assistant_message(f"❌ خطا در بارگذاری فایل: {e}")
 
     def _on_sheet_switched(self, sheet_name: str):
         try:

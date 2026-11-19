@@ -1,6 +1,6 @@
 """
 Header and Status Bar Widget for Excel Assistant.
-Displays live Excel 2024 connection status, workbook name, and active sheet selector.
+Displays live Excel 2024 connection status, workbook selector, file browser, and active sheet selector.
 """
 from typing import List, Optional
 from PySide6.QtCore import Qt, Signal
@@ -14,6 +14,8 @@ class ExcelStatusBar(QFrame):
 
     reconnect_requested = Signal()
     sheet_switched = Signal(str)
+    workbook_switched = Signal(str)
+    open_file_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -22,28 +24,39 @@ class ExcelStatusBar(QFrame):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
 
         # Connection status indicator
         self.status_icon = QLabel("🟢")
         self.status_text = QLabel("در حال اتصال...")
-        self.status_text.setStyleSheet("font-weight: bold; color: #10B981;")
+        self.status_text.setStyleSheet("font-weight: bold; color: #10B981; border: none;")
         layout.addWidget(self.status_icon)
         layout.addWidget(self.status_text)
 
         # Divider
         divider1 = QLabel("|")
-        divider1.setStyleSheet("color: #475569;")
+        divider1.setStyleSheet("color: #475569; border: none;")
         layout.addWidget(divider1)
 
-        # Workbook name label
-        self.wb_label = QLabel("📁 فایل: -")
-        self.wb_label.setStyleSheet("color: #E2E8F0; font-weight: 500;")
-        layout.addWidget(self.wb_label)
+        # Open File Button
+        self.btn_open_file = QPushButton("📂 باز کردن فایل اکسل...")
+        self.btn_open_file.setStyleSheet("background-color: #2563EB; color: white; font-weight: bold; padding: 5px 12px; border-radius: 6px;")
+        self.btn_open_file.clicked.connect(self.open_file_requested.emit)
+        layout.addWidget(self.btn_open_file)
+
+        # Workbook selector dropdown
+        wb_lbl = QLabel("📁 فایل:")
+        wb_lbl.setStyleSheet("color: #94A3B8; border: none;")
+        layout.addWidget(wb_lbl)
+
+        self.wb_combo = QComboBox()
+        self.wb_combo.setMinimumWidth(140)
+        self.wb_combo.currentTextChanged.connect(self._on_wb_combo_changed)
+        layout.addWidget(self.wb_combo)
 
         # Active Sheet selector
         sheet_lbl = QLabel("📑 شیت:")
-        sheet_lbl.setStyleSheet("color: #94A3B8;")
+        sheet_lbl.setStyleSheet("color: #94A3B8; border: none;")
         layout.addWidget(sheet_lbl)
 
         self.sheet_combo = QComboBox()
@@ -62,14 +75,24 @@ class ExcelStatusBar(QFrame):
         if is_connected:
             self.status_icon.setText("🟢")
             self.status_text.setText(f"متصل به {app_desc}")
-            self.status_text.setStyleSheet("font-weight: bold; color: #10B981;")
+            self.status_text.setStyleSheet("font-weight: bold; color: #10B981; border: none;")
         else:
             self.status_icon.setText("🔴")
             self.status_text.setText("اتصال به اکسل برقرار نیست")
-            self.status_text.setStyleSheet("font-weight: bold; color: #EF4444;")
+            self.status_text.setStyleSheet("font-weight: bold; color: #EF4444; border: none;")
 
-    def update_workbook_info(self, wb_name: str, sheets: List[str], active_sheet: str):
-        self.wb_label.setText(f"📁 فایل: {wb_name}")
+    def update_workbook_info(self, wb_name: str, sheets: List[str], active_sheet: str, open_workbooks: Optional[List[str]] = None):
+        # Update workbooks dropdown
+        wbs = open_workbooks or [wb_name]
+        if wb_name not in wbs:
+            wbs.append(wb_name)
+        self.wb_combo.blockSignals(True)
+        self.wb_combo.clear()
+        self.wb_combo.addItems(wbs)
+        self.wb_combo.setCurrentText(wb_name)
+        self.wb_combo.blockSignals(False)
+
+        # Update sheets dropdown
         self.sheet_combo.blockSignals(True)
         self.sheet_combo.clear()
         self.sheet_combo.addItems(sheets)
@@ -80,3 +103,7 @@ class ExcelStatusBar(QFrame):
     def _on_sheet_combo_changed(self, text: str):
         if text:
             self.sheet_switched.emit(text)
+
+    def _on_wb_combo_changed(self, text: str):
+        if text:
+            self.workbook_switched.emit(text)

@@ -5,7 +5,7 @@ set PYTHONPATH=%~dp0;%PYTHONPATH%
 echo ========================================================
 echo  اجرای دستیار هوشمند Microsoft Excel 2024 (PySide6 GUI)
 echo ========================================================
-python -m excel_assistant.main --gui
+python -m excel_assistant.main --gui %*
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ⚠️ در صورت مشاهده خطای پکیج، ابتدا install_windows.bat را اجرا کنید.
