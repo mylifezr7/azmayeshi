@@ -361,8 +361,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('divide')">➗ تقسیم ستون‌ها</button>
+                <button class="chip" onclick="sendCommand('داده‌های متنی تکراری را رنگ کن')">🎨 رنگ‌آمیزی متون تکراری</button>
                 <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل شیت</button>
-                <button class="chip" onclick="sendCommand('داده‌های تکراری را زرد کن')">🟨 داده‌های تکراری را زرد کن</button>
                 <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100 را سبز کن</button>
                 <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 ردیف‌های خالی را حذف کن</button>
                 <button class="chip" onclick="sendCommand('یک جدول بساز')">📋 تبدیل به جدول</button>

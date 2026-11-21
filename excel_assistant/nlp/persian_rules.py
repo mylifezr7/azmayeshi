@@ -89,7 +89,9 @@ class PersianRuleParser:
                 return HighlightDuplicatesAction(
                     target_col=target_col,
                     color_hex=color,
-                    description_persian=f"هایلایت داده‌های تکراری با رنگ {color}"
+                    text_only=True,
+                    distinct_colors=True,
+                    description_persian="هایلایت داده‌های متنی تکراری با رنگ‌های متمایز (بدون رنگ کردن اعداد)"
                 )
 
         # 5. Autofit columns

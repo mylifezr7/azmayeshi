@@ -44,6 +44,8 @@ class HighlightDuplicatesAction(BaseActionModel):
     target_col: Optional[str] = None
     target_range: Optional[str] = None
     color_hex: str = "#FFFF00"  # default yellow
+    text_only: bool = True  # Only highlight textual/typographic duplicates (skip pure numbers)
+    distinct_colors: bool = True  # Assign distinct color to each duplicate value group
 
 
 class DeleteEmptyRowsAction(BaseActionModel):

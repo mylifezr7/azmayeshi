@@ -76,13 +76,44 @@ class FormatActionHandler:
         start_r = min_r + 1
 
         if action.target_col:
-            col_idx = col_letter_to_index(action.target_col)
+            raw_c = str(action.target_col).strip().upper()
+            col_idx = int(raw_c) if raw_c.isdigit() else col_letter_to_index(raw_c)
             target_cols = [col_idx]
         else:
             target_cols = list(range(min_c, max_c + 1))
 
         highlighted_cells: List[str] = []
         matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
+
+        # Distinct soft pastel color palette for grouping different duplicate items
+        PASTEL_PALETTE = [
+            "#FEF08A",  # زرد روشن (Light Yellow)
+            "#BAE6FD",  # آبی روشن (Light Sky Blue)
+            "#BBF7D0",  # سبز نعنایی روشن (Light Mint Green)
+            "#FED7AA",  # هلویی روشن (Soft Peach / Orange)
+            "#E9D5FF",  # یاسی روشن (Soft Lavender)
+            "#FBCFE8",  # صورتی روشن (Light Rose Pink)
+            "#A7F3D0",  # زمردی روشن (Light Emerald)
+            "#DDD6FE",  # نیلی روشن (Light Violet)
+            "#FECDD3",  # گلبهی روشن (Soft Coral)
+            "#CFFAFE",  # فیروزه‌ای روشن (Light Cyan)
+        ]
+
+        def is_numeric_data(val) -> bool:
+            if val is None:
+                return False
+            if isinstance(val, (int, float)):
+                return True
+            s = str(val).replace(',', '').strip()
+            try:
+                float(s)
+                return True
+            except ValueError:
+                return False
+
+        color_index = 0
+        val_to_color = {}
+        dup_summary = []
 
         for c in target_cols:
             col_letter = col_index_to_letter(c)
@@ -95,21 +126,45 @@ class FormatActionHandler:
                 if r_offset < len(matrix) and c_offset < len(matrix[r_offset]):
                     val = matrix[r_offset][c_offset]
                     if val is not None and str(val).strip() != "":
+                        # Ignore pure numbers (e.g. 8, 10, quantities, prices)
+                        if action.text_only and is_numeric_data(val):
+                            continue
                         addr = f"{col_letter}{r}"
-                        norm_val = str(val).strip().lower()
-                        counts[norm_val] += 1
-                        cell_map.setdefault(norm_val, []).append(addr)
+                        norm_val = str(val).strip()
+                        key = norm_val.lower()
+                        counts[key] += 1
+                        cell_map.setdefault(key, []).append((addr, norm_val))
 
             # Highlight cells whose value count > 1
-            for norm_val, count in counts.items():
+            for key, count in counts.items():
                 if count > 1:
-                    for addr in cell_map[norm_val]:
-                        sheet.set_cell_color(addr, action.color_hex)
+                    orig_display_val = cell_map[key][0][1]
+                    if action.distinct_colors:
+                        if key not in val_to_color:
+                            val_to_color[key] = PASTEL_PALETTE[color_index % len(PASTEL_PALETTE)]
+                            color_index += 1
+                        cell_color = val_to_color[key]
+                    else:
+                        cell_color = action.color_hex
+
+                    for addr, _ in cell_map[key]:
+                        sheet.set_cell_color(addr, cell_color)
                         highlighted_cells.append(addr)
 
+                    dup_summary.append(f"«{orig_display_val}» ({count} بار)")
+
+        if not highlighted_cells:
+            msg = "✅ هیچ دادهٔ متنی/حروفی تکراری در شیت یافت نشد (داده‌های عددی طبق درخواست نادیده گرفته شدند)."
+            return ActionResult(success=True, message_persian=msg, data=[])
+
+        dup_items_str = "، ".join(dup_summary[:8])
+        if len(dup_summary) > 8:
+            dup_items_str += " و موارد دیگر..."
+
         msg = (
-            f"🎨 تعداد **{len(highlighted_cells)}** سلول تکراری شناسایی و با رنگ `{action.color_hex}` هایلایت شدند.\n"
-            f"📍 نمونه سلول‌ها: {', '.join(highlighted_cells[:10])}{' ...' if len(highlighted_cells) > 10 else ''}"
+            f"🎨 تعداد **{len(highlighted_cells)}** سلول مربوط به **{len(dup_summary)}** عبارت متنی تکراری با رنگ‌های مجزا هایلایت شدند.\n"
+            f"🔹 موارد تکراری یافت‌شده: {dup_items_str}\n"
+            f"💡 (نکته: طبق درخواست، داده‌های عددی مانند ۸ و ۱۰ رنگ نشدند و هر کالای متنی رنگ اختصاصی دریافت کرد)."
         )
         return ActionResult(success=True, message_persian=msg, data=highlighted_cells)
 

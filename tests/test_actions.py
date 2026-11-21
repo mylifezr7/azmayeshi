@@ -132,16 +132,41 @@ def test_highlight_condition_execution(test_session):
 
 def test_highlight_duplicates_execution(test_session):
     manager, sheet, executor, parser = test_session
+
+    # Insert items with text duplicates (سیگار, توتون) and numeric duplicates (8, 10)
+    sheet.set_value("A10", "سیگار")
+    sheet.set_value("B10", 8)
+    sheet.set_value("A11", "توتون")
+    sheet.set_value("B11", 10)
+    sheet.set_value("A12", "سیگار")
+    sheet.set_value("B12", 8)
+    sheet.set_value("A13", "توتون")
+    sheet.set_value("B13", 10)
+
     analysis = SheetInspector.inspect_sheet(sheet)
     ctx = ActionContext(manager=manager, sheet=sheet, sheet_analysis=analysis, confirmed=True)
 
-    # داده‌های تکراری را زرد کن
-    cmd = "داده‌های تکراری را زرد کن"
+    cmd = "داده‌های تکراری را رنگ کن"
     action = parser.parse(cmd, sheet_analysis=analysis)
     result = executor.execute(action, ctx)
 
     assert result.success is True
-    assert len(result.data) > 0
+    # A10 and A12 (سیگار) are highlighted
+    assert "A10" in result.data
+    assert "A12" in result.data
+    # A11 and A13 (توتون) are highlighted
+    assert "A11" in result.data
+    assert "A13" in result.data
+    # Numbers 8 and 10 in column B should NOT be highlighted
+    assert "B10" not in result.data
+    assert "B11" not in result.data
+    assert "B12" not in result.data
+    assert "B13" not in result.data
+
+    # A10 and A12 have same color, A11 and A13 have same color, but A10 != A11
+    col_sigar = sheet._ws["A10"].fill.start_color.rgb
+    col_toton = sheet._ws["A11"].fill.start_color.rgb
+    assert col_sigar != col_toton
 
 
 def test_delete_empty_rows_with_safety_and_undo(test_session):
