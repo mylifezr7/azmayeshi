@@ -32,9 +32,13 @@ def main():
             from excel_assistant.ui.app import run_gui
             run_gui(target_file)
         except Exception as e:
-            print(f"⚠️ نمایشگر گرافیکی دسکتاپ در دسترس نیست ({e}). در حال راه‌اندازی رابط کاربری تحت وب...")
-            from excel_assistant.ui.web_server import start_web_server
-            start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file)
+            import traceback
+            traceback.print_exc()
+            print(f"\n⚠️ خطا در اجرای رابط گرافیکی دسکتاپ: {e}")
+            if sys.platform != "win32":
+                print("در حال راه‌اندازی رابط کاربری تحت وب...")
+                from excel_assistant.ui.web_server import start_web_server
+                start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file)
     else:
         from excel_assistant.ui.web_server import start_web_server
         start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file)

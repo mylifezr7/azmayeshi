@@ -8,6 +8,7 @@ echo ========================================================
 python -m excel_assistant.main --gui %*
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ⚠️ در صورت مشاهده خطای پکیج، ابتدا install_windows.bat را اجرا کنید.
-    pause
+    echo ⚠️ برنامه متوقف شد. پیام خطای بالا را بررسی کنید.
 )
+echo.
+pause
