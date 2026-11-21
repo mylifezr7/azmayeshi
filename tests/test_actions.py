@@ -82,6 +82,25 @@ def test_column_arithmetic_execution(test_session):
     assert sheet.get_formula("D3") == "=B3*C3"
 
 
+def test_multi_column_arithmetic_execution(test_session):
+    manager, sheet, executor, parser = test_session
+    analysis = SheetInspector.inspect_sheet(sheet)
+    ctx = ActionContext(manager=manager, sheet=sheet, sheet_analysis=analysis, confirmed=True)
+
+    # User command: ستون های 2 و 3 و 4 رو با هم جمع کن و بذار در ستون 8
+    cmd = "ستون های 2 و 3 و 4 رو با هم جمع کن و بذار در ستون 8"
+    action = parser.parse(cmd, sheet_analysis=analysis)
+    assert action.operation == "add"
+    assert action.columns == ["B", "C", "D"]
+    assert action.target_col == "H"
+
+    res = executor.execute(action, ctx)
+    assert res.success is True
+    assert sheet.get_formula("H2") == "=B2+C2+D2"
+    assert sheet.get_formula("H3") == "=B3+C3+D3"
+    assert sheet.get_value("H1") == "جمع B و C و D"
+
+
 def test_column_stats_execution(test_session):
     manager, sheet, executor, parser = test_session
     analysis = SheetInspector.inspect_sheet(sheet)

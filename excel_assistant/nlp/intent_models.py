@@ -15,9 +15,10 @@ class BaseActionModel(BaseModel):
 class ColumnArithmeticAction(BaseActionModel):
     action_type: Literal["column_arithmetic"] = "column_arithmetic"
     operation: Literal["multiply", "add", "subtract", "divide"]  # ضرب، جمع، تفریق، تقسیم
-    col1: str  # e.g. "A" or header name
-    col2: str  # e.g. "B"
-    target_col: Optional[str] = None  # e.g. "C"
+    col1: Optional[str] = "A"  # e.g. "A" or header name
+    col2: Optional[str] = "B"  # e.g. "B"
+    columns: Optional[List[str]] = None  # multi-column operands e.g. ["2", "4", "5"] or ["B", "D", "E"]
+    target_col: Optional[str] = None  # e.g. "C" or "H"
     as_formula: bool = True  # generate Excel formula like =A2*B2 or compute values
 
 

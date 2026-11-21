@@ -164,25 +164,38 @@ class PersianRuleParser:
 
             # Find columns mentioned in prefix (with 'ستون' or after prepositions or as isolated letters/headers)
             prefix_cols = []
-            # Check explicit 'ستون X'
+
+            # 1. Multi-column pattern e.g. 'ستون های 2 و 4 و 5' or 'ستون B و D و E'
+            multi_m = re.search(
+                r'ستون(?:\s*های)?\s+([A-Za-z0-9\s،,و\u0600-\u06FF]+?)(?:\s+(?:را|رو|با|در|جمع|ضرب|تفریق|منهای|تقسیم|\*|\+|-|\/|$))',
+                prefix_text
+            )
+            if multi_m:
+                tokens = re.split(r'[\s،,و]+', multi_m.group(1).strip())
+                for t in tokens:
+                    res = resolve_column(t, header_map)
+                    if res and res not in prefix_cols:
+                        prefix_cols.append(res)
+
+            # 2. Check explicit 'ستون X'
             for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
                 res = resolve_column(c_str, header_map)
                 if res and res not in prefix_cols:
                     prefix_cols.append(res)
 
-            # Check after prepositions (e.g. 'در C', 'در سی', 'با B', 'با بی')
+            # 3. Check after prepositions (e.g. 'در C', 'در سی', 'با B', 'با بی')
             for c_str in re.findall(r'(?:در|با|ضربدر|منهای|تقسیم بر|به علاوه|و)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
                 res = resolve_column(c_str, header_map)
                 if res and res not in prefix_cols:
                     prefix_cols.append(res)
 
-            # Check isolated Latin letters in prefix (e.g. 'در C ضرب کن')
+            # 4. Check isolated Latin letters in prefix (e.g. 'در C ضرب کن')
             for c_letter in re.findall(r'\b([A-Za-z]{1,2})\b', prefix_text):
                 c_up = c_letter.upper()
                 if c_up not in prefix_cols:
                     prefix_cols.append(c_up)
 
-            # Check headers in prefix
+            # 5. Check headers in prefix
             if header_map:
                 for h_name, col_let in header_map.items():
                     if h_name in prefix_text and col_let not in prefix_cols:
@@ -195,9 +208,10 @@ class PersianRuleParser:
                     operation=detected_op,
                     col1=c1,
                     col2=c2,
+                    columns=prefix_cols,
                     target_col=target_c,
                     as_formula=True,
-                    description_persian=f"{op_fa} ستون {c1} با ستون {c2}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
+                    description_persian=f"{op_fa} ستون‌های {'، '.join(prefix_cols)}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
                 )
 
             # Fallback check across whole text
@@ -214,15 +228,19 @@ class PersianRuleParser:
             if len(all_cols) >= 2:
                 c1, c2 = all_cols[0], all_cols[1]
                 if not target_c and len(all_cols) >= 3:
-                    target_c = all_cols[2]
+                    target_c = all_cols[-1]
+                    source_cols = all_cols[:-1]
+                else:
+                    source_cols = all_cols
                 op_fa = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}[detected_op]
                 return ColumnArithmeticAction(
                     operation=detected_op,
                     col1=c1,
                     col2=c2,
+                    columns=source_cols,
                     target_col=target_c,
                     as_formula=True,
-                    description_persian=f"{op_fa} ستون {c1} با ستون {c2}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
+                    description_persian=f"{op_fa} ستون‌های {'، '.join(source_cols)}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
                 )
 
         # 9. Statistical calculations: میانگین، مجموع، بیشترین، کمترین، میانه، تعداد

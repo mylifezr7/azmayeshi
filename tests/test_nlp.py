@@ -134,6 +134,31 @@ def test_header_resolution():
     assert act.target_col == "D"
 
 
+def test_multi_column_arithmetic_parsing():
+    parser = PersianIntentParser()
+
+    cmd1 = "ستون های 2 و 4 و 5 رو با هم جمع کن و بذار در ستون 8"
+    act1 = parser.parse(cmd1)
+    assert isinstance(act1, ColumnArithmeticAction)
+    assert act1.operation == "add"
+    assert act1.columns == ["B", "D", "E"]
+    assert act1.target_col == "H"
+
+    cmd2 = "ستون های B و D و E را با هم ضرب کن و در ستون H قرار بده"
+    act2 = parser.parse(cmd2)
+    assert isinstance(act2, ColumnArithmeticAction)
+    assert act2.operation == "multiply"
+    assert act2.columns == ["B", "D", "E"]
+    assert act2.target_col == "H"
+
+    cmd3 = "جمع ستون 2 و 4 و 5 در ستون 8"
+    act3 = parser.parse(cmd3)
+    assert isinstance(act3, ColumnArithmeticAction)
+    assert act3.operation == "add"
+    assert act3.columns == ["B", "D", "E"]
+    assert act3.target_col == "H"
+
+
 def test_ambiguous_command_error():
     parser = PersianIntentParser()
     with pytest.raises(AmbiguousCommandError) as exc_info:

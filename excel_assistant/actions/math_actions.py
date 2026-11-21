@@ -20,25 +20,40 @@ class MathActionHandler:
         sheet = ctx.sheet
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
-        c1 = action.col1.upper()
-        c2 = action.col2.upper()
+        # Extract and normalize all source columns (support letters or numbers e.g. '2', '4', '5' -> 'B', 'D', 'E')
+        if action.columns and len(action.columns) >= 2:
+            raw_cols = action.columns
+        else:
+            raw_cols = [action.col1 or "A", action.col2 or "B"]
 
-        # Target column determination
+        cols: List[str] = []
+        for c in raw_cols:
+            c_str = str(c).strip().upper()
+            if c_str.isdigit():
+                c_str = col_index_to_letter(int(c_str))
+            if c_str and c_str not in cols:
+                cols.append(c_str)
+
+        if len(cols) < 2:
+            cols = ["A", "B"]
+
+        # Target column determination (support letter or number e.g. '8' -> 'H')
         if action.target_col:
-            target_col = action.target_col.upper()
+            t_str = str(action.target_col).strip().upper()
+            if t_str.isdigit():
+                target_col = col_index_to_letter(int(t_str))
+            else:
+                target_col = t_str
         else:
             # Safely pick the next empty column after all operands and used range
-            next_idx = max(col_letter_to_index(c1), col_letter_to_index(c2), max_c) + 1
+            max_col_idx = max(col_letter_to_index(c) for c in cols)
+            next_idx = max(max_col_idx, max_c) + 1
             target_col = col_index_to_letter(next_idx)
 
         op_symbols = {"multiply": "*", "add": "+", "subtract": "-", "divide": "/"}
         op_symbol = op_symbols.get(action.operation, "*")
         op_fa_names = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}
         op_fa = op_fa_names.get(action.operation, "محاسبه")
-
-        # Determine whether row 1 contains header text or numeric data
-        val1_r1 = sheet.get_value(f"{c1}1")
-        val2_r1 = sheet.get_value(f"{c2}1")
 
         def is_numeric_value(v):
             if v is None:
@@ -51,60 +66,76 @@ class MathActionHandler:
             except ValueError:
                 return False
 
-        has_header = not (is_numeric_value(val1_r1) or is_numeric_value(val2_r1))
+        # Determine whether row 1 contains header text or numeric data
+        has_header = False
+        for c in cols:
+            val_r1 = sheet.get_value(f"{c}1")
+            if val_r1 is not None and not is_numeric_value(val_r1):
+                has_header = True
+                break
 
         if has_header:
             start_row = 2
             # Add header to target column
-            header_title = f"{op_fa} {c1} و {c2}"
+            header_title = f"{op_fa} {' و '.join(cols)}"
             sheet.set_value(f"{target_col}1", header_title)
             sheet.set_font(f"{target_col}1", bold=True)
         else:
             start_row = 1
 
-        # Determine last row with actual data in either c1 or c2
-        col1_vals = sheet.get_column_values(c1, include_header=True)
-        col2_vals = sheet.get_column_values(c2, include_header=True)
-        data_len = max(len(col1_vals), len(col2_vals))
-        last_row = start_row
-        for r_i in range(data_len, 0, -1):
-            v1 = col1_vals[r_i - 1] if r_i <= len(col1_vals) else None
-            v2 = col2_vals[r_i - 1] if r_i <= len(col2_vals) else None
-            if (v1 is not None and str(v1).strip() != "") or (v2 is not None and str(v2).strip() != ""):
-                last_row = max(start_row, r_i)
-                break
-        end_row = last_row
+        # Determine last row with actual data in any operand column
+        max_data_len = start_row
+        for c in cols:
+            c_vals = sheet.get_column_values(c, include_header=True)
+            for r_i in range(len(c_vals), 0, -1):
+                v = c_vals[r_i - 1]
+                if v is not None and str(v).strip() != "":
+                    max_data_len = max(max_data_len, r_i)
+                    break
+        end_row = max(start_row, max_data_len)
 
         # Circular Reference Guard: If target column is one of the source columns
-        is_circular = (target_col == c1 or target_col == c2)
+        is_circular = (target_col in cols)
 
         if is_circular:
             # Compute values in Python and write numeric results so values are never zeroed
             calc_matrix = []
             for r in range(start_row, end_row + 1):
-                v1 = sheet.get_value(f"{c1}{r}")
-                v2 = sheet.get_value(f"{c2}{r}")
-                try:
-                    n1 = float(str(v1).replace(',', '').strip()) if v1 is not None else 0.0
-                    n2 = float(str(v2).replace(',', '').strip()) if v2 is not None else 0.0
-                    if action.operation == "multiply":
-                        res_val = n1 * n2
-                    elif action.operation == "add":
-                        res_val = n1 + n2
-                    elif action.operation == "subtract":
-                        res_val = n1 - n2
-                    elif action.operation == "divide":
-                        res_val = (n1 / n2) if n2 != 0 else "#DIV/0!"
-                    else:
-                        res_val = 0.0
-                except Exception:
-                    res_val = 0.0
+                row_nums = []
+                for c in cols:
+                    v = sheet.get_value(f"{c}{r}")
+                    try:
+                        n = float(str(v).replace(',', '').strip()) if v is not None else 0.0
+                    except Exception:
+                        n = 0.0
+                    row_nums.append(n)
+
+                if action.operation == "add":
+                    res_val = sum(row_nums)
+                elif action.operation == "multiply":
+                    res_val = 1.0
+                    for n in row_nums:
+                        res_val *= n
+                elif action.operation == "subtract":
+                    res_val = row_nums[0]
+                    for n in row_nums[1:]:
+                        res_val -= n
+                elif action.operation == "divide":
+                    res_val = row_nums[0]
+                    for n in row_nums[1:]:
+                        res_val = (res_val / n) if n != 0 else "#DIV/0!"
+                else:
+                    res_val = sum(row_nums)
+
                 calc_matrix.append([res_val])
             target_range = f"{target_col}{start_row}:{target_col}{end_row}"
             sheet.set_value(target_range, calc_matrix)
         else:
-            # Set exact formula matrix for each row
-            formula_matrix = [[f"={c1}{r}{op_symbol}{c2}{r}"] for r in range(start_row, end_row + 1)]
+            # Set exact formula matrix for each row e.g. =B2+D2+E2
+            formula_matrix = [
+                [f"={op_symbol.join(f'{c}{r}' for c in cols)}"]
+                for r in range(start_row, end_row + 1)
+            ]
             target_range = f"{target_col}{start_row}:{target_col}{end_row}"
             sheet.set_formula(target_range, formula_matrix)
 
@@ -118,8 +149,9 @@ class MathActionHandler:
         except Exception:
             pass
 
+        cols_display = "، ".join(cols)
         msg = (
-            f"✅ عملیات **{op_fa}** ستون `{c1}` در ستون `{c2}` با موفقیت انجام شد.\n"
+            f"✅ عملیات **{op_fa}** ستون‌های `{cols_display}` با موفقیت انجام شد.\n"
             f"📌 نتیجه در ستون `{target_col}` (محدوده `{affected}`) درج شد."
         )
         return ActionResult(success=True, message_persian=msg, affected_range=affected)

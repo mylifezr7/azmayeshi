@@ -7,7 +7,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
-    QPushButton, QLabel, QFrame, QMessageBox, QApplication
+    QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog
 )
 
 from excel_assistant.core.connection import ExcelConnectionManager
@@ -77,6 +77,10 @@ class MainWindow(QMainWindow):
         chips_layout.setSpacing(8)
 
         quick_prompts = [
+            "➕ جمع ستون‌ها",
+            "➖ تفریق ستون‌ها",
+            "✖️ ضرب ستون‌ها",
+            "➗ تقسیم ستون‌ها",
             "📊 تحلیل شیت",
             "🧹 ردیف‌های خالی را حذف کن",
             "🟨 داده‌های تکراری را زرد کن",
@@ -128,6 +132,7 @@ class MainWindow(QMainWindow):
         self.history_panel.command_selected.connect(self._on_history_item_selected)
         self.history_panel.undo_requested.connect(self._on_undo_clicked)
         self.history_panel.analyze_requested.connect(self._on_analyze_clicked)
+        self.history_panel.arithmetic_requested.connect(lambda: self._open_arithmetic_dialog("add"))
 
     def _perform_initial_connection(self):
         try:
@@ -205,8 +210,27 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
 
     def _on_quick_chip_clicked(self, command: str):
-        self.input_edit.setText(command)
-        self._on_send_clicked()
+        if "جمع" in command:
+            self._open_arithmetic_dialog("add")
+        elif "تفریق" in command or "منها" in command:
+            self._open_arithmetic_dialog("subtract")
+        elif "ضرب" in command:
+            self._open_arithmetic_dialog("multiply")
+        elif "تقسیم" in command:
+            self._open_arithmetic_dialog("divide")
+        else:
+            self.input_edit.setText(command)
+            self._on_send_clicked()
+
+    def _open_arithmetic_dialog(self, initial_op: str = "add"):
+        """Opens interactive wizard dialog for 4 basic arithmetic operations."""
+        from excel_assistant.ui.arithmetic_dialog import ArithmeticWizardDialog
+        dialog = ArithmeticWizardDialog(manager=self.manager, initial_op=initial_op, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            action = dialog.get_action()
+            self.chat_widget.add_user_message(action.description_persian)
+            self.history_panel.add_command(action.description_persian)
+            self._execute_action_pipeline(action)
 
     def _on_history_item_selected(self, command: str):
         self.input_edit.setText(command)
@@ -222,6 +246,14 @@ class MainWindow(QMainWindow):
         if not text:
             return
         self.input_edit.clear()
+
+        # Check for standalone arithmetic keywords to launch wizard
+        lower = text.lower()
+        if lower in ["جمع", "ضرب", "تفریق", "تقسیم", "4 عمل اصلی", "۴ عمل اصلی", "محاسبه", "محاسبات", "ماشین حساب"]:
+            op_map = {"جمع": "add", "تفریق": "subtract", "ضرب": "multiply", "تقسیم": "divide"}
+            self._open_arithmetic_dialog(op_map.get(lower, "add"))
+            return
+
         self.btn_send.setEnabled(False)
         self.btn_send.setText("⏳ در حال اجرا...")
         QApplication.processEvents()
@@ -251,6 +283,15 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(msg)
             return
 
+        self._execute_action_pipeline(action, confirmed=confirmed)
+
+    def _execute_action_pipeline(self, action: ExcelAction, confirmed: bool = False):
+        if not self.manager.is_connected():
+            self.chat_widget.add_assistant_message("❌ ابتدا باید اتصال به اکسل برقرار باشد.")
+            return
+
+        sheet = self.manager.get_active_sheet()
+        sa = SheetInspector.inspect_sheet(sheet)
         ctx = ActionContext(manager=self.manager, sheet=sheet, sheet_analysis=sa, confirmed=confirmed)
         res = self.executor.execute(action, ctx)
 
@@ -265,9 +306,10 @@ class MainWindow(QMainWindow):
 
         self.chat_widget.add_assistant_message(res.message_persian)
 
-        # Update status bar sheets list if sheets changed
+        # Update status bar sheets and workbooks list
         info = self.manager.get_workbook_info()
-        self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet)
+        open_wbs = self.manager.list_open_workbooks()
+        self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
 
     def _on_confirm_destructive_action(self):
         if self.pending_destructive_action:

@@ -14,6 +14,7 @@ class HistoryPanel(QFrame):
     command_selected = Signal(str)
     undo_requested = Signal()
     analyze_requested = Signal()
+    arithmetic_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -41,6 +42,12 @@ class HistoryPanel(QFrame):
         self.btn_undo.setObjectName("undoButton")
         self.btn_undo.clicked.connect(self.undo_requested.emit)
         layout.addWidget(self.btn_undo)
+
+        # Arithmetic button
+        self.btn_arithmetic = QPushButton("🧮 ۴ عمل اصلی ستون‌ها...")
+        self.btn_arithmetic.setStyleSheet("background-color: #107C41; color: white; font-weight: bold;")
+        self.btn_arithmetic.clicked.connect(self.arithmetic_requested.emit)
+        layout.addWidget(self.btn_arithmetic)
 
         # Analyze button
         self.btn_analyze = QPushButton("📊 تحلیل هوشمند شیت")

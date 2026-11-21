@@ -356,6 +356,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Quick Action Chips -->
             <div class="chips-bar">
+                <button class="chip" onclick="promptArithmetic('add')">➕ جمع ستون‌ها</button>
+                <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
+                <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
+                <button class="chip" onclick="promptArithmetic('divide')">➗ تقسیم ستون‌ها</button>
                 <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل شیت</button>
                 <button class="chip" onclick="sendCommand('داده‌های تکراری را زرد کن')">🟨 داده‌های تکراری را زرد کن</button>
                 <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100 را سبز کن</button>
@@ -453,6 +457,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             feed.appendChild(bubble);
             feed.scrollTop = feed.scrollHeight;
+        }
+
+        function promptArithmetic(op) {
+            const opNames = {add: 'جمع', subtract: 'تفریق', multiply: 'ضرب', divide: 'تقسیم'};
+            const opName = opNames[op] || 'محاسبه';
+            const cols = prompt(`لطفاً ستون‌های مبدأ برای عملیات ${opName} را وارد کنید (مثلاً: 2, 4, 5 یا B, D, E):`, "2, 4, 5");
+            if (!cols || !cols.trim()) return;
+            const target = prompt(`نتیجه در کدام ستون درج شود؟ (مثلاً: 8 یا H):`, "8");
+            if (!target || !target.trim()) return;
+            const cmd = `عملیات ${opName} ستون‌های ${cols.trim()} در ستون ${target.trim()}`;
+            sendCommand(cmd);
         }
 
         async function sendCommand(cmd) {
