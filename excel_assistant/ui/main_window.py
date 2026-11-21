@@ -131,7 +131,10 @@ class MainWindow(QMainWindow):
 
     def _perform_initial_connection(self):
         try:
-            info = self.manager.connect()
+            if not self.manager.is_connected():
+                info = self.manager.connect()
+            else:
+                info = self.manager.get_workbook_info()
             desc = "Microsoft Excel 2024 (COM)" if self.manager.driver_type == "xlwings" else "موتور مستقل اکسل"
             open_wbs = self.manager.list_open_workbooks()
             self.status_bar_widget.set_connected(True, desc)

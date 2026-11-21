@@ -285,14 +285,30 @@ class XlwingsDriver(IExcelDriver):
             else:
                 # Connect to currently active workbook if open
                 if len(self._app.books) > 0:
-                    chosen = self._app.books.active
-                    # If active is empty Book1 and other real workbooks exist, prioritize the real file
-                    if len(self._app.books) > 1 and chosen.name.lower().startswith("book"):
-                        for b in self._app.books:
-                            if not b.name.lower().startswith("book"):
-                                chosen = b
-                                break
-                    self._book = chosen
+                    chosen = None
+                    try:
+                        chosen = self._app.books.active
+                    except Exception:
+                        pass
+                    if not chosen:
+                        try:
+                            chosen = self._app.books[0]
+                        except Exception:
+                            pass
+                    if chosen:
+                        try:
+                            b_name = chosen.name.lower()
+                            if len(self._app.books) > 1 and b_name.startswith("book"):
+                                for b in self._app.books:
+                                    try:
+                                        if b and not b.name.lower().startswith("book"):
+                                            chosen = b
+                                            break
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                    self._book = chosen or self._app.books.add()
                 else:
                     self._book = self._app.books.add()
 
@@ -309,17 +325,30 @@ class XlwingsDriver(IExcelDriver):
                 self._app = xw.App(visible=True, add_book=False)
 
         base_target = os.path.basename(file_path).lower()
+        abs_target = os.path.abspath(file_path).lower()
+
         # Check if already open
         for b in self._app.books:
-            if b.name.lower() == base_target or (b.fullname and os.path.abspath(b.fullname).lower() == os.path.abspath(file_path).lower()):
-                self._book = b
-                b.activate()
-                return self.get_workbook_info()
+            try:
+                b_name = b.name.lower()
+                b_full = os.path.abspath(b.fullname).lower() if b.fullname else ""
+                if b_name == base_target or (b_full and b_full == abs_target):
+                    self._book = b
+                    try:
+                        b.activate()
+                    except Exception:
+                        pass
+                    return self.get_workbook_info()
+            except Exception:
+                pass
 
         # Open file
         if os.path.exists(file_path):
             self._book = self._app.books.open(os.path.abspath(file_path))
-            self._book.activate()
+            try:
+                self._book.activate()
+            except Exception:
+                pass
             return self.get_workbook_info()
         else:
             raise WorkbookNotFoundError(f"فایل اکسل '{file_path}' یافت نشد.")
