@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setWindowTitle("دستیار هوشمند اکسل - Excel AI Assistant")
+        self.setWindowTitle("دستیار هوشمند اکسل | کاربر: MUYUM - Excel AI Assistant")
         self.resize(1050, 720)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(QSS_STYLE)
@@ -147,7 +147,7 @@ class MainWindow(QMainWindow):
             self.status_bar_widget.set_connected(True, desc)
             self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
             self.chat_widget.add_assistant_message(
-                f"سلام! من دستیار هوشمند Microsoft Excel هستم.\n"
+                f"سلام **MUYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
                 f"اتصال به فایل **`{info.name}`** و شیت **`{info.active_sheet}`** برقرار شد.\n"
                 f"💡 برای کار روی فایل دیگر، روی دکمهٔ **«📂 باز کردن فایل اکسل...»** در نوار بالا کلیک کنید."
             )

@@ -148,7 +148,7 @@ class ChatWidget(QWidget):
         main_layout.addWidget(self.scroll_area)
 
     def add_user_message(self, text: str):
-        bubble = MessageBubble(sender="شما", text=text, is_user=True)
+        bubble = MessageBubble(sender="MUYUM", text=text, is_user=True)
         self._append_bubble(bubble)
 
     def add_assistant_message(self, text: str):

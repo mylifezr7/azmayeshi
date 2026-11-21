@@ -338,6 +338,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="header-title">
             <span class="excel-badge">Excel AI</span>
             <span>دستیار هوشمند Microsoft Excel 2024</span>
+            <span style="background-color: #1E293B; color: #38BDF8; border: 1px solid #0284C7; font-weight: bold; padding: 3px 10px; border-radius: 12px; font-size: 13px; margin-right: 12px;">👤 MUYUM</span>
         </div>
         <div class="status-bar">
             <div class="status-pill" id="statusPill">🟢 متصل به اکسل</div>

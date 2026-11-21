@@ -26,6 +26,19 @@ class ExcelStatusBar(QFrame):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(12)
 
+        # User Profile Badge (Top Right in RTL)
+        self.user_badge = QLabel("👤 MUYUM")
+        self.user_badge.setStyleSheet(
+            "background-color: #1E293B; color: #38BDF8; font-weight: bold; font-size: 13px; "
+            "padding: 4px 14px; border: 1px solid #0284C7; border-radius: 12px;"
+        )
+        layout.addWidget(self.user_badge)
+
+        # Divider
+        divider0 = QLabel("|")
+        divider0.setStyleSheet("color: #475569; border: none;")
+        layout.addWidget(divider0)
+
         # Connection status indicator
         self.status_icon = QLabel("🟢")
         self.status_text = QLabel("در حال اتصال...")
