@@ -16,6 +16,7 @@ from excel_assistant.nlp.intent_models import (
     ExcelAction,
     ColumnArithmeticAction,
     ColumnStatsAction,
+    ApplyDiscountAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -81,6 +82,9 @@ class ActionExecutor:
         try:
             if isinstance(action, ColumnArithmeticAction):
                 return MathActionHandler.execute_arithmetic(action, ctx)
+
+            elif isinstance(action, ApplyDiscountAction):
+                return MathActionHandler.execute_discount(action, ctx)
 
             elif isinstance(action, ColumnStatsAction):
                 return MathActionHandler.execute_stats(action, ctx)

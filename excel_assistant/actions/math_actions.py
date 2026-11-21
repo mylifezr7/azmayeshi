@@ -6,7 +6,9 @@ import statistics
 from typing import Any, List, Optional
 
 from excel_assistant.actions.base import ActionResult, ActionContext
-from excel_assistant.nlp.intent_models import ColumnArithmeticAction, ColumnStatsAction
+from excel_assistant.nlp.intent_models import (
+    ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction
+)
 from excel_assistant.core.utils import (
     col_letter_to_index, col_index_to_letter, bounds_to_range_str
 )
@@ -231,3 +233,107 @@ class MathActionHandler:
             f"🔹 فرمول اکسل `{formula_map.get(action.stat_type, '')}` در سلول `{target_cell}` ثبت شد."
         )
         return ActionResult(success=True, message_persian=msg, affected_range=target_cell, data=calc_val)
+
+    @classmethod
+    def execute_discount(cls, action: ApplyDiscountAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+
+        # 1. Normalize price column (support number e.g. '2' -> 'B' or 'B' -> 'B')
+        p_raw = str(action.price_col).strip().upper()
+        p_col = col_index_to_letter(int(p_raw)) if p_raw.isdigit() else p_raw
+
+        # 2. Normalize discount column or fixed percent
+        d_col = None
+        if action.discount_col:
+            d_raw = str(action.discount_col).strip().upper()
+            d_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+
+        pct = action.discount_percent
+
+        # 3. Determine target column (final price after discount)
+        if action.target_col:
+            t_raw = str(action.target_col).strip().upper()
+            target_col = col_index_to_letter(int(t_raw)) if t_raw.isdigit() else t_raw
+        else:
+            used_indices = [col_letter_to_index(p_col)]
+            if d_col:
+                used_indices.append(col_letter_to_index(d_col))
+            next_idx = max(max(used_indices), max_c) + 1
+            target_col = col_index_to_letter(next_idx)
+
+        # 4. Check row 1 for header
+        val_r1 = sheet.get_value(f"{p_col}1")
+        has_header = False
+        if val_r1 is not None:
+            try:
+                float(str(val_r1).replace(',', '').strip())
+            except ValueError:
+                has_header = True
+
+        start_row = 2 if has_header else 1
+
+        if has_header:
+            sheet.set_value(f"{target_col}1", "قیمت بعد از تخفیف")
+            sheet.set_font(f"{target_col}1", bold=True)
+
+        # 5. Determine end row
+        p_vals = sheet.get_column_values(p_col, include_header=True)
+        end_row = start_row
+        for r_i in range(len(p_vals), 0, -1):
+            v = p_vals[r_i - 1]
+            if v is not None and str(v).strip() != "":
+                end_row = max(start_row, r_i)
+                break
+
+        # 6. Generate formulas for final discounted price
+        formula_matrix = []
+        for r in range(start_row, end_row + 1):
+            if d_col:
+                # Handle both integer percentages (e.g. 20 -> 20%) and decimal percentages (e.g. 0.20)
+                row_f = f"=IF({d_col}{r}>1, {p_col}{r}*(1-{d_col}{r}/100), {p_col}{r}*(1-{d_col}{r}))"
+            elif pct is not None:
+                row_f = f"={p_col}{r}*(1-{pct}/100)"
+            else:
+                row_f = f"={p_col}{r}"
+            formula_matrix.append([row_f])
+
+        target_range = f"{target_col}{start_row}:{target_col}{end_row}"
+        sheet.set_formula(target_range, formula_matrix)
+        sheet.auto_fit_columns([target_col])
+
+        # 7. If optional discount amount column requested
+        if action.discount_amount_col:
+            da_raw = str(action.discount_amount_col).strip().upper()
+            da_col = col_index_to_letter(int(da_raw)) if da_raw.isdigit() else da_raw
+            if has_header:
+                sheet.set_value(f"{da_col}1", "مبلغ تخفیف")
+                sheet.set_font(f"{da_col}1", bold=True)
+            da_matrix = []
+            for r in range(start_row, end_row + 1):
+                if d_col:
+                    da_f = f"=IF({d_col}{r}>1, {p_col}{r}*({d_col}{r}/100), {p_col}{r}*{d_col}{r})"
+                elif pct is not None:
+                    da_f = f"={p_col}{r}*({pct}/100)"
+                else:
+                    da_f = "=0"
+                da_matrix.append([da_f])
+            da_range = f"{da_col}{start_row}:{da_col}{end_row}"
+            sheet.set_formula(da_range, da_matrix)
+            sheet.auto_fit_columns([da_col])
+
+        # Trigger calculation refresh
+        try:
+            if hasattr(sheet, "_sheet") and hasattr(sheet._sheet, "book"):
+                sheet._sheet.book.app.calculate()
+        except Exception:
+            pass
+
+        d_desc = f"ستون `{d_col}`" if d_col else f"`{pct}%`"
+        msg = (
+            f"🏷️ **محاسبه تخفیف کالاها با موفقیت انجام شد.**\n"
+            f"📌 ستون قیمت اولیه: `{p_col}`\n"
+            f"📌 درصد تخفیف: {d_desc}\n"
+            f"📌 ستون قیمت بعد از تخفیف: `{target_col}` (محدوده `{target_range}`)"
+        )
+        return ActionResult(success=True, message_persian=msg, affected_range=target_range)

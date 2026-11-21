@@ -9,6 +9,7 @@ from excel_assistant.nlp.intent_models import (
     ExcelAction,
     ColumnArithmeticAction,
     ColumnStatsAction,
+    ApplyDiscountAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -116,6 +117,44 @@ class PersianRuleParser:
                 key_col=key_col,
                 ascending=ascending,
                 description_persian=f"مرتب‌سازی داده‌ها بر اساس ستون {key_col} به صورت {dir_str}"
+            )
+
+        # 7.5 Apply Discount: تخفیف کالاها
+        # e.g.: تخفیف ستون B با ستون C در ستون D
+        # e.g.: 20 درصد تخفیف روی ستون B در ستون D
+        # e.g.: ستون B با تخفیف ستون C در ستون D
+        if "تخفیف" in text:
+            pct_m = re.search(r'(\d+(?:\.\d+)?)\s*(?:درصد|%)', text)
+            fixed_pct = float(pct_m.group(1)) if pct_m else None
+
+            target_c = None
+            target_match = re.search(
+                r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)\s*(?:قرار\s*بده|قرار\s*ده|بنویس|درج\s*کن|بریز|بگذار|ثبت\s*کن|قرار\s*بگیرد|بذار)?\s*[.]*$',
+                text
+            )
+            if target_match:
+                target_c = resolve_column(target_match.group(1), header_map)
+
+            found_cols = []
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in found_cols and res != target_c:
+                    found_cols.append(res)
+            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text):
+                c_up = c_let.upper()
+                if c_up not in found_cols and c_up != target_c:
+                    found_cols.append(c_up)
+
+            price_c = found_cols[0] if len(found_cols) >= 1 else "B"
+            disc_c = found_cols[1] if len(found_cols) >= 2 else None
+
+            d_str = f"ستون {disc_c}" if disc_c else (f"{fixed_pct}%" if fixed_pct else "تخفیف")
+            return ApplyDiscountAction(
+                price_col=price_c,
+                discount_col=disc_c,
+                discount_percent=fixed_pct,
+                target_col=target_c,
+                description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
             )
 
         # 8. Column Arithmetic: ضرب، جمع، تفریق، تقسیم

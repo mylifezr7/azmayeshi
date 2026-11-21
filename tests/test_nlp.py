@@ -159,6 +159,25 @@ def test_multi_column_arithmetic_parsing():
     assert act3.target_col == "H"
 
 
+def test_discount_parsing():
+    from excel_assistant.nlp.intent_models import ApplyDiscountAction
+    parser = PersianIntentParser()
+
+    cmd1 = "تخفیف ستون B با درصد ستون C در ستون D بنویس"
+    act1 = parser.parse(cmd1)
+    assert isinstance(act1, ApplyDiscountAction)
+    assert act1.price_col == "B"
+    assert act1.discount_col == "C"
+    assert act1.target_col == "D"
+
+    cmd2 = "20 درصد تخفیف روی ستون B اعمال کن و در ستون E بذار"
+    act2 = parser.parse(cmd2)
+    assert isinstance(act2, ApplyDiscountAction)
+    assert act2.price_col == "B"
+    assert act2.discount_percent == 20.0
+    assert act2.target_col == "E"
+
+
 def test_ambiguous_command_error():
     parser = PersianIntentParser()
     with pytest.raises(AmbiguousCommandError) as exc_info:

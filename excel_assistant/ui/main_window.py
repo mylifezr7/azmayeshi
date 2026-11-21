@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
             "➖ تفریق ستون‌ها",
             "✖️ ضرب ستون‌ها",
             "➗ تقسیم ستون‌ها",
+            "🏷️ اعمال تخفیف کالاها",
             "📊 تحلیل شیت",
             "🧹 ردیف‌های خالی را حذف کن",
             "🟨 داده‌های تکراری را زرد کن",
@@ -133,6 +134,7 @@ class MainWindow(QMainWindow):
         self.history_panel.undo_requested.connect(self._on_undo_clicked)
         self.history_panel.analyze_requested.connect(self._on_analyze_clicked)
         self.history_panel.arithmetic_requested.connect(lambda: self._open_arithmetic_dialog("add"))
+        self.history_panel.discount_requested.connect(self._open_discount_dialog)
 
     def _perform_initial_connection(self):
         try:
@@ -210,7 +212,9 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
 
     def _on_quick_chip_clicked(self, command: str):
-        if "جمع" in command:
+        if "تخفیف" in command:
+            self._open_discount_dialog()
+        elif "جمع" in command:
             self._open_arithmetic_dialog("add")
         elif "تفریق" in command or "منها" in command:
             self._open_arithmetic_dialog("subtract")
@@ -221,6 +225,16 @@ class MainWindow(QMainWindow):
         else:
             self.input_edit.setText(command)
             self._on_send_clicked()
+
+    def _open_discount_dialog(self):
+        """Opens interactive wizard dialog for calculating and applying item discounts."""
+        from excel_assistant.ui.discount_dialog import DiscountWizardDialog
+        dialog = DiscountWizardDialog(manager=self.manager, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            action = dialog.get_action()
+            self.chat_widget.add_user_message(action.description_persian)
+            self.history_panel.add_command(action.description_persian)
+            self._execute_action_pipeline(action)
 
     def _open_arithmetic_dialog(self, initial_op: str = "add"):
         """Opens interactive wizard dialog for 4 basic arithmetic operations."""
@@ -249,6 +263,10 @@ class MainWindow(QMainWindow):
 
         # Check for standalone arithmetic keywords to launch wizard
         lower = text.lower()
+        if "تخفیف" in lower and len(lower.split()) <= 2:
+            self._open_discount_dialog()
+            return
+
         if lower in ["جمع", "ضرب", "تفریق", "تقسیم", "4 عمل اصلی", "۴ عمل اصلی", "محاسبه", "محاسبات", "ماشین حساب"]:
             op_map = {"جمع": "add", "تفریق": "subtract", "ضرب": "multiply", "تقسیم": "divide"}
             self._open_arithmetic_dialog(op_map.get(lower, "add"))

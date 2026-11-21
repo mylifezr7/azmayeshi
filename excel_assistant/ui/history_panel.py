@@ -15,6 +15,7 @@ class HistoryPanel(QFrame):
     undo_requested = Signal()
     analyze_requested = Signal()
     arithmetic_requested = Signal()
+    discount_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -48,6 +49,12 @@ class HistoryPanel(QFrame):
         self.btn_arithmetic.setStyleSheet("background-color: #107C41; color: white; font-weight: bold;")
         self.btn_arithmetic.clicked.connect(self.arithmetic_requested.emit)
         layout.addWidget(self.btn_arithmetic)
+
+        # Discount button
+        self.btn_discount = QPushButton("🏷️ محاسبه تخفیف کالاها...")
+        self.btn_discount.setStyleSheet("background-color: #D97706; color: white; font-weight: bold;")
+        self.btn_discount.clicked.connect(self.discount_requested.emit)
+        layout.addWidget(self.btn_discount)
 
         # Analyze button
         self.btn_analyze = QPushButton("📊 تحلیل هوشمند شیت")

@@ -92,6 +92,15 @@ class FormatCellsAction(BaseActionModel):
     font_color: Optional[str] = None
 
 
+class ApplyDiscountAction(BaseActionModel):
+    action_type: Literal["apply_discount"] = "apply_discount"
+    price_col: str  # Original price column e.g. "B" or "2"
+    discount_col: Optional[str] = None  # Discount percentage column e.g. "C" or "3"
+    discount_percent: Optional[float] = None  # Fixed discount percentage e.g. 15.0
+    target_col: Optional[str] = None  # Final price after discount column e.g. "D" or "4"
+    discount_amount_col: Optional[str] = None  # Optional discount amount column e.g. "E"
+
+
 class ApplyFormulaAction(BaseActionModel):
     action_type: Literal["apply_formula"] = "apply_formula"
     target_cell_or_range: str
@@ -110,6 +119,7 @@ class UndoLastAction(BaseActionModel):
 ExcelAction = Union[
     ColumnArithmeticAction,
     ColumnStatsAction,
+    ApplyDiscountAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,

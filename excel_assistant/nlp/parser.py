@@ -8,6 +8,7 @@ from excel_assistant.nlp.intent_models import (
     ExcelAction,
     ColumnArithmeticAction,
     ColumnStatsAction,
+    ApplyDiscountAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -30,6 +31,7 @@ from excel_assistant.core.exceptions import AmbiguousCommandError
 ACTION_CLASS_MAP = {
     "column_arithmetic": ColumnArithmeticAction,
     "column_stats": ColumnStatsAction,
+    "apply_discount": ApplyDiscountAction,
     "highlight_condition": HighlightConditionAction,
     "highlight_duplicates": HighlightDuplicatesAction,
     "delete_empty_rows": DeleteEmptyRowsAction,

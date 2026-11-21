@@ -195,3 +195,20 @@ def test_create_table_execution(test_session):
 
     assert result.success is True
     assert "جدول" in result.message_persian
+
+
+def test_discount_execution(test_session):
+    manager, sheet, executor, parser = test_session
+    analysis = SheetInspector.inspect_sheet(sheet)
+    ctx = ActionContext(manager=manager, sheet=sheet, sheet_analysis=analysis, confirmed=True)
+
+    # Set up columns: Price in B, Discount % in C, Target in E
+    cmd = "تخفیف ستون B با درصد ستون C در ستون E بنویس"
+    action = parser.parse(cmd, sheet_analysis=analysis)
+    result = executor.execute(action, ctx)
+
+    assert result.success is True
+    assert "تخفیف" in result.message_persian
+    assert sheet.get_value("E1") == "قیمت بعد از تخفیف"
+    assert sheet.get_formula("E2") == "=IF(C2>1, B2*(1-C2/100), B2*(1-C2))"
+    assert sheet.get_formula("E3") == "=IF(C3>1, B3*(1-C3/100), B3*(1-C3))"
