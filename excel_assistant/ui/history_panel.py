@@ -159,9 +159,10 @@ class HistoryPanel(QFrame):
         layout.addWidget(self.btn_analyze)
 
         # 7. Sales Calculation & Dashboard button: Radiant Ruby / Rose Coral
-        self.btn_sales = QPushButton("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...")
+        self.btn_sales = QPushButton("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...  [Ctrl+Shift+S]")
         self.btn_sales.setObjectName("salesButton")
         self.btn_sales.setProperty("class", "sidebarActionBtn")
+        self.btn_sales.setToolTip("کلید میانبر پنجره تعاملی: Ctrl+Shift+S")
         self.btn_sales.setStyleSheet(
             "QPushButton#salesButton {"
             "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #BE123C, stop:1 #F43F5E);"
@@ -178,9 +179,10 @@ class HistoryPanel(QFrame):
         layout.addWidget(self.btn_sales)
 
         # 8. Profit Calculation button: Vibrant Emerald / Bright Green
-        self.btn_profit = QPushButton("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...")
+        self.btn_profit = QPushButton("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...  [Ctrl+P]")
         self.btn_profit.setObjectName("profitButton")
         self.btn_profit.setProperty("class", "sidebarActionBtn")
+        self.btn_profit.setToolTip("کلید میانبر پنجره تعاملی: Ctrl+P")
         self.btn_profit.setStyleSheet(
             "QPushButton#profitButton {"
             "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);"

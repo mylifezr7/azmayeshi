@@ -5,6 +5,7 @@ import sys
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
     QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog
@@ -144,6 +145,15 @@ class MainWindow(QMainWindow):
         self.history_panel.unique_col_requested.connect(self._open_unique_col_dialog)
         self.history_panel.sales_requested.connect(self._open_sales_dialog)
         self.history_panel.profit_requested.connect(self._open_profit_dialog)
+
+        # Keyboard shortcuts (میانبرهای کیبورد)
+        self.shortcut_profit = QShortcut(QKeySequence("Ctrl+P"), self)
+        self.shortcut_profit.activated.connect(self._open_profit_dialog)
+        self.shortcut_profit_shift = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
+        self.shortcut_profit_shift.activated.connect(self._open_profit_dialog)
+
+        self.shortcut_sales = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
+        self.shortcut_sales.activated.connect(self._open_sales_dialog)
 
     def _perform_initial_connection(self):
         try:

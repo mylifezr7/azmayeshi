@@ -306,6 +306,223 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
         }
 
+        .hotkey-badge {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 10px;
+            margin-right: 6px;
+            color: #E2E8F0;
+            display: inline-block;
+        }
+
+        /* In-App Interactive Modal Dialogs */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .modal-card {
+            background: #081026;
+            border: 1.5px solid #10B981;
+            box-shadow: 0 12px 45px rgba(16, 185, 129, 0.35);
+            border-radius: 16px;
+            width: 92%;
+            max-width: 530px;
+            color: var(--text-light);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .modal-card-sales {
+            border: 1.5px solid #F43F5E;
+            box-shadow: 0 12px 45px rgba(244, 63, 94, 0.35);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            background: rgba(14, 30, 68, 0.65);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #34D399;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-title-sales {
+            color: #FB7185;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+        .modal-close:hover {
+            color: #EF4444;
+        }
+
+        .modal-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 13px;
+            max-height: 75vh;
+            overflow-y: auto;
+        }
+
+        .modal-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .modal-label {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #E2E8F0;
+        }
+
+        .modal-input {
+            background: #020617;
+            border: 1px solid var(--border-blue);
+            border-radius: 8px;
+            color: #F8FAFC;
+            padding: 9px 12px;
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .modal-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+        }
+
+        .modal-radios {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(2, 6, 23, 0.5);
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #CBD5E1;
+        }
+
+        .radio-option input[type="radio"] {
+            accent-color: #10B981;
+            cursor: pointer;
+        }
+
+        .radio-option-sales input[type="radio"] {
+            accent-color: #F43F5E;
+        }
+
+        .modal-preview {
+            background: rgba(4, 9, 26, 0.85);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 11.5px;
+            color: #94A3B8;
+            line-height: 1.5;
+        }
+
+        .modal-footer {
+            padding: 14px 20px;
+            background: rgba(14, 30, 68, 0.4);
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .btn-modal-cancel {
+            background: #1E293B;
+            color: #E2E8F0;
+            border: 1px solid #334155;
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+        }
+        .btn-modal-cancel:hover {
+            background: #334155;
+        }
+
+        .btn-modal-submit-profit {
+            background: linear-gradient(90deg, #059669, #10B981);
+            color: #FFFFFF;
+            border: 1px solid #10B981;
+            padding: 8px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 700;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        .btn-modal-submit-profit:hover {
+            background: linear-gradient(90deg, #10B981, #34D399);
+            box-shadow: 0 0 14px rgba(52, 211, 153, 0.7);
+        }
+
+        .btn-modal-submit-sales {
+            background: linear-gradient(90deg, #BE123C, #F43F5E);
+            color: #FFFFFF;
+            border: 1px solid #F43F5E;
+            padding: 8px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 700;
+            box-shadow: 0 0 10px rgba(244, 63, 94, 0.5);
+        }
+        .btn-modal-submit-sales:hover {
+            background: linear-gradient(90deg, #E11D48, #FB7185);
+            box-shadow: 0 0 14px rgba(251, 113, 133, 0.7);
+        }
+
         /* Center: Chat Area with Background Wallpaper */
         .chat-section {
             flex: 3;
@@ -569,8 +786,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="btn-shortcut btn-discount" onclick="promptDiscount()">🏷️ محاسبه تخفیف کالاها...</button>
             <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
             <button class="btn-shortcut btn-analyze" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
-            <button class="btn-shortcut btn-sales" onclick="promptSalesSummary()">💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...</button>
-            <button class="btn-shortcut btn-profit" onclick="promptProfitCalculation()">💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...</button>
+            <button class="btn-shortcut btn-sales" onclick="openSalesModal()">💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)... <span class="hotkey-badge">Ctrl+Shift+S</span></button>
+            <button class="btn-shortcut btn-profit" onclick="openProfitModal()">💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)... <span class="hotkey-badge">Ctrl+P</span></button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
@@ -579,8 +796,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Quick Action Chips -->
             <div class="chips-bar">
-                <button class="chip" onclick="promptProfitCalculation()">💵 محاسبه سود روزانه، ماهانه و کل</button>
-                <button class="chip" onclick="promptSalesSummary()">💰 محاسبه فروش روزانه و ماهانه</button>
+                <button class="chip" onclick="openProfitModal()">💵 پنجره تعاملی محاسبه سود (روزانه، ماهانه و کل)</button>
+                <button class="chip" onclick="openSalesModal()">💰 پنجره تعاملی محاسبه فروش (روزانه، ماهانه و کل)</button>
                 <button class="chip" onclick="promptArithmetic('add')">➕ جمع ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
@@ -612,6 +829,114 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="grid-container" id="gridContainer">
                 <div style="text-align:center; padding: 40px; color: var(--text-muted);">در حال بارگذاری داده‌های شیت...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-App Interactive Modal: Profit Wizard -->
+    <div class="modal-overlay" id="profitModalOverlay" style="display: none;" onclick="if(event.target===this) closeProfitModal()">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title">💵 پنجره تعاملی محاسبه سود (روزانه، ماهانه، سالانه و کل)</span>
+                <button class="modal-close" onclick="closeProfitModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-group">
+                    <label class="modal-label">📅 ستون تاریخ فاکتورها / تراکنش‌ها:</label>
+                    <input type="text" id="profitDateCol" class="modal-input" value="A" placeholder="شماره یا حرف (مثلاً: A یا 1)" oninput="updateProfitPreview()">
+                </div>
+                <div class="modal-group">
+                    <label class="modal-label">💰 ستون مبلغ / درآمد فروش:</label>
+                    <input type="text" id="profitSalesCol" class="modal-input" value="B" placeholder="شماره یا حرف (مثلاً: B یا 2)" oninput="updateProfitPreview()">
+                </div>
+                <div class="modal-group">
+                    <label class="modal-label">🛒 ستون مبلغ خرید / هزینه (جهت تفریق فروش منهای خرید):</label>
+                    <input type="text" id="profitPurchaseCol" class="modal-input" value="C" placeholder="اختیاری (مثلاً: C یا 3)" oninput="updateProfitPreview()">
+                </div>
+                <div class="modal-group">
+                    <label class="modal-label">⏱️ دوره زمانی تفکیک سود:</label>
+                    <div class="modal-radios">
+                        <label class="radio-option">
+                            <input type="radio" name="profitPeriodRadio" value="all" checked onchange="updateProfitPreview()">
+                            <span>📊 گزارش جامع (سود کل + تفکیک روزانه + ماهانه + سالانه)</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="profitPeriodRadio" value="total" onchange="updateProfitPreview()">
+                            <span>💵 فقط سود کل و شاخص‌های مالی</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="profitPeriodRadio" value="daily" onchange="updateProfitPreview()">
+                            <span>📅 تفکیک سود روزانه با فرمول تفریق</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="profitPeriodRadio" value="monthly" onchange="updateProfitPreview()">
+                            <span>🗓️ تفکیک سود ماهانه روند سودآوری</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="profitPeriodRadio" value="yearly" onchange="updateProfitPreview()">
+                            <span>📆 تفکیک سود سالانه</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-preview" id="profitPreviewText">
+                    👁️ پیش‌نمایش: محاسبه سود روزانه، ماهانه و کل از ستون‌های فروش B و خرید C بر اساس تاریخ A
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeProfitModal()">انصراف</button>
+                <button class="btn-modal-submit-profit" onclick="submitProfitModal()">محاسبه سود 💵</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-App Interactive Modal: Sales Wizard -->
+    <div class="modal-overlay" id="salesModalOverlay" style="display: none;" onclick="if(event.target===this) closeSalesModal()">
+        <div class="modal-card modal-card-sales">
+            <div class="modal-header">
+                <span class="modal-title modal-title-sales">💰 پنجره تعاملی محاسبه فروش (روزانه، ماهانه، سالانه و کل)</span>
+                <button class="modal-close" onclick="closeSalesModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-group">
+                    <label class="modal-label">📅 ستون تاریخ فاکتورها / تراکنش‌ها:</label>
+                    <input type="text" id="salesDateCol" class="modal-input" value="A" placeholder="شماره یا حرف (مثلاً: A یا 1)" oninput="updateSalesPreview()">
+                </div>
+                <div class="modal-group">
+                    <label class="modal-label">💳 ستون مبلغ / قیمت فروش:</label>
+                    <input type="text" id="salesAmountCol" class="modal-input" value="B" placeholder="شماره یا حرف (مثلاً: B یا 2)" oninput="updateSalesPreview()">
+                </div>
+                <div class="modal-group">
+                    <label class="modal-label">⏱️ دوره زمانی تفکیک فروش:</label>
+                    <div class="modal-radios">
+                        <label class="radio-option radio-option-sales">
+                            <input type="radio" name="salesPeriodRadio" value="all" checked onchange="updateSalesPreview()">
+                            <span>📊 گزارش جامع (فروش کل + تفکیک روزانه + ماهانه + سالانه)</span>
+                        </label>
+                        <label class="radio-option radio-option-sales">
+                            <input type="radio" name="salesPeriodRadio" value="total" onchange="updateSalesPreview()">
+                            <span>💰 فقط فروش کل و شاخص‌های مالی</span>
+                        </label>
+                        <label class="radio-option radio-option-sales">
+                            <input type="radio" name="salesPeriodRadio" value="daily" onchange="updateSalesPreview()">
+                            <span>📅 تفکیک فروش روزانه</span>
+                        </label>
+                        <label class="radio-option radio-option-sales">
+                            <input type="radio" name="salesPeriodRadio" value="monthly" onchange="updateSalesPreview()">
+                            <span>🗓️ تفکیک فروش ماهانه</span>
+                        </label>
+                        <label class="radio-option radio-option-sales">
+                            <input type="radio" name="salesPeriodRadio" value="yearly" onchange="updateSalesPreview()">
+                            <span>📆 تفکیک فروش سالانه</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-preview" id="salesPreviewText">
+                    👁️ پیش‌نمایش: محاسبه فروش جامع بر اساس تاریخ ستون A و مبلغ ستون B
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeSalesModal()">انصراف</button>
+                <button class="btn-modal-submit-sales" onclick="submitSalesModal()">محاسبه فروش 📈</button>
             </div>
         </div>
     </div>
@@ -754,34 +1079,106 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptSalesSummary() {
-            const dateCol = prompt("ستون تاریخ را وارد کنید (مثلاً: A یا 1):", "A");
-            if (!dateCol || !dateCol.trim()) return;
-            const amtCol = prompt("ستون مبلغ فروش را وارد کنید (مثلاً: B یا 2 یا D):", "B");
-            if (!amtCol || !amtCol.trim()) return;
-            const period = prompt("دوره زمانی محاسبه (all: همه | daily: روزانه | monthly: ماهانه | yearly: سالانه | total: کل):", "all");
-            const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
-            const pText = periodMap[period] || "روزانه و ماهانه و سالانه و کل";
-            const cmd = `محاسبه فروش ${pText} ستون فروش ${amtCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
-            sendCommand(cmd);
+            openSalesModal();
         }
 
         function promptProfitCalculation() {
-            const dateCol = prompt("ستون تاریخ را وارد کنید (مثلاً: A یا 1):", "A");
-            if (!dateCol || !dateCol.trim()) return;
-            const salesCol = prompt("ستون مبلغ فروش را وارد کنید (مثلاً: B یا 2 یا C):", "B");
-            if (!salesCol || !salesCol.trim()) return;
-            const purchaseCol = prompt("ستون مبلغ خرید/هزینه (اختیاری جهت تفریق، مثلاً: C یا 3):", "C");
-            const period = prompt("دوره زمانی محاسبه سود (all: روزانه، ماهانه، سالانه و کل | daily: روزانه | monthly: ماهانه | yearly: سالانه | total: کل):", "all");
+            openProfitModal();
+        }
+
+        function openProfitModal() {
+            document.getElementById('profitModalOverlay').style.display = 'flex';
+            updateProfitPreview();
+            setTimeout(() => document.getElementById('profitDateCol').focus(), 50);
+        }
+
+        function closeProfitModal() {
+            document.getElementById('profitModalOverlay').style.display = 'none';
+        }
+
+        function updateProfitPreview() {
+            const d = (document.getElementById('profitDateCol').value || 'A').trim().toUpperCase();
+            const s = (document.getElementById('profitSalesCol').value || 'B').trim().toUpperCase();
+            const p = (document.getElementById('profitPurchaseCol').value || '').trim().toUpperCase();
+            const periodRadios = document.getElementsByName('profitPeriodRadio');
+            let period = 'all';
+            for (let r of periodRadios) { if (r.checked) { period = r.value; break; } }
+            const periodMap = {all: "روزانه، ماهانه، سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
+            const pText = periodMap[period] || "روزانه، ماهانه و کل";
+            const formulaText = p ? `سود = ستون ${s} - ستون ${p}` : `سود مستقیم ستون ${s}`;
+            document.getElementById('profitPreviewText').innerText = `👁️ پیش‌نمایش: محاسبه سود (${pText}) با فرمول «${formulaText}» بر اساس تاریخ ستون ${d} و ایجاد شیت «گزارش_سود»`;
+        }
+
+        function submitProfitModal() {
+            const d = (document.getElementById('profitDateCol').value || 'A').trim().toUpperCase();
+            const s = (document.getElementById('profitSalesCol').value || 'B').trim().toUpperCase();
+            const p = (document.getElementById('profitPurchaseCol').value || '').trim().toUpperCase();
+            const periodRadios = document.getElementsByName('profitPeriodRadio');
+            let period = 'all';
+            for (let r of periodRadios) { if (r.checked) { period = r.value; break; } }
             const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
-            const pText = periodMap[period ? period.trim().toLowerCase() : "all"] || "روزانه و ماهانه و سالانه و کل";
+            const pText = periodMap[period] || "روزانه و ماهانه و سالانه و کل";
+
+            closeProfitModal();
             let cmd = "";
-            if (purchaseCol && purchaseCol.trim()) {
-                cmd = `محاسبه سود ${pText} ستون فروش ${salesCol.trim()} و خرید ${purchaseCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
+            if (p) {
+                cmd = `محاسبه سود ${pText} ستون فروش ${s} و خرید ${p} بر اساس تاریخ ${d}`;
             } else {
-                cmd = `محاسبه سود ${pText} ستون فروش ${salesCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
+                cmd = `محاسبه سود ${pText} ستون فروش ${s} بر اساس تاریخ ${d}`;
             }
             sendCommand(cmd);
         }
+
+        function openSalesModal() {
+            document.getElementById('salesModalOverlay').style.display = 'flex';
+            updateSalesPreview();
+            setTimeout(() => document.getElementById('salesDateCol').focus(), 50);
+        }
+
+        function closeSalesModal() {
+            document.getElementById('salesModalOverlay').style.display = 'none';
+        }
+
+        function updateSalesPreview() {
+            const d = (document.getElementById('salesDateCol').value || 'A').trim().toUpperCase();
+            const a = (document.getElementById('salesAmountCol').value || 'B').trim().toUpperCase();
+            const periodRadios = document.getElementsByName('salesPeriodRadio');
+            let period = 'all';
+            for (let r of periodRadios) { if (r.checked) { period = r.value; break; } }
+            const periodMap = {all: "روزانه، ماهانه، سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
+            const pText = periodMap[period] || "روزانه، ماهانه و کل";
+            document.getElementById('salesPreviewText').innerText = `👁️ پیش‌نمایش: محاسبه فروش (${pText}) ستون مبلغ ${a} بر اساس تاریخ ستون ${d} و ایجاد شیت «گزارش_فروش»`;
+        }
+
+        function submitSalesModal() {
+            const d = (document.getElementById('salesDateCol').value || 'A').trim().toUpperCase();
+            const a = (document.getElementById('salesAmountCol').value || 'B').trim().toUpperCase();
+            const periodRadios = document.getElementsByName('salesPeriodRadio');
+            let period = 'all';
+            for (let r of periodRadios) { if (r.checked) { period = r.value; break; } }
+            const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
+            const pText = periodMap[period] || "روزانه و ماهانه و سالانه و کل";
+
+            closeSalesModal();
+            const cmd = `محاسبه فروش ${pText} ستون فروش ${a} بر اساس تاریخ ${d}`;
+            sendCommand(cmd);
+        }
+
+        // Global Keyboard Shortcuts (میانبرهای کیبورد)
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+                e.preventDefault();
+                openProfitModal();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                openSalesModal();
+            }
+            if (e.key === 'Escape') {
+                closeProfitModal();
+                closeSalesModal();
+            }
+        });
 
         async function sendCommand(cmd) {
             appendMessage('user', cmd);
