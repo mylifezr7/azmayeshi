@@ -151,8 +151,13 @@ class ProfitCalculationAction(BaseActionModel):
     sales_price_col: Optional[str] = None
     purchase_qty_col: Optional[str] = None
     purchase_price_col: Optional[str] = None
+    date_col: Optional[str] = None
+    profit_col: Optional[str] = None
+    sales_col: Optional[str] = None
+    purchase_col: Optional[str] = None
+    period: Literal["all", "daily", "monthly", "yearly", "total", "by_item"] = "all"
     create_report_sheet: bool = True
-    description_persian: str = "محاسبه سود (مبلغ فروش منهای مبلغ خرید)"
+    description_persian: str = "محاسبه سود (روزانه، ماهانه، سالانه و کل)"
 
 
 class UndoLastAction(BaseActionModel):

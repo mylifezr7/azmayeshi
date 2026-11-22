@@ -22,13 +22,102 @@ def test_parse_profit_commands():
     assert action.sales_sheet == "1"
     assert action.purchase_sheet == "2"
 
-    # 2. General profit command
-    action_simple = parser.parse("محاسبه سود")
-    assert isinstance(action_simple, ProfitCalculationAction)
+    # 2. User's new prompt: محاسبه سود روزانه ماهانه و سالانه و کل
+    action_periods = parser.parse("محاسبه سود روزانه ماهانه و سالانه و کل")
+    assert isinstance(action_periods, ProfitCalculationAction)
+    assert action_periods.period == "all"
 
-    # 3. Another natural phrasing
+    # 3. Individual period prompts
+    action_daily = parser.parse("محاسبه سود روزانه")
+    assert isinstance(action_daily, ProfitCalculationAction)
+    assert action_daily.period == "daily"
+
+    action_monthly = parser.parse("محاسبه سود ماهانه")
+    assert isinstance(action_monthly, ProfitCalculationAction)
+    assert action_monthly.period == "monthly"
+
+    action_yearly = parser.parse("سود سالانه رو حساب کن")
+    assert isinstance(action_yearly, ProfitCalculationAction)
+    assert action_yearly.period == "yearly"
+
+    action_total = parser.parse("محاسبه سود کل")
+    assert isinstance(action_total, ProfitCalculationAction)
+    assert action_total.period == "total"
+
+    # 4. Another natural phrasing
     action_phrase = parser.parse("فروش رو منهای مبلغ خرید کن تا سود به دست بیاد")
     assert isinstance(action_phrase, ProfitCalculationAction)
+
+
+def test_execute_profit_calculation_with_dates_and_periods():
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    sheet = manager.get_active_sheet()
+    sheet.set_value("A1", "تاریخ")
+    sheet.set_value("B1", "کالا")
+    sheet.set_value("C1", "تعداد فروش")
+    sheet.set_value("D1", "قیمت فروش")
+
+    sheet.set_value("A2", "1403/08/20")
+    sheet.set_value("B2", "لپ‌تاپ")
+    sheet.set_value("C2", 2)
+    sheet.set_value("D2", 20000000)
+
+    sheet.set_value("A3", "1403/08/21")
+    sheet.set_value("B3", "موبایل")
+    sheet.set_value("C3", 5)
+    sheet.set_value("D3", 10000000)
+
+    sheet.set_value("A4", "1403/09/01")
+    sheet.set_value("B4", "موبایل")
+    sheet.set_value("C4", 5)
+    sheet.set_value("D4", 10000000)
+
+    # Sheet 2: Purchases
+    sheet2 = manager.active_driver.create_sheet("Sheet2")
+    sheet2.set_value("A1", "نام کالا")
+    sheet2.set_value("B1", "تعداد خرید")
+    sheet2.set_value("C1", "قیمت خرید")
+
+    sheet2.set_value("A2", "لپ‌تاپ")
+    sheet2.set_value("B2", 2)
+    sheet2.set_value("C2", 15000000)
+
+    sheet2.set_value("A3", "موبایل")
+    sheet2.set_value("B3", 10)
+    sheet2.set_value("C3", 8000000)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="Sheet2",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=sheet)
+
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    assert "گزارش_سود" in manager.active_driver.get_sheet_names()
+    assert res.data["daily_count"] >= 2
+    assert res.data["monthly_count"] >= 2
+
+    # Check report content
+    report_sheet = manager.active_driver.get_sheet("گزارش_سود")
+    report_text = ""
+    for r in range(1, 40):
+        for c in ["A", "B", "C", "D", "E", "F"]:
+            v = report_sheet.get_value(f"{c}{r}")
+            if v:
+                report_text += f" {v}"
+
+    assert "جدول تفکیک سود روزانه" in report_text
+    assert "جدول تفکیک سود ماهانه" in report_text
+    assert "سود خالص کل" in report_text
+
+    manager.close()
 
 
 def test_execute_profit_calculation_two_sheets():

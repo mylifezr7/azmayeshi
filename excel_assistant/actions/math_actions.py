@@ -679,20 +679,42 @@ class MathActionHandler:
         s_qty_col = None
         s_price_col = None
         s_prod_col = None
+        s_date_col = None
+        s_explicit_profit_col = None
+        s_explicit_cost_col = None
 
         qty_keywords = ["تعداد", "مقدار", "تعداد فروش", "فروش", "qty", "quantity", "count"]
         price_keywords = ["قیمت", "قیمت فروش", "مبلغ فروش", "فی فروش", "نرخ", "price", "unit price"]
         prod_keywords = ["کالا", "محصول", "نام", "شرح", "کد", "item", "product", "name"]
+        date_keywords = ["تاریخ", "date", "زمان", "time", "روز"]
+        profit_keywords = ["سود", "profit", "سود خالص", "درآمد خالص", "مارجین"]
+        cost_keywords = ["خرید", "هزینه", "بهای تمام شده", "قیمت تمام شده", "cost"]
 
         for c in range(s_min_c, s_max_c + 1):
             c_let = col_index_to_letter(c)
             hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").lower()
             if not s_prod_col and any(k in hdr for k in prod_keywords):
                 s_prod_col = c_let
+            elif not s_date_col and any(k in hdr for k in date_keywords):
+                s_date_col = c_let
             elif not s_qty_col and any(k in hdr for k in qty_keywords):
                 s_qty_col = c_let
             elif not s_price_col and any(k in hdr for k in price_keywords):
                 s_price_col = c_let
+            elif not s_explicit_profit_col and any(k in hdr for k in profit_keywords):
+                s_explicit_profit_col = c_let
+            elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords):
+                s_explicit_cost_col = c_let
+
+        if action.date_col:
+            d_raw = str(action.date_col).strip().upper()
+            s_date_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+        if action.profit_col:
+            p_raw = str(action.profit_col).strip().upper()
+            s_explicit_profit_col = col_index_to_letter(int(p_raw)) if p_raw.isdigit() else p_raw
+        if action.purchase_col:
+            pc_raw = str(action.purchase_col).strip().upper()
+            s_explicit_cost_col = col_index_to_letter(int(pc_raw)) if pc_raw.isdigit() else pc_raw
 
         if action.sales_qty_col:
             sq_raw = str(action.sales_qty_col).strip().upper()
@@ -701,9 +723,9 @@ class MathActionHandler:
             sp_raw = str(action.sales_price_col).strip().upper()
             s_price_col = col_index_to_letter(int(sp_raw)) if sp_raw.isdigit() else sp_raw
 
-        if not s_prod_col: s_prod_col = "A"
-        if not s_qty_col: s_qty_col = "B" if s_prod_col != "B" else "C"
-        if not s_price_col: s_price_col = "C" if s_qty_col != "C" and s_prod_col != "C" else "D"
+        if not s_prod_col: s_prod_col = "A" if s_date_col != "A" else "B"
+        if not s_qty_col: s_qty_col = "B" if s_prod_col != "B" and s_date_col != "B" else "C"
+        if not s_price_col: s_price_col = "C" if s_qty_col != "C" and s_prod_col != "C" and s_date_col != "C" else "D"
 
         # Auto-detect columns in Purchase Sheet
         p_qty_col = None
@@ -740,28 +762,59 @@ class MathActionHandler:
             prod = s_sheet.get_value(f"{s_prod_col}{r}")
             qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}"))
             price = clean_val(s_sheet.get_value(f"{s_price_col}{r}"))
-            if prod is not None or qty > 0 or price > 0:
+
+            d_str = None
+            if s_date_col:
+                d_val = s_sheet.get_value(f"{s_date_col}{r}")
+                if hasattr(d_val, 'strftime'):
+                    d_str = d_val.strftime("%Y/%m/%d")
+                elif d_val is not None:
+                    sd = str(d_val).strip()
+                    m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', sd)
+                    if m:
+                        d_str = f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
+                    elif len(sd) >= 4:
+                        d_str = sd
+
+            direct_sales = clean_val(s_sheet.get_value(f"{action.sales_col}{r}")) if action.sales_col else 0.0
+            if direct_sales > 0:
+                tot_sales = direct_sales
+            elif qty > 0 and price > 0:
+                tot_sales = qty * price
+            elif price > 0:
+                tot_sales = price
+            else:
+                tot_sales = 0.0
+
+            direct_cost = clean_val(s_sheet.get_value(f"{s_explicit_cost_col}{r}")) if s_explicit_cost_col else 0.0
+            direct_profit = clean_val(s_sheet.get_value(f"{s_explicit_profit_col}{r}")) if s_explicit_profit_col else None
+
+            if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str:
                 sales_records.append({
                     "row": r,
                     "product": str(prod).strip() if prod is not None else f"ردیف {r}",
-                    "qty": qty,
-                    "price": price,
-                    "total_sales": qty * price
+                    "qty": qty if qty > 0 else 1.0,
+                    "price": price if price > 0 else tot_sales,
+                    "total_sales": tot_sales,
+                    "direct_cost": direct_cost,
+                    "direct_profit": direct_profit,
+                    "date": d_str
                 })
 
         purchase_records = []
-        for r in range(p_min_r + 1, p_max_r + 1):
-            prod = p_sheet.get_value(f"{p_prod_col}{r}")
-            qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
-            price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
-            if prod is not None or qty > 0 or price > 0:
-                purchase_records.append({
-                    "row": r,
-                    "product": str(prod).strip() if prod is not None else f"ردیف {r}",
-                    "qty": qty,
-                    "price": price,
-                    "total_purchase": qty * price
-                })
+        if sales_sheet_name != purchase_sheet_name:
+            for r in range(p_min_r + 1, p_max_r + 1):
+                prod = p_sheet.get_value(f"{p_prod_col}{r}")
+                qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
+                price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
+                if prod is not None or qty > 0 or price > 0:
+                    purchase_records.append({
+                        "row": r,
+                        "product": str(prod).strip() if prod is not None else f"ردیف {r}",
+                        "qty": qty,
+                        "price": price,
+                        "total_purchase": qty * price
+                    })
 
         has_named_products = any(sr["product"] and not sr["product"].startswith("ردیف ") for sr in sales_records) and \
                              any(pr["product"] and not pr["product"].startswith("ردیف ") for pr in purchase_records)
@@ -769,7 +822,33 @@ class MathActionHandler:
         purchase_by_name = {pr["product"]: pr for pr in purchase_records}
         matched_items = []
 
-        if has_named_products:
+        if sales_sheet_name == purchase_sheet_name:
+            # Single sheet profit calculation (e.g. Sales col - Cost col or explicit profit)
+            for sr in sales_records:
+                if sr["direct_profit"] is not None:
+                    profit = sr["direct_profit"]
+                    p_tot = sr["total_sales"] - profit if sr["total_sales"] > 0 else 0.0
+                elif sr["direct_cost"] > 0:
+                    p_tot = sr["direct_cost"]
+                    profit = sr["total_sales"] - p_tot
+                else:
+                    p_tot = 0.0
+                    profit = sr["total_sales"]
+
+                margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
+                matched_items.append({
+                    "product": sr["product"],
+                    "s_qty": sr["qty"],
+                    "s_price": sr["price"],
+                    "s_total": sr["total_sales"],
+                    "p_qty": 1.0,
+                    "p_price": p_tot,
+                    "p_total": p_tot,
+                    "profit": profit,
+                    "margin": margin,
+                    "date": sr["date"]
+                })
+        elif has_named_products:
             for sr in sales_records:
                 pr = purchase_by_name.get(sr["product"])
                 p_qty = pr["qty"] if pr else 0.0
@@ -786,7 +865,8 @@ class MathActionHandler:
                     "p_price": p_price,
                     "p_total": p_total,
                     "profit": profit,
-                    "margin": margin
+                    "margin": margin,
+                    "date": sr["date"]
                 })
         else:
             max_len = max(len(sales_records), len(purchase_records))
@@ -815,13 +895,49 @@ class MathActionHandler:
                     "p_price": p_price,
                     "p_total": p_total,
                     "profit": profit,
-                    "margin": margin
+                    "margin": margin,
+                    "date": sr["date"] if sr else None
                 })
 
         total_sales_all = sum(it["s_total"] for it in matched_items)
         total_purchase_all = sum(it["p_total"] for it in matched_items)
         total_profit_all = total_sales_all - total_purchase_all
         overall_margin = (total_profit_all / total_sales_all * 100) if total_sales_all > 0 else 0.0
+
+        best_item = max(matched_items, key=lambda x: x["profit"]) if matched_items else {"product": "-", "profit": 0}
+        loss_items = [it for it in matched_items if it["profit"] < 0]
+
+        # Time-period aggregations (Daily, Monthly, Yearly)
+        daily_map = defaultdict(lambda: {"sales": 0.0, "purchase": 0.0, "profit": 0.0, "count": 0})
+        monthly_map = defaultdict(lambda: {"sales": 0.0, "purchase": 0.0, "profit": 0.0, "count": 0})
+        yearly_map = defaultdict(lambda: {"sales": 0.0, "purchase": 0.0, "profit": 0.0, "count": 0})
+
+        has_dates = any(it.get("date") for it in matched_items)
+        if has_dates:
+            for it in matched_items:
+                dt = it.get("date")
+                if not dt:
+                    continue
+                s_tot = it["s_total"]
+                p_tot = it["p_total"]
+                prof = it["profit"]
+
+                daily_map[dt]["sales"] += s_tot
+                daily_map[dt]["purchase"] += p_tot
+                daily_map[dt]["profit"] += prof
+                daily_map[dt]["count"] += 1
+
+                mo_key = dt[:7] if len(dt) >= 7 and dt[4] in ('/', '-') else dt
+                monthly_map[mo_key]["sales"] += s_tot
+                monthly_map[mo_key]["purchase"] += p_tot
+                monthly_map[mo_key]["profit"] += prof
+                monthly_map[mo_key]["count"] += 1
+
+                yr_key = dt[:4] if len(dt) >= 4 and dt[:4].isdigit() else "نامشخص"
+                yearly_map[yr_key]["sales"] += s_tot
+                yearly_map[yr_key]["purchase"] += p_tot
+                yearly_map[yr_key]["profit"] += prof
+                yearly_map[yr_key]["count"] += 1
 
         best_item = max(matched_items, key=lambda x: x["profit"]) if matched_items else {"product": "-", "profit": 0}
         loss_items = [it for it in matched_items if it["profit"] < 0]
@@ -860,9 +976,17 @@ class MathActionHandler:
                 ("🛒 کل مبلغ خرید", f"{total_purchase_all:,.0f} تومان", f"شیت: {purchase_sheet_name}"),
                 ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای خرید کل"),
                 ("📈 میانگین حاشیه سود", f"{overall_margin:.1f}%", "درصد سود از کل فروش"),
-                ("🏆 پر سودترین کالا", f"{best_item['product']} ({best_item['profit']:,.0f} تومان)", "بیشترین سود ریالی"),
-                ("⚠️ تعداد اقلام زیان‌ده", f"{len(loss_items)} کالا", "اقلام با سود منفی")
             ]
+            if has_dates and daily_map:
+                best_day = max(daily_map.items(), key=lambda x: x[1]["profit"])
+                kpis.append(("📅 پرسودترین روز", f"{best_day[0]} ({best_day[1]['profit']:,.0f} تومان)", "بیشترین سود روزانه"))
+            if has_dates and monthly_map:
+                best_month = max(monthly_map.items(), key=lambda x: x[1]["profit"])
+                kpis.append(("🗓️ پرسودترین ماه", f"{best_month[0]} ({best_month[1]['profit']:,.0f} تومان)", "بیشترین سود ماهانه"))
+
+            kpis.append(("🏆 پر سودترین کالا", f"{best_item['product']} ({best_item['profit']:,.0f} تومان)", "بیشترین سود ریالی"))
+            kpis.append(("⚠️ تعداد اقلام زیان‌ده", f"{len(loss_items)} کالا", "اقلام با سود منفی"))
+
             for title, val, desc in kpis:
                 report_sheet.set_value(f"A{curr_r}", title)
                 report_sheet.set_value(f"B{curr_r}", val)
@@ -873,7 +997,99 @@ class MathActionHandler:
                 curr_r += 1
             curr_r += 2
 
-            # Section 2: Detailed Profit Table
+            # Section 2: Daily Profit Breakdown (if dates exist and requested)
+            if has_dates and action.period in ["all", "daily"]:
+                report_sheet.set_value(f"A{curr_r}", "📅 جدول تفکیک سود روزانه")
+                report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+                curr_r += 1
+
+                d_headers = ["ردیف", "تاریخ", "تعداد تراکنش", "کل فروش روز (تومان)", "کل خرید/هزینه (تومان)", "سود خالص روز (تومان)", "حاشیه سود روز (%)"]
+                for idx, h in enumerate(d_headers):
+                    col_c = col_index_to_letter(idx + 1)
+                    report_sheet.set_value(f"{col_c}{curr_r}", h)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                    report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
+                curr_r += 1
+
+                start_d_r = curr_r
+                for i, (dt, d_data) in enumerate(sorted(daily_map.items())):
+                    r_num = curr_r
+                    report_sheet.set_value(f"A{r_num}", i + 1)
+                    report_sheet.set_value(f"B{r_num}", dt)
+                    report_sheet.set_value(f"C{r_num}", d_data["count"])
+                    report_sheet.set_value(f"D{r_num}", d_data["sales"])
+                    report_sheet.set_value(f"E{r_num}", d_data["purchase"])
+                    report_sheet.set_formula(f"F{r_num}", f"=D{r_num}-E{r_num}")
+                    report_sheet.set_formula(f"G{r_num}", f'=IF(D{r_num}>0, (F{r_num}/D{r_num})*100, 0)')
+
+                    report_sheet.set_font(f"F{r_num}", bold=True)
+                    if d_data["profit"] >= 0:
+                        report_sheet.set_cell_color(f"F{r_num}", "#064E3B")
+                    else:
+                        report_sheet.set_cell_color(f"F{r_num}", "#7F1D1D")
+                    curr_r += 1
+
+                last_d_r = curr_r
+                report_sheet.set_value(f"A{last_d_r}", "جمع کل روزانه")
+                report_sheet.set_font(f"A{last_d_r}", bold=True)
+                report_sheet.set_formula(f"C{last_d_r}", f"=SUM(C{start_d_r}:C{last_d_r-1})")
+                report_sheet.set_formula(f"D{last_d_r}", f"=SUM(D{start_d_r}:D{last_d_r-1})")
+                report_sheet.set_formula(f"E{last_d_r}", f"=SUM(E{start_d_r}:E{last_d_r-1})")
+                report_sheet.set_formula(f"F{last_d_r}", f"=D{last_d_r}-E{last_d_r}")
+                report_sheet.set_formula(f"G{last_d_r}", f'=IF(D{last_d_r}>0, (F{last_d_r}/D{last_d_r})*100, 0)')
+                for c_idx in range(1, 8):
+                    col_c = col_index_to_letter(c_idx)
+                    report_sheet.set_font(f"{col_c}{last_d_r}", bold=True)
+                    report_sheet.set_cell_color(f"{col_c}{last_d_r}", "#0B1938")
+                curr_r += 2
+
+            # Section 3: Monthly Profit Breakdown (if dates exist and requested)
+            if has_dates and action.period in ["all", "monthly"]:
+                report_sheet.set_value(f"A{curr_r}", "🗓️ جدول تفکیک سود ماهانه")
+                report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+                curr_r += 1
+
+                m_headers = ["ردیف", "ماه", "تعداد تراکنش", "کل فروش ماه (تومان)", "کل خرید/هزینه (تومان)", "سود خالص ماه (تومان)", "حاشیه سود ماه (%)"]
+                for idx, h in enumerate(m_headers):
+                    col_c = col_index_to_letter(idx + 1)
+                    report_sheet.set_value(f"{col_c}{curr_r}", h)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                    report_sheet.set_cell_color(f"{col_c}{curr_r}", "#7C2D12")
+                curr_r += 1
+
+                start_m_r = curr_r
+                for i, (mo, m_data) in enumerate(sorted(monthly_map.items())):
+                    r_num = curr_r
+                    report_sheet.set_value(f"A{r_num}", i + 1)
+                    report_sheet.set_value(f"B{r_num}", mo)
+                    report_sheet.set_value(f"C{r_num}", m_data["count"])
+                    report_sheet.set_value(f"D{r_num}", m_data["sales"])
+                    report_sheet.set_value(f"E{r_num}", m_data["purchase"])
+                    report_sheet.set_formula(f"F{r_num}", f"=D{r_num}-E{r_num}")
+                    report_sheet.set_formula(f"G{r_num}", f'=IF(D{r_num}>0, (F{r_num}/D{r_num})*100, 0)')
+
+                    report_sheet.set_font(f"F{r_num}", bold=True)
+                    if m_data["profit"] >= 0:
+                        report_sheet.set_cell_color(f"F{r_num}", "#064E3B")
+                    else:
+                        report_sheet.set_cell_color(f"F{r_num}", "#7F1D1D")
+                    curr_r += 1
+
+                last_m_r = curr_r
+                report_sheet.set_value(f"A{last_m_r}", "جمع کل ماهانه")
+                report_sheet.set_font(f"A{last_m_r}", bold=True)
+                report_sheet.set_formula(f"C{last_m_r}", f"=SUM(C{start_m_r}:C{last_m_r-1})")
+                report_sheet.set_formula(f"D{last_m_r}", f"=SUM(D{start_m_r}:D{last_m_r-1})")
+                report_sheet.set_formula(f"E{last_m_r}", f"=SUM(E{start_m_r}:E{last_m_r-1})")
+                report_sheet.set_formula(f"F{last_m_r}", f"=D{last_m_r}-E{last_m_r}")
+                report_sheet.set_formula(f"G{last_m_r}", f'=IF(D{last_m_r}>0, (F{last_m_r}/D{last_m_r})*100, 0)')
+                for c_idx in range(1, 8):
+                    col_c = col_index_to_letter(c_idx)
+                    report_sheet.set_font(f"{col_c}{last_m_r}", bold=True)
+                    report_sheet.set_cell_color(f"{col_c}{last_m_r}", "#0B1938")
+                curr_r += 2
+
+            # Section 4: Detailed Profit Table by Item
             report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان به ازای هر کالا")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
             curr_r += 1
@@ -938,21 +1154,37 @@ class MathActionHandler:
 
         # 5. Format Persian message
         profit_status = "🟢 سودآور" if total_profit_all >= 0 else "🔴 زیان‌ده"
+        period_title = {
+            "all": "روزانه، ماهانه، سالانه و کل",
+            "daily": "روزانه",
+            "monthly": "ماهانه",
+            "yearly": "سالانه",
+            "total": "کل",
+            "by_item": "تفکیک کالاها"
+        }.get(action.period, "روزانه، ماهانه، سالانه و کل")
+
         msg_lines = [
-            f"💵 **محاسبه سود با موفقیت انجام شد ({profit_status}):**",
-            f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد: `{len(sales_records)}` قلم)",
-            f"🛒 **کل مبلغ خرید ({purchase_sheet_name}):** `{total_purchase_all:,.0f}` تومان (تعداد: `{len(purchase_records)}` قلم)",
+            f"💵 **محاسبه سود ({period_title}) با موفقیت انجام شد ({profit_status}):**",
+            f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد: `{len(matched_items)}` قلم)",
+            f"🛒 **کل مبلغ خرید ({purchase_sheet_name}):** `{total_purchase_all:,.0f}` تومان",
             "───────────────────────────────",
             f"✨ **سود خالص کل (فروش منهای خرید):** **`{total_profit_all:,.0f}` تومان**",
-            f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**",
-            f"🏆 **پرسودترین کالا:** `{best_item['product']}` با سود `{best_item['profit']:,.0f}` تومان"
+            f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**"
         ]
+        if has_dates and daily_map:
+            best_day = max(daily_map.items(), key=lambda x: x[1]["profit"])
+            msg_lines.append(f"📅 **تعداد روزهای ثبت‌شده:** `{len(daily_map)}` روز (پرسودترین روز: `{best_day[0]}` با سود `{best_day[1]['profit']:,.0f}` تومان)")
+        if has_dates and monthly_map:
+            best_month = max(monthly_map.items(), key=lambda x: x[1]["profit"])
+            msg_lines.append(f"🗓️ **تعداد ماه‌های فعال:** `{len(monthly_map)}` ماه (پرسودترین ماه: `{best_month[0]}` با سود `{best_month[1]['profit']:,.0f}` تومان)")
+        if best_item and best_item["product"] != "-":
+            msg_lines.append(f"🏆 **پرسودترین کالا:** `{best_item['product']}` با سود `{best_item['profit']:,.0f}` تومان")
         if loss_items:
             msg_lines.append(f"⚠️ **اقلام با سود منفی:** `{len(loss_items)}` قلم کالا نیازمند بازنگری در قیمت‌گذاری هستند.")
 
         if action.create_report_sheet:
             msg_lines.append("")
-            msg_lines.append(f"📑 شیت اختصاصی **«{report_sheet_name}»** همراه با فرمول‌های تفریق `فروش - خرید`، کل اقلام و جمع نهایی ایجاد گردید.")
+            msg_lines.append(f"📑 شیت اختصاصی **«{report_sheet_name}»** همراه با داشبورد، جداول تفکیک دوره‌ای (روزانه/ماهانه/سالانه) و فرمول‌های اکسل ایجاد گردید.")
 
         return ActionResult(
             success=True,
@@ -963,6 +1195,8 @@ class MathActionHandler:
                 "total_purchase": total_purchase_all,
                 "total_profit": total_profit_all,
                 "margin_pct": overall_margin,
-                "item_count": len(matched_items)
+                "item_count": len(matched_items),
+                "daily_count": len(daily_map) if has_dates else 0,
+                "monthly_count": len(monthly_map) if has_dates else 0
             }
         )

@@ -570,7 +570,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
             <button class="btn-shortcut btn-analyze" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
             <button class="btn-shortcut btn-sales" onclick="promptSalesSummary()">💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...</button>
-            <button class="btn-shortcut btn-profit" onclick="promptProfitCalculation()">💵 محاسبه سود (فروش - خرید)...</button>
+            <button class="btn-shortcut btn-profit" onclick="promptProfitCalculation()">💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...</button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
@@ -579,7 +579,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Quick Action Chips -->
             <div class="chips-bar">
-                <button class="chip" onclick="promptProfitCalculation()">💵 محاسبه سود (شیت ۱ و ۲)</button>
+                <button class="chip" onclick="promptProfitCalculation()">💵 محاسبه سود روزانه، ماهانه و کل</button>
                 <button class="chip" onclick="promptSalesSummary()">💰 محاسبه فروش روزانه و ماهانه</button>
                 <button class="chip" onclick="promptArithmetic('add')">➕ جمع ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
@@ -766,10 +766,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptProfitCalculation() {
-            const sSheet = prompt("نام یا شماره شیت فروش (پیش‌فرض: شیت اول):", "Sheet1") || "1";
-            const pSheet = prompt("نام یا شماره شیت خرید (پیش‌فرض: شیت دوم):", "Sheet2") || "2";
-            const cmd = `تعداد فروش و قیمت فروش در ${sSheet.trim()} و تعداد خرید و قیمت خرید در ${pSheet.trim()}، فروش رو منهای خرید کن تا سود به دست بیاد`;
-            sendCommand(cmd);
+            const period = prompt("دوره زمانی محاسبه سود (all: روزانه، ماهانه، سالانه و کل | daily: روزانه | monthly: ماهانه | yearly: سالانه | total: کل | sheets: مقایسه شیت ۱ و ۲):", "all");
+            if (!period || !period.trim()) return;
+            const p = period.trim().toLowerCase();
+            if (p === "sheets" || p === "شیت" || p === "2") {
+                const sSheet = prompt("نام یا شماره شیت فروش (پیش‌فرض: شیت اول):", "Sheet1") || "1";
+                const pSheet = prompt("نام یا شماره شیت خرید (پیش‌فرض: شیت دوم):", "Sheet2") || "2";
+                const cmd = `تعداد فروش و قیمت فروش در ${sSheet.trim()} و تعداد خرید و قیمت خرید در ${pSheet.trim()}، فروش رو منهای خرید کن تا سود به دست بیاد`;
+                sendCommand(cmd);
+            } else {
+                const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
+                const pText = periodMap[p] || "روزانه و ماهانه و سالانه و کل";
+                const cmd = `محاسبه سود ${pText}`;
+                sendCommand(cmd);
+            }
         }
 
         async function sendCommand(cmd) {
@@ -966,31 +976,37 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
     # Initialize sample data if fresh workbook
     sheet = ctrl.manager.get_active_sheet()
     if sheet.get_value("A1") is None:
-        # Sheet 1: Sales
-        sheet.set_value("A1", "کالا")
-        sheet.set_value("B1", "تعداد فروش")
-        sheet.set_value("C1", "قیمت فروش")
-        sheet.set_value("D1", "فروش کل")
+        # Sheet 1: Sales with dates
+        sheet.set_value("A1", "تاریخ")
+        sheet.set_value("B1", "کالا")
+        sheet.set_value("C1", "تعداد فروش")
+        sheet.set_value("D1", "قیمت فروش")
+        sheet.set_value("E1", "فروش کل")
 
-        sheet.set_value("A2", "لپ‌تاپ")
-        sheet.set_value("B2", 5)
-        sheet.set_value("C2", 1200)
+        sheet.set_value("A2", "1403/08/20")
+        sheet.set_value("B2", "لپ‌تاپ")
+        sheet.set_value("C2", 5)
+        sheet.set_value("D2", 1200)
 
-        sheet.set_value("A3", "موبایل")
-        sheet.set_value("B3", 10)
-        sheet.set_value("C3", 800)
+        sheet.set_value("A3", "1403/08/21")
+        sheet.set_value("B3", "موبایل")
+        sheet.set_value("C3", 10)
+        sheet.set_value("D3", 800)
 
-        sheet.set_value("A4", "تبلت")
-        sheet.set_value("B4", 7)
-        sheet.set_value("C4", 450)
+        sheet.set_value("A4", "1403/08/22")
+        sheet.set_value("B4", "تبلت")
+        sheet.set_value("C4", 7)
+        sheet.set_value("D4", 450)
 
-        sheet.set_value("A5", "موبایل")
-        sheet.set_value("B5", 10)
-        sheet.set_value("C5", 800)
+        sheet.set_value("A5", "1403/09/01")
+        sheet.set_value("B5", "موبایل")
+        sheet.set_value("C5", 10)
+        sheet.set_value("D5", 800)
 
-        sheet.set_value("A6", "مانیتور")
-        sheet.set_value("B6", 3)
-        sheet.set_value("C6", 300)
+        sheet.set_value("A6", "1403/09/02")
+        sheet.set_value("B6", "مانیتور")
+        sheet.set_value("C6", 3)
+        sheet.set_value("D6", 300)
 
         # Create Sheet 2 for Purchases if not present
         if len(ctrl.manager.active_driver.get_sheet_names()) < 2:

@@ -170,11 +170,25 @@ class PersianRuleParser:
                 description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
             )
 
-        # 7.55 Profit Calculation: محاسبه سود (فروش منهای خرید)
+        # 7.55 Profit Calculation: محاسبه سود (روزانه، ماهانه، سالانه، کل / فروش منهای خرید)
+        # e.g.: محاسبه سود روزانه ماهانه و سالانه و کل
+        # e.g.: محاسبه سود روزانه و ماهانه
+        # e.g.: محاسبه سود روزانه
+        # e.g.: سود ماهانه رو حساب کن
         # e.g.: محاسبه سود
         # e.g.: فروش رو منهای مبلغ خرید کن تا سود به دست بیاد
         # e.g.: تعداد فروش و قیمت فروش در شیت 1 و تعداد خرید و قیمت خرید در شیت 2
         if "سود" in text or ("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])):
+            period = "all"
+            if "روزانه" in text and not any(w in text for w in ["ماهانه", "سالانه", "کل"]):
+                period = "daily"
+            elif "ماهانه" in text and not any(w in text for w in ["روزانه", "سالانه", "کل"]):
+                period = "monthly"
+            elif "سالانه" in text and not any(w in text for w in ["روزانه", "ماهانه", "کل"]):
+                period = "yearly"
+            elif "کل" in text and not any(w in text for w in ["روزانه", "ماهانه", "سالانه"]):
+                period = "total"
+
             sales_s = None
             purchase_s = None
 
@@ -182,14 +196,75 @@ class PersianRuleParser:
             if len(sheets_found) >= 2:
                 sales_s = sheets_found[0]
                 purchase_s = sheets_found[1]
+                if not any(w in text for w in ["روزانه", "ماهانه", "سالانه", "کل"]):
+                    period = "by_item"
             elif len(sheets_found) == 1:
                 sales_s = sheets_found[0]
+
+            date_col = None
+            profit_col = None
+            sales_col = None
+            purchase_col = None
+
+            date_m = re.search(r'(?:ستون|بر اساس)?\s*تاریخ\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
+            if date_m and date_m.group(1):
+                date_col = resolve_column(date_m.group(1), header_map)
+
+            profit_m = re.search(r'(?:ستون|مبلغ)?\s*سود\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
+            if profit_m and profit_m.group(1):
+                profit_col = resolve_column(profit_m.group(1), header_map)
+
+            sales_m = re.search(r'(?:ستون|مبلغ)?\s*فروش\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
+            if sales_m and sales_m.group(1):
+                sales_col = resolve_column(sales_m.group(1), header_map)
+
+            purchase_m = re.search(r'(?:ستون|مبلغ)?\s*(?:خرید|هزینه)\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
+            if purchase_m and purchase_m.group(1):
+                purchase_col = resolve_column(purchase_m.group(1), header_map)
+
+            found_cols = []
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in found_cols:
+                    found_cols.append(res)
+
+            if len(found_cols) >= 2:
+                if not profit_col and not date_col:
+                    profit_col = found_cols[0]
+                    date_col = found_cols[1]
+                elif profit_col and not date_col:
+                    for fc in found_cols:
+                        if fc != profit_col:
+                            date_col = fc
+                            break
+                elif date_col and not profit_col:
+                    for fc in found_cols:
+                        if fc != date_col:
+                            profit_col = fc
+                            break
+            elif len(found_cols) == 1:
+                if not profit_col and not date_col:
+                    profit_col = found_cols[0]
+
+            period_fa = {
+                "all": "روزانه، ماهانه، سالانه و کل",
+                "daily": "روزانه",
+                "monthly": "ماهانه",
+                "yearly": "سالانه",
+                "total": "کل",
+                "by_item": "تفکیک کالاها (فروش منهای خرید)"
+            }.get(period, "روزانه، ماهانه، سالانه و کل")
 
             return ProfitCalculationAction(
                 sales_sheet=sales_s,
                 purchase_sheet=purchase_s,
+                date_col=date_col,
+                profit_col=profit_col,
+                sales_col=sales_col,
+                purchase_col=purchase_col,
+                period=period,
                 create_report_sheet=True,
-                description_persian="محاسبه سود (مبلغ فروش منهای مبلغ خرید)"
+                description_persian=f"محاسبه سود {period_fa}"
             )
 
         # 7.6 Sales Summary: محاسبه فروش روزانه، ماهانه، سالانه و کل

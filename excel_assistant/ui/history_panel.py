@@ -178,7 +178,7 @@ class HistoryPanel(QFrame):
         layout.addWidget(self.btn_sales)
 
         # 8. Profit Calculation button: Vibrant Emerald / Bright Green
-        self.btn_profit = QPushButton("💵 محاسبه سود (فروش - خرید)...")
+        self.btn_profit = QPushButton("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...")
         self.btn_profit.setObjectName("profitButton")
         self.btn_profit.setProperty("class", "sidebarActionBtn")
         self.btn_profit.setStyleSheet(

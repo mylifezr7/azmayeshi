@@ -7,7 +7,8 @@ from typing import List, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QComboBox, QFrame, QCheckBox, QMessageBox, QLineEdit
+    QPushButton, QComboBox, QFrame, QCheckBox, QMessageBox, QLineEdit,
+    QRadioButton, QButtonGroup
 )
 
 from excel_assistant.core.utils import col_index_to_letter
@@ -16,13 +17,13 @@ from excel_assistant.core.connection import ExcelConnectionManager
 
 
 class ProfitWizardDialog(QDialog):
-    """Modern RTL dialog for calculating profit by subtracting purchase from sales."""
+    """Modern RTL dialog for calculating profit by subtracting purchase from sales (daily, monthly, yearly, total)."""
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.manager = manager
-        self.setWindowTitle("💵 محاسبه سود و زیان (فروش منهای خرید)")
-        self.resize(540, 600)
+        self.setWindowTitle("💵 محاسبه سود و زیان (روزانه، ماهانه، سالانه و کل)")
+        self.resize(560, 680)
         self.setLayoutDirection(Qt.RightToLeft)
 
         self._init_ui()
@@ -32,14 +33,14 @@ class ProfitWizardDialog(QDialog):
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 18, 20, 18)
-        main_layout.setSpacing(14)
+        main_layout.setSpacing(12)
 
         # 1. Header
-        header_lbl = QLabel("💵 محاسبه سود خالص کالاها (فروش - خرید)")
+        header_lbl = QLabel("💵 محاسبه سود خالص (روزانه، ماهانه، سالانه و کل)")
         header_lbl.setStyleSheet("font-size: 16px; font-weight: bold; color: #38BDF8;")
         main_layout.addWidget(header_lbl)
 
-        desc_lbl = QLabel("شیت و ستون‌های فروش (شیت ۱) و خرید (شیت ۲) را جهت محاسبه سود مشخص فرمایید:")
+        desc_lbl = QLabel("شیت‌ها، ستون‌ها و دوره زمانی مورد نظر را جهت محاسبه سود مشخص فرمایید:")
         desc_lbl.setStyleSheet("font-size: 12px; color: #94A3B8;")
         main_layout.addWidget(desc_lbl)
 
@@ -58,6 +59,12 @@ class ProfitWizardDialog(QDialog):
         self.combo_s_sheet.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.combo_s_sheet.currentTextChanged.connect(self._on_s_sheet_changed)
         s_sheet_row.addWidget(self.combo_s_sheet)
+
+        s_sheet_row.addWidget(QLabel("ستون تاریخ (اختیاری):"))
+        self.combo_date = QComboBox()
+        self.combo_date.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.combo_date.currentTextChanged.connect(lambda: self._update_preview())
+        s_sheet_row.addWidget(self.combo_date)
         s_layout.addLayout(s_sheet_row)
 
         s_cols_row = QHBoxLayout()
@@ -109,19 +116,43 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addWidget(p_box)
 
-        # 4. Output option
-        self.chk_create_sheet = QCheckBox("📑 ایجاد شیت اختصاصی «گزارش_سود» با جدول تفکیکی و فرمول‌های اکسل")
+        # 4. Section 3: Period Selection
+        period_lbl = QLabel("⏱️ ۳. دوره زمانی تفکیک سود:")
+        period_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 13px;")
+        main_layout.addWidget(period_lbl)
+
+        self.radio_group = QButtonGroup(self)
+        period_layout = QVBoxLayout()
+        period_layout.setSpacing(4)
+
+        self.rb_all = QRadioButton("📊 گزارش جامع (سود کل + تفکیک روزانه + ماهانه + سالانه)")
+        self.rb_all.setChecked(True)
+        self.rb_total = QRadioButton("💵 فقط سود کل (مجموع سود، میانگین حاشیه سود و پرسودترین قلم)")
+        self.rb_daily = QRadioButton("📅 تفکیک سود روزانه (مجموع فروش، خرید و سود هر روز)")
+        self.rb_monthly = QRadioButton("🗓️ تفکیک سود ماهانه (روند سودآوری ماه‌های سال)")
+        self.rb_yearly = QRadioButton("📆 تفکیک سود سالانه (سهم و مجموع سود سال‌ها)")
+
+        for rb in [self.rb_all, self.rb_total, self.rb_daily, self.rb_monthly, self.rb_yearly]:
+            rb.setStyleSheet("color: #CBD5E1; font-size: 11px;")
+            self.radio_group.addButton(rb)
+            period_layout.addWidget(rb)
+            rb.toggled.connect(lambda: self._update_preview())
+
+        main_layout.addLayout(period_layout)
+
+        # 5. Output option
+        self.chk_create_sheet = QCheckBox("📑 ایجاد شیت اختصاصی «گزارش_سود» با داشبورد و فرمول‌های اکسل")
         self.chk_create_sheet.setChecked(True)
         self.chk_create_sheet.setStyleSheet("color: #38BDF8; font-weight: bold; font-size: 12px;")
         main_layout.addWidget(self.chk_create_sheet)
 
-        # 5. Live Preview Card
+        # 6. Live Preview Card
         self.preview_card = QFrame()
-        self.preview_card.setStyleSheet("background-color: #04091A; border: 1px solid #1E3A8A; border-radius: 10px; padding: 12px;")
+        self.preview_card.setStyleSheet("background-color: #04091A; border: 1px solid #1E3A8A; border-radius: 10px; padding: 10px;")
         card_layout = QVBoxLayout(self.preview_card)
         card_layout.setContentsMargins(10, 8, 10, 8)
 
-        preview_title = QLabel("👁️ پیش‌نمایش فرمول محاسبه:")
+        preview_title = QLabel("👁️ پیش‌نمایش نحوه محاسبه:")
         preview_title.setStyleSheet("font-weight: bold; color: #94A3B8; font-size: 11px;")
         card_layout.addWidget(preview_title)
 
@@ -132,7 +163,7 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addWidget(self.preview_card)
 
-        # 6. Action buttons
+        # 7. Action buttons
         btn_box = QHBoxLayout()
         btn_box.setSpacing(12)
 
@@ -218,6 +249,23 @@ class ProfitWizardDialog(QDialog):
 
             qty_combo.blockSignals(False)
             price_combo.blockSignals(False)
+
+            # Also update combo_date if this is sales sheet
+            if qty_combo == self.combo_s_qty:
+                self.combo_date.blockSignals(True)
+                self.combo_date.clear()
+                self.combo_date.addItem("تشخیص خودکار تاریخ", "")
+                best_date_idx = 0
+                date_kws = ["تاریخ", "date", "روز", "زمان"]
+                for idx, c in enumerate(range(min_c, max_c + 1)):
+                    c_let = col_index_to_letter(c)
+                    hdr = str(sheet.get_value(f"{c_let}1") or "").strip()
+                    label = f"ستون {c_let}" + (f" - {hdr}" if hdr else "")
+                    self.combo_date.addItem(label, c_let)
+                    if any(k in hdr.lower() for k in date_kws):
+                        best_date_idx = idx + 1
+                self.combo_date.setCurrentIndex(best_date_idx)
+                self.combo_date.blockSignals(False)
         except Exception:
             pass
 
@@ -237,11 +285,20 @@ class ProfitWizardDialog(QDialog):
         pq = self.combo_p_qty.currentData() or "B"
         pp = self.combo_p_price.currentData() or "C"
 
+        period_str = "گزارش جامع (روزانه + ماهانه + سالانه + کل)"
+        if self.rb_total.isChecked(): period_str = "فقط سود کل"
+        elif self.rb_daily.isChecked(): period_str = "تفکیک سود روزانه"
+        elif self.rb_monthly.isChecked(): period_str = "تفکیک سود ماهانه"
+        elif self.rb_yearly.isChecked(): period_str = "تفکیک سود سالانه"
+
+        date_col = self.combo_date.currentData() if self.combo_date.currentIndex() > 0 else "خودکار"
+
         preview = (
-            f"🛒 **فروش ({s_name}):** ستون تعداد `{sq}` × ستون قیمت `{sp}`\n"
-            f"📦 **خرید ({p_name}):** ستون تعداد `{pq}` × ستون قیمت `{pp}`\n"
-            f"💵 **فرمول سود:** `({s_name}!{sq} × {s_name}!{sp}) - ({p_name}!{pq} × {p_name}!{pp})`\n"
-            f"📑 ایجاد شیت خروجی: {'بله (شیت اختصاصی «گزارش_سود» با جدول مقایسه‌ای و فرمول‌ها)' if self.chk_create_sheet.isChecked() else 'در شیت فعلی'}"
+            f"🛒 **فروش ({s_name}):** تعداد `{sq}` × قیمت `{sp}` | تاریخ: `{date_col}`\n"
+            f"📦 **خرید ({p_name}):** تعداد `{pq}` × قیمت `{pp}`\n"
+            f"⏱️ **دوره محاسبه:** {period_str}\n"
+            f"💵 **فرمول سود:** `(فروش) - (خرید)` با فرمول‌های اکسل و جدول داشبورد\n"
+            f"📑 ایجاد شیت خروجی: {'بله («گزارش_سود»)' if self.chk_create_sheet.isChecked() else 'در شیت فعلی'}"
         )
         self.preview_text.setText(preview)
 
@@ -249,13 +306,35 @@ class ProfitWizardDialog(QDialog):
         self.accept()
 
     def get_action(self) -> ProfitCalculationAction:
+        period = "all"
+        if self.rb_total.isChecked():
+            period = "total"
+        elif self.rb_daily.isChecked():
+            period = "daily"
+        elif self.rb_monthly.isChecked():
+            period = "monthly"
+        elif self.rb_yearly.isChecked():
+            period = "yearly"
+
+        date_col = self.combo_date.currentData() if self.combo_date.currentIndex() > 0 else None
+
+        period_fa = {
+            "all": "روزانه، ماهانه، سالانه و کل",
+            "daily": "روزانه",
+            "monthly": "ماهانه",
+            "yearly": "سالانه",
+            "total": "کل"
+        }.get(period, "روزانه، ماهانه، سالانه و کل")
+
         return ProfitCalculationAction(
             sales_sheet=self.combo_s_sheet.currentText(),
             purchase_sheet=self.combo_p_sheet.currentText(),
+            date_col=date_col,
             sales_qty_col=self.combo_s_qty.currentData(),
             sales_price_col=self.combo_s_price.currentData(),
             purchase_qty_col=self.combo_p_qty.currentData(),
             purchase_price_col=self.combo_p_price.currentData(),
+            period=period,
             create_report_sheet=self.chk_create_sheet.isChecked(),
-            description_persian=f"محاسبه سود (فروش {self.combo_s_sheet.currentText()} منهای خرید {self.combo_p_sheet.currentText()})"
+            description_persian=f"محاسبه سود {period_fa}"
         )
