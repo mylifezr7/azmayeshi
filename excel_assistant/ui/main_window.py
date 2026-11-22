@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
         chips_layout.setSpacing(8)
 
         quick_prompts = [
+            "💵 محاسبه سود (فروش - خرید)",
             "💰 محاسبه فروش روزانه و ماهانه",
             "➕ جمع ستون‌ها",
             "➖ تفریق ستون‌ها",
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
         self.history_panel.date_requested.connect(self._open_date_dialog)
         self.history_panel.unique_col_requested.connect(self._open_unique_col_dialog)
         self.history_panel.sales_requested.connect(self._open_sales_dialog)
+        self.history_panel.profit_requested.connect(self._open_profit_dialog)
 
     def _perform_initial_connection(self):
         try:
@@ -219,7 +221,9 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
 
     def _on_quick_chip_clicked(self, command: str):
-        if "فروش" in command:
+        if "سود" in command:
+            self._open_profit_dialog()
+        elif "فروش" in command:
             self._open_sales_dialog()
         elif "جلوگیری" in command or "یکتا" in command:
             self._open_unique_col_dialog()
@@ -253,6 +257,16 @@ class MainWindow(QMainWindow):
         """Opens interactive wizard dialog for calculating daily, monthly, yearly, and total sales."""
         from excel_assistant.ui.sales_dialog import SalesSummaryWizardDialog
         dialog = SalesSummaryWizardDialog(manager=self.manager, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            action = dialog.get_action()
+            self.chat_widget.add_user_message(action.description_persian)
+            self.history_panel.add_command(action.description_persian)
+            self._execute_action_pipeline(action)
+
+    def _open_profit_dialog(self):
+        """Opens interactive wizard dialog for calculating profit by subtracting purchase from sales."""
+        from excel_assistant.ui.profit_dialog import ProfitWizardDialog
+        dialog = ProfitWizardDialog(manager=self.manager, parent=self)
         if dialog.exec() == QDialog.Accepted:
             action = dialog.get_action()
             self.chat_widget.add_user_message(action.description_persian)
@@ -308,6 +322,10 @@ class MainWindow(QMainWindow):
         lower = text.lower()
         if any(k in lower for k in ["یکتا", "یکتاسازی", "کد ملی", "کد محصول", "جلوگیری از تکرار"]) and len(lower.split()) <= 3:
             self._open_unique_col_dialog()
+            return
+
+        if "سود" in lower and len(lower.split()) <= 4:
+            self._open_profit_dialog()
             return
 
         if "فروش" in lower and any(k in lower for k in ["روزانه", "ماهانه", "سالانه", "کل", "محاسبه", "گزارش"]) and len(lower.split()) <= 4:

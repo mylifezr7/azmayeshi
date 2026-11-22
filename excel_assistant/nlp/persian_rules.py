@@ -23,6 +23,7 @@ from excel_assistant.nlp.intent_models import (
     FormatCellsAction,
     AnalyzeSheetAction,
     SalesSummaryAction,
+    ProfitCalculationAction,
     UndoLastAction,
 )
 from excel_assistant.nlp.persian_normalizer import (
@@ -167,6 +168,28 @@ class PersianRuleParser:
                 discount_percent=fixed_pct,
                 target_col=target_c,
                 description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
+            )
+
+        # 7.55 Profit Calculation: محاسبه سود (فروش منهای خرید)
+        # e.g.: محاسبه سود
+        # e.g.: فروش رو منهای مبلغ خرید کن تا سود به دست بیاد
+        # e.g.: تعداد فروش و قیمت فروش در شیت 1 و تعداد خرید و قیمت خرید در شیت 2
+        if "سود" in text or ("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])):
+            sales_s = None
+            purchase_s = None
+
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_]+)', text, flags=re.IGNORECASE)
+            if len(sheets_found) >= 2:
+                sales_s = sheets_found[0]
+                purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                sales_s = sheets_found[0]
+
+            return ProfitCalculationAction(
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                create_report_sheet=True,
+                description_persian="محاسبه سود (مبلغ فروش منهای مبلغ خرید)"
             )
 
         # 7.6 Sales Summary: محاسبه فروش روزانه، ماهانه، سالانه و کل

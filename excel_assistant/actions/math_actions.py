@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 
 from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.nlp.intent_models import (
-    ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction, SalesSummaryAction
+    ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction, SalesSummaryAction, ProfitCalculationAction
 )
 from excel_assistant.core.utils import (
     col_letter_to_index, col_index_to_letter, bounds_to_range_str
@@ -622,5 +622,347 @@ class MathActionHandler:
                 "daily_count": len(daily_map),
                 "monthly_count": len(monthly_map),
                 "yearly_count": len(yearly_map)
+            }
+        )
+
+    @classmethod
+    def execute_profit_calculation(cls, action: ProfitCalculationAction, ctx: ActionContext) -> ActionResult:
+        driver = ctx.manager.active_driver
+        sheet_names = driver.get_sheet_names()
+
+        if not sheet_names:
+            return ActionResult(success=False, message_persian="⚠️ هیچ شیتی در ورک‌بوک یافت نشد.")
+
+        # 1. Resolve Sales Sheet (Sheet 1) and Purchase Sheet (Sheet 2)
+        sales_sheet_name = None
+        purchase_sheet_name = None
+
+        def resolve_sheet_name(target_val, fallback):
+            if not target_val:
+                return fallback
+            val_str = str(target_val).strip()
+            if val_str.isdigit():
+                idx = int(val_str) - 1
+                if 0 <= idx < len(sheet_names):
+                    return sheet_names[idx]
+            # Exact match first
+            for name in sheet_names:
+                if name.lower() == val_str.lower():
+                    return name
+            # Substring match
+            for name in sheet_names:
+                if val_str.lower() in name.lower():
+                    return name
+            return fallback
+
+        sales_sheet_name = resolve_sheet_name(action.sales_sheet, sheet_names[0])
+        purchase_fallback = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
+        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, purchase_fallback)
+
+        s_sheet = ctx.manager.get_sheet(sales_sheet_name)
+        p_sheet = ctx.manager.get_sheet(purchase_sheet_name)
+
+        # 2. Inspect Sales Sheet Columns
+        s_min_r, s_min_c, s_max_r, s_max_c = s_sheet.get_used_range_bounds()
+        p_min_r, p_min_c, p_max_r, p_max_c = p_sheet.get_used_range_bounds()
+
+        def clean_val(v):
+            if v is None:
+                return 0.0
+            s = str(v).replace(',', '').replace('تومان', '').replace('ریال', '').strip()
+            try:
+                return float(s)
+            except ValueError:
+                return 0.0
+
+        # Auto-detect columns in Sales Sheet
+        s_qty_col = None
+        s_price_col = None
+        s_prod_col = None
+
+        qty_keywords = ["تعداد", "مقدار", "تعداد فروش", "فروش", "qty", "quantity", "count"]
+        price_keywords = ["قیمت", "قیمت فروش", "مبلغ فروش", "فی فروش", "نرخ", "price", "unit price"]
+        prod_keywords = ["کالا", "محصول", "نام", "شرح", "کد", "item", "product", "name"]
+
+        for c in range(s_min_c, s_max_c + 1):
+            c_let = col_index_to_letter(c)
+            hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").lower()
+            if not s_prod_col and any(k in hdr for k in prod_keywords):
+                s_prod_col = c_let
+            elif not s_qty_col and any(k in hdr for k in qty_keywords):
+                s_qty_col = c_let
+            elif not s_price_col and any(k in hdr for k in price_keywords):
+                s_price_col = c_let
+
+        if action.sales_qty_col:
+            sq_raw = str(action.sales_qty_col).strip().upper()
+            s_qty_col = col_index_to_letter(int(sq_raw)) if sq_raw.isdigit() else sq_raw
+        if action.sales_price_col:
+            sp_raw = str(action.sales_price_col).strip().upper()
+            s_price_col = col_index_to_letter(int(sp_raw)) if sp_raw.isdigit() else sp_raw
+
+        if not s_prod_col: s_prod_col = "A"
+        if not s_qty_col: s_qty_col = "B" if s_prod_col != "B" else "C"
+        if not s_price_col: s_price_col = "C" if s_qty_col != "C" and s_prod_col != "C" else "D"
+
+        # Auto-detect columns in Purchase Sheet
+        p_qty_col = None
+        p_price_col = None
+        p_prod_col = None
+
+        p_qty_keywords = ["تعداد", "تعداد خرید", "مقدار", "qty", "quantity"]
+        p_price_keywords = ["قیمت", "قیمت خرید", "مبلغ خرید", "فی خرید", "هزینه", "خرید", "cost", "purchase price"]
+
+        for c in range(p_min_c, p_max_c + 1):
+            c_let = col_index_to_letter(c)
+            hdr = str(p_sheet.get_value(f"{c_let}{p_min_r}") or "").lower()
+            if not p_prod_col and any(k in hdr for k in prod_keywords):
+                p_prod_col = c_let
+            elif not p_qty_col and any(k in hdr for k in p_qty_keywords):
+                p_qty_col = c_let
+            elif not p_price_col and any(k in hdr for k in p_price_keywords):
+                p_price_col = c_let
+
+        if action.purchase_qty_col:
+            pq_raw = str(action.purchase_qty_col).strip().upper()
+            p_qty_col = col_index_to_letter(int(pq_raw)) if pq_raw.isdigit() else pq_raw
+        if action.purchase_price_col:
+            pp_raw = str(action.purchase_price_col).strip().upper()
+            p_price_col = col_index_to_letter(int(pp_raw)) if pp_raw.isdigit() else pp_raw
+
+        if not p_prod_col: p_prod_col = "A"
+        if not p_qty_col: p_qty_col = "B" if p_prod_col != "B" else "C"
+        if not p_price_col: p_price_col = "C" if p_qty_col != "C" and p_prod_col != "C" else "D"
+
+        # 3. Read Data and Match
+        sales_records = []
+        for r in range(s_min_r + 1, s_max_r + 1):
+            prod = s_sheet.get_value(f"{s_prod_col}{r}")
+            qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}"))
+            price = clean_val(s_sheet.get_value(f"{s_price_col}{r}"))
+            if prod is not None or qty > 0 or price > 0:
+                sales_records.append({
+                    "row": r,
+                    "product": str(prod).strip() if prod is not None else f"ردیف {r}",
+                    "qty": qty,
+                    "price": price,
+                    "total_sales": qty * price
+                })
+
+        purchase_records = []
+        for r in range(p_min_r + 1, p_max_r + 1):
+            prod = p_sheet.get_value(f"{p_prod_col}{r}")
+            qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
+            price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
+            if prod is not None or qty > 0 or price > 0:
+                purchase_records.append({
+                    "row": r,
+                    "product": str(prod).strip() if prod is not None else f"ردیف {r}",
+                    "qty": qty,
+                    "price": price,
+                    "total_purchase": qty * price
+                })
+
+        has_named_products = any(sr["product"] and not sr["product"].startswith("ردیف ") for sr in sales_records) and \
+                             any(pr["product"] and not pr["product"].startswith("ردیف ") for pr in purchase_records)
+
+        purchase_by_name = {pr["product"]: pr for pr in purchase_records}
+        matched_items = []
+
+        if has_named_products:
+            for sr in sales_records:
+                pr = purchase_by_name.get(sr["product"])
+                p_qty = pr["qty"] if pr else 0.0
+                p_price = pr["price"] if pr else 0.0
+                p_total = pr["total_purchase"] if pr else 0.0
+                profit = sr["total_sales"] - p_total
+                margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
+                matched_items.append({
+                    "product": sr["product"],
+                    "s_qty": sr["qty"],
+                    "s_price": sr["price"],
+                    "s_total": sr["total_sales"],
+                    "p_qty": p_qty,
+                    "p_price": p_price,
+                    "p_total": p_total,
+                    "profit": profit,
+                    "margin": margin
+                })
+        else:
+            max_len = max(len(sales_records), len(purchase_records))
+            for i in range(max_len):
+                sr = sales_records[i] if i < len(sales_records) else None
+                pr = purchase_records[i] if i < len(purchase_records) else None
+
+                prod = sr["product"] if sr else (pr["product"] if pr else f"آیتم {i+1}")
+                s_qty = sr["qty"] if sr else 0.0
+                s_price = sr["price"] if sr else 0.0
+                s_total = sr["total_sales"] if sr else 0.0
+
+                p_qty = pr["qty"] if pr else 0.0
+                p_price = pr["price"] if pr else 0.0
+                p_total = pr["total_purchase"] if pr else 0.0
+
+                profit = s_total - p_total
+                margin = (profit / s_total * 100) if s_total > 0 else 0.0
+
+                matched_items.append({
+                    "product": prod,
+                    "s_qty": s_qty,
+                    "s_price": s_price,
+                    "s_total": s_total,
+                    "p_qty": p_qty,
+                    "p_price": p_price,
+                    "p_total": p_total,
+                    "profit": profit,
+                    "margin": margin
+                })
+
+        total_sales_all = sum(it["s_total"] for it in matched_items)
+        total_purchase_all = sum(it["p_total"] for it in matched_items)
+        total_profit_all = total_sales_all - total_purchase_all
+        overall_margin = (total_profit_all / total_sales_all * 100) if total_sales_all > 0 else 0.0
+
+        best_item = max(matched_items, key=lambda x: x["profit"]) if matched_items else {"product": "-", "profit": 0}
+        loss_items = [it for it in matched_items if it["profit"] < 0]
+
+        # 4. Generate 'گزارش_سود' Report Sheet
+        report_sheet_name = "گزارش_سود"
+        if action.create_report_sheet:
+            existing_sheets = driver.get_sheet_names()
+            if report_sheet_name in existing_sheets:
+                report_sheet = driver.get_sheet(report_sheet_name)
+            else:
+                report_sheet = driver.create_sheet(report_sheet_name)
+
+            curr_r = 1
+            # Banner
+            report_sheet.set_value(f"A{curr_r}", "📊 داشبورد و گزارش جامع سود و زیان (مبلغ فروش منهای مبلغ خرید)")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=14, color_hex="#38BDF8")
+            report_sheet.set_cell_color(f"A{curr_r}", "#09132B")
+            curr_r += 2
+
+            # Section 1: KPI Cards
+            report_sheet.set_value(f"A{curr_r}", "📌 خلاصه کل وضعیت سود و زیان")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+            curr_r += 1
+
+            headers_kpi = ["شاخص مالی", "مبلغ / مقدار", "شیت مرجع / فرمول"]
+            for idx, h in enumerate(headers_kpi):
+                col_c = col_index_to_letter(idx + 1)
+                report_sheet.set_value(f"{col_c}{curr_r}", h)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
+            curr_r += 1
+
+            kpis = [
+                ("💰 کل مبلغ فروش", f"{total_sales_all:,.0f} تومان", f"شیت: {sales_sheet_name}"),
+                ("🛒 کل مبلغ خرید", f"{total_purchase_all:,.0f} تومان", f"شیت: {purchase_sheet_name}"),
+                ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای خرید کل"),
+                ("📈 میانگین حاشیه سود", f"{overall_margin:.1f}%", "درصد سود از کل فروش"),
+                ("🏆 پر سودترین کالا", f"{best_item['product']} ({best_item['profit']:,.0f} تومان)", "بیشترین سود ریالی"),
+                ("⚠️ تعداد اقلام زیان‌ده", f"{len(loss_items)} کالا", "اقلام با سود منفی")
+            ]
+            for title, val, desc in kpis:
+                report_sheet.set_value(f"A{curr_r}", title)
+                report_sheet.set_value(f"B{curr_r}", val)
+                report_sheet.set_value(f"C{curr_r}", desc)
+                report_sheet.set_font(f"B{curr_r}", bold=True)
+                if "سود خالص" in title:
+                    report_sheet.set_cell_color(f"B{curr_r}", "#064E3B" if total_profit_all >= 0 else "#7F1D1D")
+                curr_r += 1
+            curr_r += 2
+
+            # Section 2: Detailed Profit Table
+            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان به ازای هر کالا")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+            curr_r += 1
+
+            table_headers = [
+                "ردیف",
+                "نام کالا",
+                f"تعداد فروش ({sales_sheet_name})",
+                "قیمت فروش",
+                "مبلغ کل فروش",
+                f"تعداد خرید ({purchase_sheet_name})",
+                "قیمت خرید",
+                "مبلغ کل خرید",
+                "سود خالص (تومان)",
+                "درصد سود"
+            ]
+            for idx, h in enumerate(table_headers):
+                col_c = col_index_to_letter(idx + 1)
+                report_sheet.set_value(f"{col_c}{curr_r}", h)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{curr_r}", "#047857")
+            curr_r += 1
+
+            start_table_r = curr_r
+            for i, it in enumerate(matched_items):
+                r_num = curr_r
+                report_sheet.set_value(f"A{r_num}", i + 1)
+                report_sheet.set_value(f"B{r_num}", it["product"])
+                report_sheet.set_value(f"C{r_num}", it["s_qty"])
+                report_sheet.set_value(f"D{r_num}", it["s_price"])
+                report_sheet.set_formula(f"E{r_num}", f"=C{r_num}*D{r_num}")
+                report_sheet.set_value(f"F{r_num}", it["p_qty"])
+                report_sheet.set_value(f"G{r_num}", it["p_price"])
+                report_sheet.set_formula(f"H{r_num}", f"=F{r_num}*G{r_num}")
+                report_sheet.set_formula(f"I{r_num}", f"=E{r_num}-H{r_num}")
+                report_sheet.set_formula(f"J{r_num}", f'=IF(E{r_num}>0, (I{r_num}/E{r_num})*100, 0)')
+
+                report_sheet.set_font(f"I{r_num}", bold=True)
+                if it["profit"] >= 0:
+                    report_sheet.set_cell_color(f"I{r_num}", "#064E3B")
+                else:
+                    report_sheet.set_cell_color(f"I{r_num}", "#7F1D1D")
+
+                curr_r += 1
+
+            # Total Summary Row at bottom
+            last_r = curr_r
+            report_sheet.set_value(f"A{last_r}", "جمع کل")
+            report_sheet.set_font(f"A{last_r}", bold=True)
+            report_sheet.set_formula(f"E{last_r}", f"=SUM(E{start_table_r}:E{last_r-1})")
+            report_sheet.set_formula(f"H{last_r}", f"=SUM(H{start_table_r}:H{last_r-1})")
+            report_sheet.set_formula(f"I{last_r}", f"=E{last_r}-H{last_r}")
+            report_sheet.set_formula(f"J{last_r}", f'=IF(E{last_r}>0, (I{last_r}/E{last_r})*100, 0)')
+
+            for c_idx in range(1, 11):
+                col_c = col_index_to_letter(c_idx)
+                report_sheet.set_font(f"{col_c}{last_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{last_r}", "#0B1938")
+
+            report_sheet.auto_fit_columns()
+            ctx.manager.activate_sheet(report_sheet_name)
+
+        # 5. Format Persian message
+        profit_status = "🟢 سودآور" if total_profit_all >= 0 else "🔴 زیان‌ده"
+        msg_lines = [
+            f"💵 **محاسبه سود با موفقیت انجام شد ({profit_status}):**",
+            f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد: `{len(sales_records)}` قلم)",
+            f"🛒 **کل مبلغ خرید ({purchase_sheet_name}):** `{total_purchase_all:,.0f}` تومان (تعداد: `{len(purchase_records)}` قلم)",
+            "───────────────────────────────",
+            f"✨ **سود خالص کل (فروش منهای خرید):** **`{total_profit_all:,.0f}` تومان**",
+            f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**",
+            f"🏆 **پرسودترین کالا:** `{best_item['product']}` با سود `{best_item['profit']:,.0f}` تومان"
+        ]
+        if loss_items:
+            msg_lines.append(f"⚠️ **اقلام با سود منفی:** `{len(loss_items)}` قلم کالا نیازمند بازنگری در قیمت‌گذاری هستند.")
+
+        if action.create_report_sheet:
+            msg_lines.append("")
+            msg_lines.append(f"📑 شیت اختصاصی **«{report_sheet_name}»** همراه با فرمول‌های تفریق `فروش - خرید`، کل اقلام و جمع نهایی ایجاد گردید.")
+
+        return ActionResult(
+            success=True,
+            message_persian="\n".join(msg_lines),
+            affected_range=report_sheet_name,
+            data={
+                "total_sales": total_sales_all,
+                "total_purchase": total_purchase_all,
+                "total_profit": total_profit_all,
+                "margin_pct": overall_margin,
+                "item_count": len(matched_items)
             }
         )

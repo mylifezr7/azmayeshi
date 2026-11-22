@@ -281,6 +281,26 @@ QPushButton#salesButton:pressed {{
     background: #9F1239;
 }}
 
+/* 8. Profit Calculation: Vibrant Emerald Green */
+QPushButton#profitButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);
+    border: 1px solid #10B981;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#profitButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #34D399);
+    border: 1px solid #34D399;
+}}
+
+QPushButton#profitButton:pressed {{
+    background: #064E3B;
+}}
+
 /* Chat Scroll Area */
 QScrollArea#chatScrollArea {{
     background-color: #020617;

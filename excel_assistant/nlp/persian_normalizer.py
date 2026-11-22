@@ -54,6 +54,9 @@ def normalize_persian_text(text: str) -> str:
     for p_c, target in PERSIAN_CHAR_MAP.items():
         text = text.replace(p_c, target)
 
+    # Normalize common Persian voice-typing typos (e.g. شیلد -> شیت)
+    text = text.replace('شیلد', 'شیت')
+
     # Remove Arabic diacritics
     text = re.sub(r'[\u064B-\u065F\u0670]', '', text)
 

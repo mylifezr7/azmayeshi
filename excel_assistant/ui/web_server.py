@@ -297,6 +297,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 0 12px rgba(244, 63, 94, 0.6);
         }
 
+        .btn-profit {
+            background: linear-gradient(90deg, #059669, #10B981);
+            border: 1px solid #10B981;
+        }
+        .btn-profit:hover {
+            background: linear-gradient(90deg, #10B981, #34D399);
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+        }
+
         /* Center: Chat Area with Background Wallpaper */
         .chat-section {
             flex: 3;
@@ -561,6 +570,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
             <button class="btn-shortcut btn-analyze" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
             <button class="btn-shortcut btn-sales" onclick="promptSalesSummary()">💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...</button>
+            <button class="btn-shortcut btn-profit" onclick="promptProfitCalculation()">💵 محاسبه سود (فروش - خرید)...</button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
@@ -569,6 +579,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Quick Action Chips -->
             <div class="chips-bar">
+                <button class="chip" onclick="promptProfitCalculation()">💵 محاسبه سود (شیت ۱ و ۲)</button>
                 <button class="chip" onclick="promptSalesSummary()">💰 محاسبه فروش روزانه و ماهانه</button>
                 <button class="chip" onclick="promptArithmetic('add')">➕ جمع ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
@@ -751,6 +762,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
             const pText = periodMap[period] || "روزانه و ماهانه و سالانه و کل";
             const cmd = `محاسبه فروش ${pText} ستون فروش ${amtCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
+            sendCommand(cmd);
+        }
+
+        function promptProfitCalculation() {
+            const sSheet = prompt("نام یا شماره شیت فروش (پیش‌فرض: شیت اول):", "Sheet1") || "1";
+            const pSheet = prompt("نام یا شماره شیت خرید (پیش‌فرض: شیت دوم):", "Sheet2") || "2";
+            const cmd = `تعداد فروش و قیمت فروش در ${sSheet.trim()} و تعداد خرید و قیمت خرید در ${pSheet.trim()}، فروش رو منهای خرید کن تا سود به دست بیاد`;
             sendCommand(cmd);
         }
 

@@ -46,6 +46,10 @@ def test_qss_style_contains_all_vibrant_shortcuts():
     assert "QPushButton#salesButton" in QSS_STYLE
     assert "#BE123C" in QSS_STYLE or "#F43F5E" in QSS_STYLE
 
+    # 8. Profit calculation
+    assert "QPushButton#profitButton" in QSS_STYLE
+    assert "#059669" in QSS_STYLE or "#10B981" in QSS_STYLE
+
     # Background image in chat scroll area
     assert "QScrollArea#chatScrollArea" in QSS_STYLE
     assert "background.jpg" in QSS_STYLE
@@ -61,4 +65,5 @@ def test_web_template_theme_elements():
     assert "btn-date" in HTML_TEMPLATE
     assert "btn-analyze" in HTML_TEMPLATE
     assert "btn-sales" in HTML_TEMPLATE
+    assert "btn-profit" in HTML_TEMPLATE
     assert "/resources/background.jpg" in HTML_TEMPLATE

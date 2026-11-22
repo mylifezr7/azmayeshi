@@ -20,6 +20,7 @@ class HistoryPanel(QFrame):
     date_requested = Signal()
     unique_col_requested = Signal()
     sales_requested = Signal()
+    profit_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -175,6 +176,25 @@ class HistoryPanel(QFrame):
         )
         self.btn_sales.clicked.connect(self.sales_requested.emit)
         layout.addWidget(self.btn_sales)
+
+        # 8. Profit Calculation button: Vibrant Emerald / Bright Green
+        self.btn_profit = QPushButton("💵 محاسبه سود (فروش - خرید)...")
+        self.btn_profit.setObjectName("profitButton")
+        self.btn_profit.setProperty("class", "sidebarActionBtn")
+        self.btn_profit.setStyleSheet(
+            "QPushButton#profitButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #10B981; border-radius: 10px;"
+            "}"
+            "QPushButton#profitButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #34D399);"
+            "  border: 1px solid #34D399;"
+            "}"
+            "QPushButton#profitButton:pressed { background: #064E3B; }"
+        )
+        self.btn_profit.clicked.connect(self.profit_requested.emit)
+        layout.addWidget(self.btn_profit)
 
     def add_command(self, cmd: str):
         if cmd.strip():

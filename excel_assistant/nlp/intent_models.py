@@ -143,6 +143,18 @@ class SalesSummaryAction(BaseActionModel):
     description_persian: str = "محاسبه فروش روزانه، ماهانه، سالانه و کل"
 
 
+class ProfitCalculationAction(BaseActionModel):
+    action_type: Literal["calculate_profit"] = "calculate_profit"
+    sales_sheet: Optional[str] = None  # e.g. "Sheet1" or "شیت 1"
+    purchase_sheet: Optional[str] = None  # e.g. "Sheet2" or "شیت 2"
+    sales_qty_col: Optional[str] = None
+    sales_price_col: Optional[str] = None
+    purchase_qty_col: Optional[str] = None
+    purchase_price_col: Optional[str] = None
+    create_report_sheet: bool = True
+    description_persian: str = "محاسبه سود (مبلغ فروش منهای مبلغ خرید)"
+
+
 class UndoLastAction(BaseActionModel):
     action_type: Literal["undo_last_action"] = "undo_last_action"
 
@@ -165,5 +177,6 @@ ExcelAction = Union[
     ApplyFormulaAction,
     AnalyzeSheetAction,
     SalesSummaryAction,
+    ProfitCalculationAction,
     UndoLastAction,
 ]
