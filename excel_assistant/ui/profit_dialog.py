@@ -4,13 +4,14 @@ Allows users to visually select sales sheet & columns and purchase sheet & colum
 (e.g., Sales in Sheet 1 and Purchase in Sheet 2),
 choose reporting periods (daily, monthly, yearly, total, or comprehensive all-in-one),
 and generate styled Excel profit reports with live KPI cards and formulas.
+Features a responsive, scrollable layout with pinned action buttons for all screen heights.
 """
 from typing import List, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QRadioButton, QButtonGroup, QLineEdit,
-    QComboBox, QFrame, QCheckBox, QMessageBox
+    QComboBox, QFrame, QCheckBox, QMessageBox, QScrollArea
 )
 
 from excel_assistant.core.utils import col_index_to_letter, col_letter_to_index
@@ -25,7 +26,8 @@ class ProfitWizardDialog(QDialog):
         super().__init__(parent)
         self.manager = manager
         self.setWindowTitle("💵 محاسبه سود (روزانه، ماهانه، سالانه و کل)")
-        self.resize(580, 720)
+        self.resize(560, 530)
+        self.setMinimumSize(480, 380)
         self.setLayoutDirection(Qt.RightToLeft)
 
         self._init_ui()
@@ -33,36 +35,51 @@ class ProfitWizardDialog(QDialog):
         self._update_preview()
 
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 16, 20, 16)
-        main_layout.setSpacing(11)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(16, 12, 16, 12)
+        root_layout.setSpacing(8)
 
-        # 1. Header
+        # 1. Header (pinned at top)
+        header_box = QHBoxLayout()
         header_lbl = QLabel("💵 محاسبه سود روزانه، ماهانه، سالانه و کل")
-        header_lbl.setStyleSheet("font-size: 16px; font-weight: bold; color: #10B981;")
-        main_layout.addWidget(header_lbl)
+        header_lbl.setStyleSheet("font-size: 15px; font-weight: bold; color: #10B981;")
+        header_box.addWidget(header_lbl)
+        header_box.addStretch()
+        root_layout.addLayout(header_box)
 
-        desc_lbl = QLabel("شیت و ستون‌های فروش (شیت ۱) و خرید (شیت ۲ یا شیلد دیگر) را جهت محاسبه سود مشخص فرمایید:")
-        desc_lbl.setStyleSheet("font-size: 12px; color: #94A3B8;")
-        main_layout.addWidget(desc_lbl)
+        desc_lbl = QLabel("شیت‌ها، ستون‌های فروش و خرید و دوره زمانی را مشخص کنید:")
+        desc_lbl.setStyleSheet("font-size: 11.5px; color: #94A3B8;")
+        root_layout.addWidget(desc_lbl)
 
-        # 2. Section 1: Sales Sheet & Columns (اطلاعات فروش - شیت ۱)
+        # 2. Scrollable Content Area (Ensures all fields are accessible on any screen)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(2, 4, 8, 4)
+        main_layout.setSpacing(10)
+
+        # Section 1: Sales Sheet & Columns (اطلاعات فروش - شیت ۱)
         s_box = QFrame()
-        s_box.setStyleSheet("background-color: #060E22; border: 1px solid #1E3A8A; border-radius: 10px; padding: 10px;")
+        s_box.setStyleSheet("background-color: #060E22; border: 1px solid #1E3A8A; border-radius: 9px; padding: 8px;")
         s_layout = QVBoxLayout(s_box)
-        s_layout.setSpacing(7)
+        s_layout.setSpacing(6)
 
         s_header = QLabel("🛒 ۱. اطلاعات فروش (شیت ۱ / شیلد فروش):")
-        s_header.setStyleSheet("font-weight: bold; color: #38BDF8; font-size: 13px;")
+        s_header.setStyleSheet("font-weight: bold; color: #38BDF8; font-size: 12.5px;")
         s_layout.addWidget(s_header)
 
         # Sales Sheet selector
         s_sheet_row = QHBoxLayout()
         s_sheet_lbl = QLabel("انتخاب شیت فروش:")
-        s_sheet_lbl.setFixedWidth(130)
-        s_sheet_lbl.setStyleSheet("color: #E2E8F0; font-size: 12px; font-weight: bold;")
+        s_sheet_lbl.setFixedWidth(120)
+        s_sheet_lbl.setStyleSheet("color: #E2E8F0; font-size: 11.5px; font-weight: bold;")
         self.combo_s_sheet = QComboBox()
-        self.combo_s_sheet.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.combo_s_sheet.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.combo_s_sheet.currentTextChanged.connect(self._on_s_sheet_changed)
         s_sheet_row.addWidget(s_sheet_lbl)
         s_sheet_row.addWidget(self.combo_s_sheet)
@@ -71,15 +88,15 @@ class ProfitWizardDialog(QDialog):
         # Date column
         date_row = QHBoxLayout()
         d_lbl = QLabel("ستون تاریخ فاکتور:")
-        d_lbl.setFixedWidth(130)
-        d_lbl.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        d_lbl.setFixedWidth(120)
+        d_lbl.setStyleSheet("color: #CBD5E1; font-size: 11.5px;")
         self.combo_date = QComboBox()
-        self.combo_date.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.combo_date.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.combo_date.currentTextChanged.connect(lambda: self._update_preview())
         self.input_date = QLineEdit()
         self.input_date.setPlaceholderText("مثلاً: A یا 1")
-        self.input_date.setFixedWidth(80)
-        self.input_date.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.input_date.setFixedWidth(70)
+        self.input_date.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 6px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.input_date.textChanged.connect(self._on_manual_date_changed)
         date_row.addWidget(d_lbl)
         date_row.addWidget(self.combo_date)
@@ -89,15 +106,15 @@ class ProfitWizardDialog(QDialog):
         # Sales amount column
         sales_row = QHBoxLayout()
         s_lbl = QLabel("ستون مبلغ / قیمت فروش:")
-        s_lbl.setFixedWidth(130)
-        s_lbl.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        s_lbl.setFixedWidth(120)
+        s_lbl.setStyleSheet("color: #CBD5E1; font-size: 11.5px;")
         self.combo_sales = QComboBox()
-        self.combo_sales.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.combo_sales.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.combo_sales.currentTextChanged.connect(lambda: self._update_preview())
         self.input_sales = QLineEdit()
         self.input_sales.setPlaceholderText("مثلاً: B یا 2")
-        self.input_sales.setFixedWidth(80)
-        self.input_sales.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.input_sales.setFixedWidth(70)
+        self.input_sales.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 6px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.input_sales.textChanged.connect(self._on_manual_sales_changed)
         sales_row.addWidget(s_lbl)
         sales_row.addWidget(self.combo_sales)
@@ -106,23 +123,23 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addWidget(s_box)
 
-        # 3. Section 2: Purchase Sheet & Columns (اطلاعات خرید - شیت ۲ / شیلد دیگر)
+        # Section 2: Purchase Sheet & Columns (اطلاعات خرید - شیت ۲ / شیلد دیگر)
         p_box = QFrame()
-        p_box.setStyleSheet("background-color: #060E22; border: 1px solid #1E3A8A; border-radius: 10px; padding: 10px;")
+        p_box.setStyleSheet("background-color: #060E22; border: 1px solid #1E3A8A; border-radius: 9px; padding: 8px;")
         p_layout = QVBoxLayout(p_box)
-        p_layout.setSpacing(7)
+        p_layout.setSpacing(6)
 
         p_header = QLabel("📦 ۲. اطلاعات خرید و بهای تمام‌شده (شیت ۲ / شیلد دیگر):")
-        p_header.setStyleSheet("font-weight: bold; color: #F59E0B; font-size: 13px;")
+        p_header.setStyleSheet("font-weight: bold; color: #F59E0B; font-size: 12.5px;")
         p_layout.addWidget(p_header)
 
         # Purchase Sheet selector
         p_sheet_row = QHBoxLayout()
         p_sheet_lbl = QLabel("انتخاب شیت خرید:")
-        p_sheet_lbl.setFixedWidth(130)
-        p_sheet_lbl.setStyleSheet("color: #E2E8F0; font-size: 12px; font-weight: bold;")
+        p_sheet_lbl.setFixedWidth(120)
+        p_sheet_lbl.setStyleSheet("color: #E2E8F0; font-size: 11.5px; font-weight: bold;")
         self.combo_p_sheet = QComboBox()
-        self.combo_p_sheet.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.combo_p_sheet.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.combo_p_sheet.currentTextChanged.connect(self._on_p_sheet_changed)
         p_sheet_row.addWidget(p_sheet_lbl)
         p_sheet_row.addWidget(self.combo_p_sheet)
@@ -131,15 +148,15 @@ class ProfitWizardDialog(QDialog):
         # Purchase amount column
         purchase_row = QHBoxLayout()
         p_lbl = QLabel("ستون مبلغ / قیمت خرید:")
-        p_lbl.setFixedWidth(130)
-        p_lbl.setStyleSheet("color: #CBD5E1; font-size: 12px;")
+        p_lbl.setFixedWidth(120)
+        p_lbl.setStyleSheet("color: #CBD5E1; font-size: 11.5px;")
         self.combo_purchase = QComboBox()
-        self.combo_purchase.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.combo_purchase.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.combo_purchase.currentTextChanged.connect(lambda: self._update_preview())
         self.input_purchase = QLineEdit()
         self.input_purchase.setPlaceholderText("مثلاً: C یا 3")
-        self.input_purchase.setFixedWidth(80)
-        self.input_purchase.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 5px 8px; border: 1px solid #1E3A8A; border-radius: 6px;")
+        self.input_purchase.setFixedWidth(70)
+        self.input_purchase.setStyleSheet("background-color: #081024; color: #FFFFFF; padding: 4px 6px; border: 1px solid #1E3A8A; border-radius: 6px;")
         self.input_purchase.textChanged.connect(self._on_manual_purchase_changed)
         purchase_row.addWidget(p_lbl)
         purchase_row.addWidget(self.combo_purchase)
@@ -148,14 +165,14 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addWidget(p_box)
 
-        # 4. Section 3: Period Selection
+        # Section 3: Period Selection
         period_lbl = QLabel("⏱️ ۳. دوره زمانی تفکیک سود:")
-        period_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 13px;")
+        period_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 12.5px;")
         main_layout.addWidget(period_lbl)
 
         self.radio_group = QButtonGroup(self)
         period_layout = QVBoxLayout()
-        period_layout.setSpacing(4)
+        period_layout.setSpacing(3)
 
         self.rb_all = QRadioButton("📊 گزارش جامع (سود کل + تفکیک روزانه + ماهانه + سالانه)")
         self.rb_all.setChecked(True)
@@ -172,49 +189,55 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addLayout(period_layout)
 
-        # 5. Output option: Create dedicated sheet
+        # Output option: Create dedicated sheet
         self.chk_create_sheet = QCheckBox("📑 ایجاد شیت اختصاصی «گزارش_سود» همراه با داشبورد، جداول تفکیک‌شده و فرمول‌ها")
         self.chk_create_sheet.setChecked(True)
-        self.chk_create_sheet.setStyleSheet("color: #10B981; font-weight: bold; font-size: 12px;")
+        self.chk_create_sheet.setStyleSheet("color: #10B981; font-weight: bold; font-size: 11.5px;")
         main_layout.addWidget(self.chk_create_sheet)
 
-        # 6. Live Preview Card
+        # Live Preview Card
         self.preview_card = QFrame()
-        self.preview_card.setStyleSheet("background-color: #04091A; border: 1px solid #1E3A8A; border-radius: 10px; padding: 10px;")
+        self.preview_card.setStyleSheet("background-color: #04091A; border: 1px solid #1E3A8A; border-radius: 9px; padding: 8px;")
         card_layout = QVBoxLayout(self.preview_card)
-        card_layout.setContentsMargins(10, 6, 10, 6)
+        card_layout.setContentsMargins(8, 6, 8, 6)
 
         preview_title = QLabel("👁️ پیش‌نمایش نحوهٔ محاسبه سود:")
         preview_title.setStyleSheet("font-weight: bold; color: #94A3B8; font-size: 11px;")
         card_layout.addWidget(preview_title)
 
         self.preview_text = QLabel("در حال پردازش ستون‌ها...")
-        self.preview_text.setStyleSheet("color: #F8FAFC; font-size: 11.5px; line-height: 1.5;")
+        self.preview_text.setStyleSheet("color: #F8FAFC; font-size: 11px; line-height: 1.4;")
         self.preview_text.setWordWrap(True)
         card_layout.addWidget(self.preview_text)
 
         main_layout.addWidget(self.preview_card)
 
-        # 7. Buttons Box
+        scroll.setWidget(content_widget)
+        root_layout.addWidget(scroll, 1)
+
+        # 3. Pinned Action Buttons Footer (ALWAYS VISIBLE AT BOTTOM)
         btn_box = QHBoxLayout()
+        btn_box.setContentsMargins(0, 4, 0, 0)
         btn_box.setSpacing(12)
 
         self.btn_cancel = QPushButton("انصراف")
         self.btn_cancel.setStyleSheet(
-            "background-color: #1E293B; color: #E2E8F0; padding: 8px 18px; border-radius: 8px; font-weight: bold;"
+            "background-color: #1E293B; color: #E2E8F0; padding: 9px 20px; border-radius: 8px; font-weight: bold; font-size: 12.5px;"
         )
         self.btn_cancel.clicked.connect(self.reject)
 
-        self.btn_submit = QPushButton("محاسبه سود 💵")
+        self.btn_submit = QPushButton("محاسبه سود 💵 (تایید)")
+        self.btn_submit.setDefault(True)
+        self.btn_submit.setAutoDefault(True)
         self.btn_submit.setStyleSheet(
             "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981); "
-            "color: white; padding: 8px 24px; border-radius: 8px; font-weight: bold; font-size: 13px; border: 1px solid #10B981;"
+            "color: white; padding: 9px 28px; border-radius: 8px; font-weight: bold; font-size: 13px; border: 1px solid #10B981;"
         )
         self.btn_submit.clicked.connect(self._on_submit)
 
         btn_box.addWidget(self.btn_cancel)
         btn_box.addWidget(self.btn_submit)
-        main_layout.addLayout(btn_box)
+        root_layout.addLayout(btn_box)
 
     def _load_sheets_and_columns(self):
         if not self.manager or not self.manager.is_connected():
