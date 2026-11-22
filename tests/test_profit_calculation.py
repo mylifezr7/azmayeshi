@@ -178,3 +178,70 @@ def test_execute_profit_calculation_two_sheets():
     assert "45,000,000" in str(report_sheet.get_value("B7"))
 
     manager.close()
+
+
+def test_execute_profit_calculation_cogs_and_inventory_accounting():
+    """
+    Test user's specific real-world case:
+    Bought 30 pens @ 10,000 Tomans (Total purchase batch = 300,000 Tomans).
+    Sold 4 pens @ 12,000 Tomans (Total sales revenue = 48,000 Tomans).
+    COGS must be 4 * 10,000 = 40,000 Tomans.
+    Gross Profit must be 48,000 - 40,000 = +8,000 Tomans (NOT a loss of 48,000 - 300,000 = -252,000!).
+    Remaining inventory must be 26 pens valued at 260,000 Tomans.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # Sheet 1: Sales
+    sheet1 = manager.get_active_sheet()
+    sheet1.set_value("A1", "نام کالا")
+    sheet1.set_value("B1", "تعداد فروش")
+    sheet1.set_value("C1", "قیمت فروش")
+
+    sheet1.set_value("A2", "خودکار")
+    sheet1.set_value("B2", 4)
+    sheet1.set_value("C2", 12000)
+
+    # Sheet 2: Purchases
+    sheet2 = manager.active_driver.create_sheet("Sheet2")
+    sheet2.set_value("A1", "نام کالا")
+    sheet2.set_value("B1", "تعداد خرید")
+    sheet2.set_value("C1", "قیمت خرید")
+
+    sheet2.set_value("A2", "خودکار")
+    sheet2.set_value("B2", 30)
+    sheet2.set_value("C2", 10000)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="Sheet2",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=sheet1)
+
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    assert res.data["total_sales"] == 48000
+    assert res.data["total_purchase"] == 40000  # Cost of Goods Sold (4 * 10,000), not batch total 300,000
+    assert res.data["total_profit"] == 8000    # +8,000 Tomans profit!
+    assert res.data["remaining_stock"] == 26   # 30 - 4 = 26 pens remaining in stock
+    assert res.data["stock_value"] == 260000   # 26 * 10,000 = 260,000 Tomans inventory value
+
+    # Check report sheet formulas and values
+    report_sheet = manager.active_driver.get_sheet("گزارش_سود")
+    report_cells = {}
+    for r in range(1, 25):
+        for col_idx in range(1, 13):
+            c_letter = chr(ord('A') + col_idx - 1)
+            v = report_sheet.get_value(f"{c_letter}{r}")
+            if v is not None:
+                report_cells[f"{c_letter}{r}"] = v
+
+    # Check that profit is 8,000 in KPI and table
+    assert any("8,000" in str(v) for v in report_cells.values())
+    assert any("260,000" in str(v) for v in report_cells.values())
+
+    manager.close()
+

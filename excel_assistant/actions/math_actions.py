@@ -845,47 +845,68 @@ class MathActionHandler:
         if sales_sheet_name == purchase_sheet_name:
             # Single sheet profit calculation (e.g. Sales col - Cost col or explicit profit)
             for sr in sales_records:
+                s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
+                s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
+
                 if sr["direct_profit"] is not None:
                     profit = sr["direct_profit"]
-                    p_tot = sr["total_sales"] - profit if sr["total_sales"] > 0 else 0.0
+                    cogs = sr["total_sales"] - profit if sr["total_sales"] > 0 else 0.0
+                    p_unit_price = cogs / s_qty if s_qty > 0 else cogs
                 elif sr["direct_cost"] > 0:
-                    p_tot = sr["direct_cost"]
-                    profit = sr["total_sales"] - p_tot
+                    cogs = sr["direct_cost"] * s_qty if (sr["direct_cost"] < sr["price"] and sr["qty"] > 1) else sr["direct_cost"]
+                    p_unit_price = cogs / s_qty if s_qty > 0 else cogs
+                    profit = sr["total_sales"] - cogs
                 else:
-                    p_tot = 0.0
+                    cogs = 0.0
+                    p_unit_price = 0.0
                     profit = sr["total_sales"]
 
                 margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
                 matched_items.append({
                     "product": sr["product"],
-                    "s_qty": sr["qty"],
-                    "s_price": sr["price"],
+                    "s_qty": s_qty,
+                    "s_price": s_price,
                     "s_total": sr["total_sales"],
-                    "p_qty": 1.0,
-                    "p_price": p_tot,
-                    "p_total": p_tot,
+                    "p_qty": s_qty,
+                    "p_price": p_unit_price,
+                    "p_total": cogs,
                     "profit": profit,
                     "margin": margin,
+                    "remaining_stock": 0.0,
+                    "stock_value": 0.0,
                     "date": sr["date"]
                 })
         elif has_named_products:
             for sr in sales_records:
                 pr = purchase_by_name.get(sr["product"])
-                p_qty = pr["qty"] if pr else 0.0
-                p_price = pr["price"] if pr else 0.0
-                p_total = pr["total_purchase"] if pr else 0.0
-                profit = sr["total_sales"] - p_total
+                s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
+                s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
+
+                p_total_bought = pr["qty"] if pr else 0.0
+                p_unit_price = pr["price"] if pr else 0.0
+                if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
+                    p_unit_price = pr["total_purchase"] / p_total_bought
+
+                # CRITICAL: Cost of Goods Sold (COGS) = sold quantity * unit purchase price!
+                # E.g. 4 pens sold * 10,000 purchase price = 40,000 COGS (NOT 30 pens * 10,000 = 300,000!)
+                cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
+                profit = sr["total_sales"] - cogs
                 margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
+                remaining_stock = max(0.0, p_total_bought - s_qty) if p_total_bought > 0 else 0.0
+                stock_value = remaining_stock * p_unit_price
+
                 matched_items.append({
                     "product": sr["product"],
-                    "s_qty": sr["qty"],
-                    "s_price": sr["price"],
+                    "s_qty": s_qty,
+                    "s_price": s_price,
                     "s_total": sr["total_sales"],
-                    "p_qty": p_qty,
-                    "p_price": p_price,
-                    "p_total": p_total,
+                    "p_qty": p_total_bought,
+                    "p_price": p_unit_price,
+                    "p_total": cogs,
                     "profit": profit,
                     "margin": margin,
+                    "remaining_stock": remaining_stock,
+                    "stock_value": stock_value,
                     "date": sr["date"]
                 })
         else:
@@ -895,27 +916,33 @@ class MathActionHandler:
                 pr = purchase_records[i] if i < len(purchase_records) else None
 
                 prod = sr["product"] if sr else (pr["product"] if pr else f"آیتم {i+1}")
-                s_qty = sr["qty"] if sr else 0.0
+                s_qty = sr["qty"] if (sr and sr["qty"] > 0) else 1.0
                 s_price = sr["price"] if sr else 0.0
                 s_total = sr["total_sales"] if sr else 0.0
 
-                p_qty = pr["qty"] if pr else 0.0
-                p_price = pr["price"] if pr else 0.0
-                p_total = pr["total_purchase"] if pr else 0.0
+                p_total_bought = pr["qty"] if pr else 0.0
+                p_unit_price = pr["price"] if pr else 0.0
+                if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
+                    p_unit_price = pr["total_purchase"] / p_total_bought
 
-                profit = s_total - p_total
+                cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
+                profit = s_total - cogs
                 margin = (profit / s_total * 100) if s_total > 0 else 0.0
+                remaining_stock = max(0.0, p_total_bought - s_qty) if p_total_bought > 0 else 0.0
+                stock_value = remaining_stock * p_unit_price
 
                 matched_items.append({
                     "product": prod,
                     "s_qty": s_qty,
                     "s_price": s_price,
                     "s_total": s_total,
-                    "p_qty": p_qty,
-                    "p_price": p_price,
-                    "p_total": p_total,
+                    "p_qty": p_total_bought,
+                    "p_price": p_unit_price,
+                    "p_total": cogs,
                     "profit": profit,
                     "margin": margin,
+                    "remaining_stock": remaining_stock,
+                    "stock_value": stock_value,
                     "date": sr["date"] if sr else None
                 })
 
@@ -993,10 +1020,15 @@ class MathActionHandler:
 
             kpis = [
                 ("💰 کل مبلغ فروش", f"{total_sales_all:,.0f} تومان", f"شیت: {sales_sheet_name}"),
-                ("🛒 کل مبلغ خرید", f"{total_purchase_all:,.0f} تومان", f"شیت: {purchase_sheet_name}"),
-                ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای خرید کل"),
+                ("🛒 کل مبلغ خرید اقلام فروش‌رفته (COGS)", f"{total_purchase_all:,.0f} تومان", f"تعداد فروش × فی خرید ({purchase_sheet_name})"),
+                ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای بهای خرید اقلام فروش‌رفته"),
                 ("📈 میانگین حاشیه سود", f"{overall_margin:.1f}%", "درصد سود از کل فروش"),
             ]
+            tot_rem_stock = sum(it.get("remaining_stock", 0) for it in matched_items)
+            tot_stock_val = sum(it.get("stock_value", 0) for it in matched_items)
+            if tot_rem_stock > 0:
+                kpis.append(("📦 ارزش موجودی باقیمانده انبار", f"{tot_stock_val:,.0f} تومان", f"{tot_rem_stock:,.0f} عدد کالا در انبار"))
+
             if has_dates and daily_map:
                 best_day = max(daily_map.items(), key=lambda x: x[1]["profit"])
                 kpis.append(("📅 پرسودترین روز", f"{best_day[0]} ({best_day[1]['profit']:,.0f} تومان)", "بیشترین سود روزانه"))
@@ -1110,7 +1142,7 @@ class MathActionHandler:
                 curr_r += 2
 
             # Section 4: Detailed Profit Table by Item
-            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان به ازای هر کالا")
+            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان و موجودی به ازای هر کالا")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
             curr_r += 1
 
@@ -1118,13 +1150,15 @@ class MathActionHandler:
                 "ردیف",
                 "نام کالا",
                 f"تعداد فروش ({sales_sheet_name})",
-                "قیمت فروش",
+                "قیمت فروش هر واحد",
                 "مبلغ کل فروش",
-                f"تعداد خرید ({purchase_sheet_name})",
-                "قیمت خرید",
-                "مبلغ کل خرید",
+                f"قیمت خرید هر واحد ({purchase_sheet_name})",
+                "بهای تمام‌شده اقلام فروش‌رفته (COGS)",
                 "سود خالص (تومان)",
-                "درصد سود"
+                "درصد حاشیه سود",
+                f"کل خرید اولیه ({purchase_sheet_name})",
+                "موجودی باقیمانده انبار",
+                "ارزش موجودی انبار"
             ]
             for idx, h in enumerate(table_headers):
                 col_c = col_index_to_letter(idx + 1)
@@ -1141,17 +1175,19 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{r_num}", it["s_qty"])
                 report_sheet.set_value(f"D{r_num}", it["s_price"])
                 report_sheet.set_formula(f"E{r_num}", f"=C{r_num}*D{r_num}")
-                report_sheet.set_value(f"F{r_num}", it["p_qty"])
-                report_sheet.set_value(f"G{r_num}", it["p_price"])
-                report_sheet.set_formula(f"H{r_num}", f"=F{r_num}*G{r_num}")
-                report_sheet.set_formula(f"I{r_num}", f"=E{r_num}-H{r_num}")
-                report_sheet.set_formula(f"J{r_num}", f'=IF(E{r_num}>0, (I{r_num}/E{r_num})*100, 0)')
+                report_sheet.set_value(f"F{r_num}", it["p_price"])
+                report_sheet.set_formula(f"G{r_num}", f"=C{r_num}*F{r_num}")
+                report_sheet.set_formula(f"H{r_num}", f"=E{r_num}-G{r_num}")
+                report_sheet.set_formula(f"I{r_num}", f'=IF(E{r_num}>0, (H{r_num}/E{r_num})*100, 0)')
+                report_sheet.set_value(f"J{r_num}", it["p_qty"])
+                report_sheet.set_formula(f"K{r_num}", f'=IF(J{r_num}>C{r_num}, J{r_num}-C{r_num}, 0)')
+                report_sheet.set_formula(f"L{r_num}", f'=K{r_num}*F{r_num}')
 
-                report_sheet.set_font(f"I{r_num}", bold=True)
+                report_sheet.set_font(f"H{r_num}", bold=True)
                 if it["profit"] >= 0:
-                    report_sheet.set_cell_color(f"I{r_num}", "#064E3B")
+                    report_sheet.set_cell_color(f"H{r_num}", "#064E3B")
                 else:
-                    report_sheet.set_cell_color(f"I{r_num}", "#7F1D1D")
+                    report_sheet.set_cell_color(f"H{r_num}", "#7F1D1D")
 
                 curr_r += 1
 
@@ -1159,12 +1195,16 @@ class MathActionHandler:
             last_r = curr_r
             report_sheet.set_value(f"A{last_r}", "جمع کل")
             report_sheet.set_font(f"A{last_r}", bold=True)
+            report_sheet.set_formula(f"C{last_r}", f"=SUM(C{start_table_r}:C{last_r-1})")
             report_sheet.set_formula(f"E{last_r}", f"=SUM(E{start_table_r}:E{last_r-1})")
-            report_sheet.set_formula(f"H{last_r}", f"=SUM(H{start_table_r}:H{last_r-1})")
-            report_sheet.set_formula(f"I{last_r}", f"=E{last_r}-H{last_r}")
-            report_sheet.set_formula(f"J{last_r}", f'=IF(E{last_r}>0, (I{last_r}/E{last_r})*100, 0)')
+            report_sheet.set_formula(f"G{last_r}", f"=SUM(G{start_table_r}:G{last_r-1})")
+            report_sheet.set_formula(f"H{last_r}", f"=E{last_r}-G{last_r}")
+            report_sheet.set_formula(f"I{last_r}", f'=IF(E{last_r}>0, (H{last_r}/E{last_r})*100, 0)')
+            report_sheet.set_formula(f"J{last_r}", f"=SUM(J{start_table_r}:J{last_r-1})")
+            report_sheet.set_formula(f"K{last_r}", f"=SUM(K{start_table_r}:K{last_r-1})")
+            report_sheet.set_formula(f"L{last_r}", f"=SUM(L{start_table_r}:L{last_r-1})")
 
-            for c_idx in range(1, 11):
+            for c_idx in range(1, 13):
                 col_c = col_index_to_letter(c_idx)
                 report_sheet.set_font(f"{col_c}{last_r}", bold=True)
                 report_sheet.set_cell_color(f"{col_c}{last_r}", "#0B1938")
@@ -1183,14 +1223,17 @@ class MathActionHandler:
             "by_item": "تفکیک کالاها"
         }.get(action.period, "روزانه، ماهانه، سالانه و کل")
 
+        tot_sold_qty = sum(it["s_qty"] for it in matched_items)
         msg_lines = [
             f"💵 **محاسبه سود ({period_title}) با موفقیت انجام شد ({profit_status}):**",
-            f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد: `{len(matched_items)}` قلم)",
-            f"🛒 **کل مبلغ خرید ({purchase_sheet_name}):** `{total_purchase_all:,.0f}` تومان",
+            f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد فروش: `{tot_sold_qty:,.0f}` عدد در `{len(matched_items)}` قلم)",
+            f"🛒 **بهای تمام‌شده اقلام فروش‌رفته (COGS):** `{total_purchase_all:,.0f}` تومان (محاسبه‌شده از: تعداد فروش × قیمت خرید واحد)",
             "───────────────────────────────",
-            f"✨ **سود خالص کل (فروش منهای خرید):** **`{total_profit_all:,.0f}` تومان**",
+            f"✨ **سود خالص کل (فروش منهای بهای خرید اقلام فروخته‌شده):** **`{total_profit_all:,.0f}` تومان**",
             f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**"
         ]
+        if tot_rem_stock > 0:
+            msg_lines.append(f"📦 **موجودی باقیمانده در انبار:** `{tot_rem_stock:,.0f}` قلم به ارزش `{tot_stock_val:,.0f}` تومان (سرمایه در گردش که جزء هزینه این فروش نیست)")
         if has_dates and daily_map:
             best_day = max(daily_map.items(), key=lambda x: x[1]["profit"])
             msg_lines.append(f"📅 **تعداد روزهای ثبت‌شده:** `{len(daily_map)}` روز (پرسودترین روز: `{best_day[0]}` با سود `{best_day[1]['profit']:,.0f}` تومان)")
@@ -1204,7 +1247,7 @@ class MathActionHandler:
 
         if action.create_report_sheet:
             msg_lines.append("")
-            msg_lines.append(f"📑 شیت اختصاصی **«{report_sheet_name}»** همراه با داشبورد، جداول تفکیک دوره‌ای (روزانه/ماهانه/سالانه) و فرمول‌های اکسل ایجاد گردید.")
+            msg_lines.append(f"📑 شیت اختصاصی **«{report_sheet_name}»** همراه با داشبورد، موجودی انبار، جداول تفکیک دوره‌ای (روزانه/ماهانه/سالانه) و فرمول‌های اکسل ایجاد گردید.")
 
         return ActionResult(
             success=True,
@@ -1215,6 +1258,8 @@ class MathActionHandler:
                 "total_purchase": total_purchase_all,
                 "total_profit": total_profit_all,
                 "margin_pct": overall_margin,
+                "remaining_stock": tot_rem_stock,
+                "stock_value": tot_stock_val,
                 "item_count": len(matched_items),
                 "daily_count": len(daily_map) if has_dates else 0,
                 "monthly_count": len(monthly_map) if has_dates else 0
