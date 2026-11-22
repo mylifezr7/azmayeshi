@@ -261,6 +261,26 @@ QPushButton#analyzeButton:pressed {{
     background: #172554;
 }}
 
+/* 7. Sales Calculation: Radiant Ruby / Rose Coral */
+QPushButton#salesButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #BE123C, stop:1 #F43F5E);
+    border: 1px solid #F43F5E;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#salesButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #E11D48, stop:1 #FB7185);
+    border: 1px solid #FB7185;
+}}
+
+QPushButton#salesButton:pressed {{
+    background: #9F1239;
+}}
+
 /* Chat Scroll Area */
 QScrollArea#chatScrollArea {{
     background-color: #020617;

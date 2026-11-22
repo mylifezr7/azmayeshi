@@ -22,6 +22,7 @@ from excel_assistant.nlp.intent_models import (
     CreateTableAction,
     FormatCellsAction,
     AnalyzeSheetAction,
+    SalesSummaryAction,
     UndoLastAction,
 )
 from excel_assistant.nlp.persian_normalizer import (
@@ -168,11 +169,84 @@ class PersianRuleParser:
                 description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
             )
 
-        # 7.6 Insert Date: درج تاریخ در اکسل
+        # 7.6 Sales Summary: محاسبه فروش روزانه، ماهانه، سالانه و کل
+        # e.g.: محاسبه فروش روزانه و ماهانه و سالانه و کل
+        # e.g.: فروش روزانه را حساب کن
+        # e.g.: فروش ماهانه را حساب کن
+        # e.g.: فروش سالانه رو محاسبه کن
+        # e.g.: فروش کل چقدره؟
+        # e.g.: گزارش فروش ستون D بر اساس تاریخ ستون A
+        if "فروش" in text and any(w in text for w in [
+            "محاسبه", "حساب", "گزارش", "روزانه", "ماهانه", "سالانه", "کل", "چقدر", "چند", "آمار", "تحلیل", "جمع"
+        ]):
+            period = "all"
+            if "روزانه" in text and not any(w in text for w in ["ماهانه", "سالانه", "کل"]):
+                period = "daily"
+            elif "ماهانه" in text and not any(w in text for w in ["روزانه", "سالانه", "کل"]):
+                period = "monthly"
+            elif "سالانه" in text and not any(w in text for w in ["روزانه", "ماهانه", "کل"]):
+                period = "yearly"
+            elif "کل" in text and not any(w in text for w in ["روزانه", "ماهانه", "سالانه"]):
+                period = "total"
+
+            date_col = None
+            amount_col = None
+
+            # Detect explicit column references
+            date_m = re.search(r'(?:ستون|بر اساس)?\s*تاریخ\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
+            if date_m and date_m.group(1):
+                date_col = resolve_column(date_m.group(1), header_map)
+
+            amount_m = re.search(r'(?:ستون|مبلغ)?\s*فروش\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
+            if amount_m and amount_m.group(1):
+                amount_col = resolve_column(amount_m.group(1), header_map)
+
+            # Check general column mentions if not yet matched
+            found_cols = []
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in found_cols:
+                    found_cols.append(res)
+
+            if len(found_cols) >= 2:
+                if not amount_col and not date_col:
+                    amount_col = found_cols[0]
+                    date_col = found_cols[1]
+                elif amount_col and not date_col:
+                    for fc in found_cols:
+                        if fc != amount_col:
+                            date_col = fc
+                            break
+                elif date_col and not amount_col:
+                    for fc in found_cols:
+                        if fc != date_col:
+                            amount_col = fc
+                            break
+            elif len(found_cols) == 1:
+                if not amount_col and not date_col:
+                    amount_col = found_cols[0]
+
+            period_fa = {
+                "all": "روزانه، ماهانه، سالانه و کل",
+                "daily": "روزانه",
+                "monthly": "ماهانه",
+                "yearly": "سالانه",
+                "total": "کل"
+            }.get(period, "جامع")
+
+            return SalesSummaryAction(
+                date_col=date_col,
+                amount_col=amount_col,
+                period=period,
+                create_report_sheet=True,
+                description_persian=f"محاسبه فروش {period_fa}"
+            )
+
+        # 7.7 Insert Date: درج تاریخ در اکسل
         # e.g.: از سطر 1 تا 30 در ستون A تاریخ بزن
         # e.g.: درج تاریخ 1403/08/29 از ردیف 1 تا 30 در ستون A
         # e.g.: از سطر 1 تا 30 در ستون 1 تاریخ بنویس
-        if "تاریخ" in text and any(w in text for w in ["بزن", "درج", "بنویس", "قرار", "بذار", "ثبت", "سطر", "ردیف", "تا"]):
+        if "تاریخ" in text and any(w in text for w in ["بزن", "درج", "بنویس", "قرار", "بذار", "ثبت", "سطر", "ردیف", " تا "]):
             row_m = re.search(r'از\s*(?:سطر|ردیف)\s*(\d+)\s*تا\s*(?:سطر|ردیف)?\s*(\d+)', text)
             start_r = int(row_m.group(1)) if row_m else 1
             end_r = int(row_m.group(2)) if row_m else 30

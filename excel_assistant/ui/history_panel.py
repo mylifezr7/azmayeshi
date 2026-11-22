@@ -19,6 +19,7 @@ class HistoryPanel(QFrame):
     discount_requested = Signal()
     date_requested = Signal()
     unique_col_requested = Signal()
+    sales_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -155,6 +156,25 @@ class HistoryPanel(QFrame):
         )
         self.btn_analyze.clicked.connect(self.analyze_requested.emit)
         layout.addWidget(self.btn_analyze)
+
+        # 7. Sales Calculation & Dashboard button: Radiant Ruby / Rose Coral
+        self.btn_sales = QPushButton("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...")
+        self.btn_sales.setObjectName("salesButton")
+        self.btn_sales.setProperty("class", "sidebarActionBtn")
+        self.btn_sales.setStyleSheet(
+            "QPushButton#salesButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #BE123C, stop:1 #F43F5E);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #F43F5E; border-radius: 10px;"
+            "}"
+            "QPushButton#salesButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #E11D48, stop:1 #FB7185);"
+            "  border: 1px solid #FB7185;"
+            "}"
+            "QPushButton#salesButton:pressed { background: #9F1239; }"
+        )
+        self.btn_sales.clicked.connect(self.sales_requested.emit)
+        layout.addWidget(self.btn_sales)
 
     def add_command(self, cmd: str):
         if cmd.strip():

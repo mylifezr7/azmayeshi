@@ -134,6 +134,15 @@ class AnalyzeSheetAction(BaseActionModel):
     sheet_name: Optional[str] = None
 
 
+class SalesSummaryAction(BaseActionModel):
+    action_type: Literal["sales_summary"] = "sales_summary"
+    date_col: Optional[str] = None  # Column containing dates, e.g. "A"
+    amount_col: Optional[str] = None  # Column containing sales amount, e.g. "D"
+    period: Literal["all", "daily", "monthly", "yearly", "total"] = "all"
+    create_report_sheet: bool = True
+    description_persian: str = "محاسبه فروش روزانه، ماهانه، سالانه و کل"
+
+
 class UndoLastAction(BaseActionModel):
     action_type: Literal["undo_last_action"] = "undo_last_action"
 
@@ -155,5 +164,6 @@ ExcelAction = Union[
     FormatCellsAction,
     ApplyFormulaAction,
     AnalyzeSheetAction,
+    SalesSummaryAction,
     UndoLastAction,
 ]

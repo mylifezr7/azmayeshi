@@ -28,6 +28,7 @@ from excel_assistant.nlp.intent_models import (
     CreateTableAction,
     FormatCellsAction,
     AnalyzeSheetAction,
+    SalesSummaryAction,
     UndoLastAction,
 )
 from excel_assistant.core.exceptions import (
@@ -87,6 +88,9 @@ class ActionExecutor:
 
             elif isinstance(action, ApplyDiscountAction):
                 return MathActionHandler.execute_discount(action, ctx)
+
+            elif isinstance(action, SalesSummaryAction):
+                return MathActionHandler.execute_sales_summary(action, ctx)
 
             elif isinstance(action, ColumnStatsAction):
                 return MathActionHandler.execute_stats(action, ctx)

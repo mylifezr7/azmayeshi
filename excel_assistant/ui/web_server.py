@@ -288,6 +288,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
         }
 
+        .btn-sales {
+            background: linear-gradient(90deg, #BE123C, #F43F5E);
+            border: 1px solid #F43F5E;
+        }
+        .btn-sales:hover {
+            background: linear-gradient(90deg, #E11D48, #FB7185);
+            box-shadow: 0 0 12px rgba(244, 63, 94, 0.6);
+        }
+
         /* Center: Chat Area with Background Wallpaper */
         .chat-section {
             flex: 3;
@@ -551,6 +560,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="btn-shortcut btn-discount" onclick="promptDiscount()">🏷️ محاسبه تخفیف کالاها...</button>
             <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
             <button class="btn-shortcut btn-analyze" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
+            <button class="btn-shortcut btn-sales" onclick="promptSalesSummary()">💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...</button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
@@ -559,6 +569,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Quick Action Chips -->
             <div class="chips-bar">
+                <button class="chip" onclick="promptSalesSummary()">💰 محاسبه فروش روزانه و ماهانه</button>
                 <button class="chip" onclick="promptArithmetic('add')">➕ جمع ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
@@ -728,6 +739,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const col = prompt("ستون مورد نظر برای قفل یکتایی و جلوگیری از تکرار (مثلاً: 12 یا L):", "12");
             if (!col || !col.trim()) return;
             const cmd = `ستون ${col.trim()} نباید داده تکراری داشته باشه`;
+            sendCommand(cmd);
+        }
+
+        function promptSalesSummary() {
+            const dateCol = prompt("ستون تاریخ را وارد کنید (مثلاً: A یا 1):", "A");
+            if (!dateCol || !dateCol.trim()) return;
+            const amtCol = prompt("ستون مبلغ فروش را وارد کنید (مثلاً: B یا 2 یا D):", "B");
+            if (!amtCol || !amtCol.trim()) return;
+            const period = prompt("دوره زمانی محاسبه (all: همه | daily: روزانه | monthly: ماهانه | yearly: سالانه | total: کل):", "all");
+            const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
+            const pText = periodMap[period] || "روزانه و ماهانه و سالانه و کل";
+            const cmd = `محاسبه فروش ${pText} ستون فروش ${amtCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
             sendCommand(cmd);
         }
 

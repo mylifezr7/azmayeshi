@@ -2,12 +2,15 @@
 Mathematical and Statistical Actions for Excel Assistant.
 Handles column arithmetic (multiply, add, subtract, divide) and statistical summaries.
 """
+from collections import defaultdict
+import datetime
+import re
 import statistics
 from typing import Any, List, Optional
 
 from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.nlp.intent_models import (
-    ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction
+    ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction, SalesSummaryAction
 )
 from excel_assistant.core.utils import (
     col_letter_to_index, col_index_to_letter, bounds_to_range_str
@@ -337,3 +340,287 @@ class MathActionHandler:
             f"📌 ستون قیمت بعد از تخفیف: `{target_col}` (محدوده `{target_range}`)"
         )
         return ActionResult(success=True, message_persian=msg, affected_range=target_range)
+
+    @classmethod
+    def execute_sales_summary(cls, action: SalesSummaryAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+
+        # 1. Determine Amount & Date Columns
+        date_col = None
+        amount_col = None
+
+        if action.date_col:
+            d_raw = str(action.date_col).strip().upper()
+            date_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+        if action.amount_col:
+            a_raw = str(action.amount_col).strip().upper()
+            amount_col = col_index_to_letter(int(a_raw)) if a_raw.isdigit() else a_raw
+
+        # Auto-detect if missing
+        if not date_col or not amount_col:
+            col_scores_date = {}
+            col_scores_amount = {}
+
+            date_keywords = ["تاریخ", "date", "روز", "زمان", "time", "day", "month", "سال"]
+            amount_keywords = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع", "fee"]
+
+            for c_idx in range(min_c, max_c + 1):
+                c_let = col_index_to_letter(c_idx)
+                hdr = str(sheet.get_value(f"{c_let}{min_r}") or "").lower()
+
+                d_score = 0
+                a_score = 0
+                for kw in date_keywords:
+                    if kw in hdr:
+                        d_score += 10
+                for kw in amount_keywords:
+                    if kw in hdr:
+                        a_score += 10
+
+                for r in range(min_r + 1, min(min_r + 6, max_r + 1)):
+                    val = sheet.get_value(f"{c_let}{r}")
+                    if val is not None:
+                        s_val = str(val).strip()
+                        if hasattr(val, 'strftime') or re.search(r'\d{4}[/-]\d{1,2}[/-]\d{1,2}', s_val):
+                            d_score += 5
+                        elif s_val.replace(',', '').replace('.', '').isdigit():
+                            a_score += 3
+
+                col_scores_date[c_let] = d_score
+                col_scores_amount[c_let] = a_score
+
+            if not date_col:
+                best_date = max(col_scores_date, key=col_scores_date.get) if col_scores_date else "A"
+                date_col = best_date if col_scores_date.get(best_date, 0) > 0 else "A"
+
+            if not amount_col:
+                sorted_amounts = sorted(col_scores_amount.items(), key=lambda x: x[1], reverse=True)
+                for c_let, sc in sorted_amounts:
+                    if c_let != date_col:
+                        amount_col = c_let
+                        break
+                if not amount_col:
+                    amount_col = "B" if date_col != "B" else "C"
+
+        # 2. Extract Data
+        date_vals = sheet.get_column_values(date_col, include_header=False)
+        amount_vals = sheet.get_column_values(amount_col, include_header=False)
+
+        records = []
+        for d_raw, a_raw in zip(date_vals, amount_vals):
+            if d_raw is None and a_raw is None:
+                continue
+            amt = 0.0
+            if a_raw is not None:
+                s_amt = str(a_raw).replace(',', '').replace('تومان', '').replace('ریال', '').strip()
+                try:
+                    amt = float(s_amt)
+                except ValueError:
+                    amt = 0.0
+
+            d_str = None
+            if d_raw is not None:
+                if hasattr(d_raw, 'strftime'):
+                    d_str = d_raw.strftime("%Y/%m/%d")
+                else:
+                    s_d = str(d_raw).strip()
+                    m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', s_d)
+                    if m:
+                        d_str = f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
+                    elif len(s_d) >= 4:
+                        d_str = s_d
+
+            if amt > 0 or d_str:
+                records.append({
+                    "date": d_str or "نامشخص",
+                    "amount": amt
+                })
+
+        if not records:
+            return ActionResult(
+                success=False,
+                message_persian=f"⚠️ هیچ دادهٔ معتبری برای فروش در ستون‌های تاریخ `{date_col}` و مبلغ `{amount_col}` یافت نشد."
+            )
+
+        # 3. Aggregate
+        total_sales = sum(r["amount"] for r in records)
+        total_count = len(records)
+        avg_sale = total_sales / total_count if total_count > 0 else 0.0
+        max_sale = max(r["amount"] for r in records) if records else 0.0
+
+        daily_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
+        monthly_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
+        yearly_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
+
+        for r in records:
+            dt = r["date"]
+            amt = r["amount"]
+            daily_map[dt]["sum"] += amt
+            daily_map[dt]["count"] += 1
+
+            mo_key = dt[:7] if len(dt) >= 7 and dt[4] in ('/', '-') else dt
+            monthly_map[mo_key]["sum"] += amt
+            monthly_map[mo_key]["count"] += 1
+
+            yr_key = dt[:4] if len(dt) >= 4 and dt[:4].isdigit() else "نامشخص"
+            yearly_map[yr_key]["sum"] += amt
+            yearly_map[yr_key]["count"] += 1
+
+        sorted_daily = sorted(daily_map.items(), key=lambda x: str(x[0]))
+        sorted_monthly = sorted(monthly_map.items(), key=lambda x: str(x[0]))
+        sorted_yearly = sorted(yearly_map.items(), key=lambda x: str(x[0]))
+
+        best_day = max(daily_map.items(), key=lambda x: x[1]["sum"]) if daily_map else (None, {"sum": 0, "count": 0})
+        best_month = max(monthly_map.items(), key=lambda x: x[1]["sum"]) if monthly_map else (None, {"sum": 0, "count": 0})
+
+        # 4. Generate Report in Excel Sheet
+        report_sheet_name = "گزارش_فروش"
+        if action.create_report_sheet:
+            existing_sheets = ctx.manager.active_driver.get_sheet_names()
+            if report_sheet_name in existing_sheets:
+                report_sheet = ctx.manager.active_driver.get_sheet(report_sheet_name)
+            else:
+                report_sheet = ctx.manager.active_driver.create_sheet(report_sheet_name)
+
+            curr_r = 1
+            # Banner Title
+            report_sheet.set_value(f"A{curr_r}", "📊 داشبورد و گزارش جامع فروش (روزانه، ماهانه، سالانه و کل)")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=14, color_hex="#38BDF8")
+            report_sheet.set_cell_color(f"A{curr_r}", "#09132B")
+            curr_r += 2
+
+            # Section 1: Summary Table
+            report_sheet.set_value(f"A{curr_r}", "📌 خلاصه کل عملکرد فروش")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+            curr_r += 1
+
+            headers_s1 = ["شاخص کلیدی", "مقدار عددی", "توضیحات"]
+            for idx, h in enumerate(headers_s1):
+                col_c = col_index_to_letter(idx + 1)
+                report_sheet.set_value(f"{col_c}{curr_r}", h)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
+            curr_r += 1
+
+            kpis = [
+                ("💰 جمع کل فروش", f"{total_sales:,.0f} تومان", f"بر اساس ستون {amount_col}"),
+                ("🔢 تعداد کل فاکتورها / تراکنش‌ها", f"{total_count:,}", "تعداد ردیف‌های ثبت شده"),
+                ("📈 میانگین ارزش هر فاکتور", f"{avg_sale:,.0f} تومان", "فروش کل تقسیم بر تعداد"),
+                ("🏆 بالاترین مبلغ ثبت‌شده در یک فاکتور", f"{max_sale:,.0f} تومان", "حداکثر مبلغ فروش"),
+                ("⭐ پرفروش‌ترین روز", f"{best_day[0]} ({best_day[1]['sum']:,.0f} تومان)", f"{best_day[1]['count']} فاکتور"),
+                ("⭐ پرفروش‌ترین ماه", f"{best_month[0]} ({best_month[1]['sum']:,.0f} تومان)", f"{best_month[1]['count']} فاکتور")
+            ]
+            for title, val, desc in kpis:
+                report_sheet.set_value(f"A{curr_r}", title)
+                report_sheet.set_value(f"B{curr_r}", val)
+                report_sheet.set_value(f"C{curr_r}", desc)
+                report_sheet.set_font(f"B{curr_r}", bold=True)
+                curr_r += 1
+            curr_r += 2
+
+            # Section 2: Yearly Sales Table
+            report_sheet.set_value(f"A{curr_r}", "📆 گزارش فروش سالانه")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+            curr_r += 1
+
+            headers_yr = ["سال", "مبلغ فروش سالانه (تومان)", "تعداد فاکتور", "سهم از کل فروش"]
+            for idx, h in enumerate(headers_yr):
+                col_c = col_index_to_letter(idx + 1)
+                report_sheet.set_value(f"{col_c}{curr_r}", h)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0F766E")
+            curr_r += 1
+
+            for yr, data in sorted_yearly:
+                share_pct = (data["sum"] / total_sales * 100) if total_sales > 0 else 0
+                report_sheet.set_value(f"A{curr_r}", str(yr))
+                report_sheet.set_value(f"B{curr_r}", f"{data['sum']:,.0f}")
+                report_sheet.set_value(f"C{curr_r}", data["count"])
+                report_sheet.set_value(f"D{curr_r}", f"{share_pct:.1f}%")
+                curr_r += 1
+            curr_r += 2
+
+            # Section 3: Monthly Sales Table
+            report_sheet.set_value(f"A{curr_r}", "🗓️ گزارش فروش ماهانه")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+            curr_r += 1
+
+            headers_mo = ["دوره / ماه", "مبلغ فروش ماهانه (تومان)", "تعداد فاکتور", "میانگین هر فاکتور"]
+            for idx, h in enumerate(headers_mo):
+                col_c = col_index_to_letter(idx + 1)
+                report_sheet.set_value(f"{col_c}{curr_r}", h)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E40AF")
+            curr_r += 1
+
+            for mo, data in sorted_monthly:
+                mo_avg = data["sum"] / data["count"] if data["count"] > 0 else 0
+                report_sheet.set_value(f"A{curr_r}", str(mo))
+                report_sheet.set_value(f"B{curr_r}", f"{data['sum']:,.0f}")
+                report_sheet.set_value(f"C{curr_r}", data["count"])
+                report_sheet.set_value(f"D{curr_r}", f"{mo_avg:,.0f}")
+                curr_r += 1
+            curr_r += 2
+
+            # Section 4: Daily Sales Table
+            report_sheet.set_value(f"A{curr_r}", "📅 گزارش فروش روزانه")
+            report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+            curr_r += 1
+
+            headers_dy = ["تاریخ روز", "مبلغ فروش روزانه (تومان)", "تعداد فاکتور", "میانگین هر فاکتور"]
+            for idx, h in enumerate(headers_dy):
+                col_c = col_index_to_letter(idx + 1)
+                report_sheet.set_value(f"{col_c}{curr_r}", h)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0369A1")
+            curr_r += 1
+
+            for dy, data in sorted_daily:
+                dy_avg = data["sum"] / data["count"] if data["count"] > 0 else 0
+                report_sheet.set_value(f"A{curr_r}", str(dy))
+                report_sheet.set_value(f"B{curr_r}", f"{data['sum']:,.0f}")
+                report_sheet.set_value(f"C{curr_r}", data["count"])
+                report_sheet.set_value(f"D{curr_r}", f"{dy_avg:,.0f}")
+                curr_r += 1
+
+            report_sheet.auto_fit_columns()
+            ctx.manager.activate_sheet(report_sheet_name)
+
+        # 5. Format Persian response message
+        msg_lines = [
+            "📊 **محاسبه و تحلیل جامع فروش با موفقیت انجام شد:**",
+            f"💰 **جمع کل فروش:** `{total_sales:,.0f}` تومان (تعداد: `{total_count:,}` تراکنش)",
+            f"📈 **میانگین هر فاکتور:** `{avg_sale:,.0f}` تومان | **بالاترین فاکتور:** `{max_sale:,.0f}` تومان",
+            "",
+            "📅 **خلاصه فروش روزانه:**",
+            f"• تعداد روزهای ثبت‌شده: `{len(daily_map)}` روز",
+            f"• پرفروش‌ترین روز: `{best_day[0]}` با مبلغ `{best_day[1]['sum']:,.0f}` تومان",
+            "",
+            "🗓️ **خلاصه فروش ماهانه:**",
+            f"• دوره‌های ماهانه: `{len(monthly_map)}` ماه",
+            f"• پرفروش‌ترین ماه: `{best_month[0]}` با مجموع `{best_month[1]['sum']:,.0f}` تومان",
+            "",
+            "📆 **خلاصه فروش سالانه:**"
+        ]
+        for yr, data in sorted_yearly:
+            pct = (data['sum'] / total_sales * 100) if total_sales > 0 else 0
+            msg_lines.append(f"• سال `{yr}`: `{data['sum']:,.0f}` تومان (`{data['count']}` فاکتور - سهم: `{pct:.1f}%`)")
+
+        if action.create_report_sheet:
+            msg_lines.append("")
+            msg_lines.append("📑 شیت اختصاصی **«گزارش_فروش»** با جداول تفکیک‌شده روزانه، ماهانه، سالانه و کل ایجاد گردید.")
+
+        return ActionResult(
+            success=True,
+            message_persian="\n".join(msg_lines),
+            affected_range=report_sheet_name,
+            data={
+                "total_sales": total_sales,
+                "total_count": total_count,
+                "avg_sale": avg_sale,
+                "daily_count": len(daily_map),
+                "monthly_count": len(monthly_map),
+                "yearly_count": len(yearly_map)
+            }
+        )
