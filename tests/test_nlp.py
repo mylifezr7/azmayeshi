@@ -198,6 +198,21 @@ def test_insert_date_parsing():
     assert act2.day == 29
 
 
+def test_prevent_duplicates_parsing():
+    from excel_assistant.nlp.intent_models import PreventDuplicatesAction
+    parser = PersianIntentParser()
+
+    cmd1 = "ستون 12 نباید داده تکراری داشته باشه"
+    act1 = parser.parse(cmd1)
+    assert isinstance(act1, PreventDuplicatesAction)
+    assert act1.target_col == "L"
+
+    cmd2 = "در ستون L جلوی ورود داده تکراری را بگیر"
+    act2 = parser.parse(cmd2)
+    assert isinstance(act2, PreventDuplicatesAction)
+    assert act2.target_col == "L"
+
+
 def test_ambiguous_command_error():
     parser = PersianIntentParser()
     with pytest.raises(AmbiguousCommandError) as exc_info:

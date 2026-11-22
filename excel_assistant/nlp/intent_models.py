@@ -48,6 +48,14 @@ class HighlightDuplicatesAction(BaseActionModel):
     distinct_colors: bool = True  # Assign distinct color to each duplicate value group
 
 
+class PreventDuplicatesAction(BaseActionModel):
+    action_type: Literal["prevent_duplicates"] = "prevent_duplicates"
+    target_col: str = "A"  # e.g. "L" or "12"
+    error_title: str = "خطای ورود داده تکراری"
+    error_message: str = "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد. لطفاً کد یکتای دیگری وارد کنید."
+    highlight_existing: bool = True
+
+
 class DeleteEmptyRowsAction(BaseActionModel):
     action_type: Literal["delete_empty_rows"] = "delete_empty_rows"
     is_destructive: bool = True
@@ -135,6 +143,7 @@ ExcelAction = Union[
     ColumnStatsAction,
     ApplyDiscountAction,
     InsertDateAction,
+    PreventDuplicatesAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,

@@ -83,6 +83,7 @@ class MainWindow(QMainWindow):
             "➗ تقسیم ستون‌ها",
             "🏷️ اعمال تخفیف کالاها",
             "📅 درج تاریخ (سطر ۱ تا ۳۰)",
+            "🔒 جلوگیری از داده تکراری در ستون",
             "🎨 داده‌های متنی تکراری را رنگ کن",
             "📊 تحلیل شیت",
             "🧹 ردیف‌های خالی را حذف کن",
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):
         self.history_panel.arithmetic_requested.connect(lambda: self._open_arithmetic_dialog("add"))
         self.history_panel.discount_requested.connect(self._open_discount_dialog)
         self.history_panel.date_requested.connect(self._open_date_dialog)
+        self.history_panel.unique_col_requested.connect(self._open_unique_col_dialog)
 
     def _perform_initial_connection(self):
         try:
@@ -214,7 +216,9 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
 
     def _on_quick_chip_clicked(self, command: str):
-        if "تاریخ" in command:
+        if "جلوگیری" in command or "یکتا" in command:
+            self._open_unique_col_dialog()
+        elif "تاریخ" in command:
             self._open_date_dialog()
         elif "تخفیف" in command:
             self._open_discount_dialog()
@@ -229,6 +233,16 @@ class MainWindow(QMainWindow):
         else:
             self.input_edit.setText(command)
             self._on_send_clicked()
+
+    def _open_unique_col_dialog(self):
+        """Opens interactive wizard dialog for locking a column to prevent duplicate values."""
+        from excel_assistant.ui.unique_column_dialog import UniqueColumnWizardDialog
+        dialog = UniqueColumnWizardDialog(manager=self.manager, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            action = dialog.get_action()
+            self.chat_widget.add_user_message(action.description_persian)
+            self.history_panel.add_command(action.description_persian)
+            self._execute_action_pipeline(action)
 
     def _open_date_dialog(self):
         """Opens interactive wizard dialog for inserting dates into Excel ranges."""
@@ -277,6 +291,10 @@ class MainWindow(QMainWindow):
 
         # Check for standalone arithmetic keywords to launch wizard
         lower = text.lower()
+        if any(k in lower for k in ["یکتا", "یکتاسازی", "کد ملی", "کد محصول", "جلوگیری از تکرار"]) and len(lower.split()) <= 3:
+            self._open_unique_col_dialog()
+            return
+
         if "تاریخ" in lower and len(lower.split()) <= 2:
             self._open_date_dialog()
             return

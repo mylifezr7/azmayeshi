@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Set, Union
 
 from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.nlp.intent_models import (
-    DeleteEmptyRowsAction, DeleteDuplicatesAction, SortDataAction, InsertDateAction
+    DeleteEmptyRowsAction, DeleteDuplicatesAction, SortDataAction, InsertDateAction, PreventDuplicatesAction
 )
 from excel_assistant.core.utils import (
     col_letter_to_index, col_index_to_letter, bounds_to_range_str
@@ -150,3 +150,57 @@ class DataActionHandler:
             f"📌 محدوده سلول‌ها: `{range_str}`"
         )
         return ActionResult(success=True, message_persian=msg, affected_range=range_str)
+
+    @classmethod
+    def execute_prevent_duplicates(cls, action: PreventDuplicatesAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        from collections import Counter
+
+        # Normalize target column (e.g. '12' -> 'L', 'L' -> 'L')
+        raw_c = str(action.target_col).strip().upper()
+        col_let = col_index_to_letter(int(raw_c)) if raw_c.isdigit() else raw_c
+
+        # 1. Install Excel Data Validation rule
+        sheet.add_unique_validation(
+            col=col_let,
+            error_title=action.error_title,
+            error_message=action.error_message
+        )
+
+        # 2. Check for any existing duplicates in this column
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+        existing_dups = []
+        if max_r > 1:
+            vals = sheet.get_column_values(col_let, include_header=False)
+            val_counts = Counter(str(v).strip().lower() for v in vals if v is not None and str(v).strip() != "")
+            dup_keys = {k for k, count in val_counts.items() if count > 1}
+
+            if dup_keys:
+                for idx, v in enumerate(vals, start=2):
+                    if v is not None and str(v).strip().lower() in dup_keys:
+                        cell_addr = f"{col_let}{idx}"
+                        existing_dups.append((cell_addr, str(v).strip()))
+                        if action.highlight_existing:
+                            sheet.set_cell_color(cell_addr, "#FECDD3")  # Soft red alert tint
+
+        header_val = sheet.get_value(f"{col_let}1")
+        col_desc = f"`{col_let}`" + (f" («{header_val}»)" if header_val else "")
+
+        if existing_dups:
+            dup_items_str = "، ".join(f"{addr}: «{val}»" for addr, val in existing_dups[:5])
+            if len(existing_dups) > 5:
+                dup_items_str += " و موارد دیگر..."
+            msg = (
+                f"🔒 **قاعدهٔ جلوگیری از ورود دادهٔ تکراری روی ستون {col_desc} فعال شد.**\n"
+                f"🛑 **کنترل اکسل:** از این پس چنانچه مقداری تکراری در ستون `{col_let}` وارد شود، اکسل بلافاصله مانع شده و خطای «{action.error_title}» را به کاربر نمایش می‌دهد.\n\n"
+                f"⚠️ **توجه:** تعداد **{len(existing_dups)}** مقدار تکراری از قبل در این ستون وجود دارد که با رنگ مشخص هایلایت شدند تا بررسی نمایید:\n"
+                f"📍 نمونه‌ها: {dup_items_str}"
+            )
+        else:
+            msg = (
+                f"🔒 **قاعدهٔ جلوگیری از ورود دادهٔ تکراری روی ستون {col_desc} با موفقیت فعال شد.**\n"
+                f"✅ تمام مقادیر فعلی ستون `{col_let}` یکتا هستند.\n"
+                f"🛑 **کنترل اکسل:** از این پس اگر کاربری بخواهد یک کد محصول یا کد ملی تکراری وارد کند، اکسل بلافاصله خطای «{action.error_title}» نمایش داده و مانع از ثبت تکراری می‌شود."
+            )
+
+        return ActionResult(success=True, message_persian=msg, data={"column": col_let, "existing_duplicates": existing_dups})

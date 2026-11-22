@@ -122,6 +122,11 @@ class ISheet(ABC):
         """Fetch 2D array of cell formulas in a single high-speed batch call."""
         pass
 
+    @abstractmethod
+    def add_unique_validation(self, col: str, error_title: str = "خطای ورود داده تکراری", error_message: str = "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد. لطفاً مقدار یکتا وارد کنید.") -> None:
+        """Applies Excel data validation rule to ensure all entries in column must be unique."""
+        pass
+
 
 class IExcelDriver(ABC):
     """Abstract interface for Excel application automation drivers."""

@@ -17,6 +17,7 @@ class HistoryPanel(QFrame):
     arithmetic_requested = Signal()
     discount_requested = Signal()
     date_requested = Signal()
+    unique_col_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -44,6 +45,12 @@ class HistoryPanel(QFrame):
         self.btn_undo.setObjectName("undoButton")
         self.btn_undo.clicked.connect(self.undo_requested.emit)
         layout.addWidget(self.btn_undo)
+
+        # Unique column validation button
+        self.btn_unique = QPushButton("🔒 قفل یکتایی ستون (کد ملی/محصول)...")
+        self.btn_unique.setStyleSheet("background-color: #8B5CF6; color: white; font-weight: bold;")
+        self.btn_unique.clicked.connect(self.unique_col_requested.emit)
+        layout.addWidget(self.btn_unique)
 
         # Arithmetic button
         self.btn_arithmetic = QPushButton("🧮 ۴ عمل اصلی ستون‌ها...")

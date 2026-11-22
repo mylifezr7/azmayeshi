@@ -283,6 +283,21 @@ class OpenpyxlSheet(ISheet):
         self._ws.add_table(table)
         return table_name
 
+    def add_unique_validation(self, col: str, error_title: str = "خطای ورود داده تکراری", error_message: str = "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد. لطفاً مقدار یکتا وارد کنید.") -> None:
+        from openpyxl.worksheet.datavalidation import DataValidation
+        col_let = col.upper()
+        formula = f"=COUNTIF({col_let}:{col_let}, {col_let}1)<=1"
+        dv = DataValidation(
+            type="custom",
+            formula1=formula,
+            allow_blank=True,
+            showErrorMessage=True,
+            errorTitle=error_title,
+            error=error_message
+        )
+        self._ws.add_data_validation(dv)
+        dv.add(f"{col_let}1:{col_let}10000")
+
 
 class OpenpyxlDriver(IExcelDriver):
     """Driver implementation using openpyxl for standalone/testing Excel operations."""

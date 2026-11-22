@@ -11,6 +11,7 @@ from excel_assistant.nlp.intent_models import (
     ColumnStatsAction,
     ApplyDiscountAction,
     InsertDateAction,
+    PreventDuplicatesAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -73,11 +74,18 @@ class PersianRuleParser:
                 is_destructive=True
             )
 
-        # 4. Highlight duplicates / Delete duplicates
-        if "تکراری" in text_lower:
+        # 4. Prevent duplicates / Delete duplicates / Highlight duplicates
+        if "تکراری" in text_lower or any(w in text_lower for w in ["یکتا کن", "یکتاسازی"]):
             # Check target column if specified
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+
+            # Check if user wants to prevent duplicates or validate uniqueness
+            if any(w in text_lower for w in ["نباید", "جلوگیری", "جلوی", "مانع", "ارور", "خطا", "ثبت نشود", "وارد نشود", "قفل", "یکتا"]):
+                return PreventDuplicatesAction(
+                    target_col=target_col or "A",
+                    description_persian=f"جلوگیری از ورود دادهٔ تکراری و قفل یکتاسازی ستون {target_col or 'A'}"
+                )
 
             if any(w in text_lower for w in ["حذف", "پاک", "دلیت"]):
                 return DeleteDuplicatesAction(

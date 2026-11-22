@@ -361,6 +361,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('divide')">➗ تقسیم ستون‌ها</button>
+                <button class="chip" onclick="promptPreventDuplicates()">🔒 قفل یکتایی ستون</button>
                 <button class="chip" onclick="promptInsertDate()">📅 درج تاریخ</button>
                 <button class="chip" onclick="sendCommand('داده‌های متنی تکراری را رنگ کن')">🎨 رنگ‌آمیزی متون تکراری</button>
                 <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل شیت</button>
@@ -480,6 +481,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const date = prompt("تاریخ مورد نظر (مثلاً: 1403/08/29):", "1403/08/29");
             if (!date || !date.trim()) return;
             const cmd = `درج تاریخ ${date.trim()} ${range.trim()} در ستون ${col.trim()}`;
+            sendCommand(cmd);
+        }
+
+        function promptPreventDuplicates() {
+            const col = prompt("ستون مورد نظر برای یکتاسازی و جلوگیری از تکرار (مثلاً: 12 یا L):", "12");
+            if (!col || !col.trim()) return;
+            const cmd = `ستون ${col.trim()} نباید داده تکراری داشته باشه`;
             sendCommand(cmd);
         }
 

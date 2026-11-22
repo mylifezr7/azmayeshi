@@ -247,6 +247,24 @@ class XlwingsSheet(ISheet):
         except Exception as e:
             raise ActionExecutionError(f"Failed to create table on {range_str}: {e}")
 
+    def add_unique_validation(self, col: str, error_title: str = "خطای ورود داده تکراری", error_message: str = "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد. لطفاً مقدار یکتا وارد کنید.") -> None:
+        col_let = col.upper()
+        try:
+            formula = f"=COUNTIF({col_let}:{col_let}, {col_let}1)<=1"
+            rng = self._sheet.range(f"{col_let}1:{col_let}10000")
+            if hasattr(rng, "api") and hasattr(rng.api, "Validation"):
+                val = rng.api.Validation
+                try:
+                    val.Delete()
+                except Exception:
+                    pass
+                val.Add(Type=7, AlertStyle=1, Operator=1, Formula1=formula)
+                val.ErrorTitle = error_title
+                val.ErrorMessage = error_message
+                val.ShowError = True
+        except Exception:
+            pass
+
 
 class XlwingsDriver(IExcelDriver):
     """Driver for connecting to Microsoft Excel 2024 via xlwings / COM."""

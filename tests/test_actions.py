@@ -264,3 +264,18 @@ def test_insert_date_execution(test_session):
     assert sheet.get_value("G1") == "1403/08/29"
     assert sheet.get_value("G2") == "1403/08/30"
     assert sheet.get_value("G3") == "1403/09/01"
+
+
+def test_prevent_duplicates_execution(test_session):
+    manager, sheet, executor, parser = test_session
+    analysis = SheetInspector.inspect_sheet(sheet)
+    ctx = ActionContext(manager=manager, sheet=sheet, sheet_analysis=analysis, confirmed=True)
+
+    cmd = "ستون 12 نباید داده تکراری داشته باشه"
+    action = parser.parse(cmd, sheet_analysis=analysis)
+    assert action.target_col == "L"
+
+    res = executor.execute(action, ctx)
+    assert res.success is True
+    assert "قفل" in res.message_persian or "تکراری" in res.message_persian
+    assert len(sheet._ws.data_validations.dataValidation) > 0
