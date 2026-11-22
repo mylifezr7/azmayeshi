@@ -841,18 +841,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button class="modal-close" onclick="closeProfitModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="modal-group">
-                    <label class="modal-label">📅 ستون تاریخ فاکتورها / تراکنش‌ها:</label>
-                    <input type="text" id="profitDateCol" class="modal-input" value="A" placeholder="شماره یا حرف (مثلاً: A یا 1)" oninput="updateProfitPreview()">
+                <div style="display: flex; gap: 10px;">
+                    <div class="modal-group" style="flex: 1;">
+                        <label class="modal-label">🛒 ۱. شیت فروش (شیلد ۱):</label>
+                        <select id="profitSalesSheet" class="modal-input" onchange="updateProfitPreview()"></select>
+                    </div>
+                    <div class="modal-group" style="flex: 1;">
+                        <label class="modal-label">📦 ۲. شیت خرید (شیلد ۲ یا دیگر):</label>
+                        <select id="profitPurchaseSheet" class="modal-input" onchange="updateProfitPreview()"></select>
+                    </div>
                 </div>
-                <div class="modal-group">
-                    <label class="modal-label">💰 ستون مبلغ / درآمد فروش:</label>
-                    <input type="text" id="profitSalesCol" class="modal-input" value="B" placeholder="شماره یا حرف (مثلاً: B یا 2)" oninput="updateProfitPreview()">
+
+                <div style="display: flex; gap: 10px;">
+                    <div class="modal-group" style="flex: 1;">
+                        <label class="modal-label">📅 ستون تاریخ فاکتور فروش:</label>
+                        <input type="text" id="profitDateCol" class="modal-input" value="A" placeholder="مثلاً: A یا 1" oninput="updateProfitPreview()">
+                    </div>
+                    <div class="modal-group" style="flex: 1;">
+                        <label class="modal-label">💰 ستون مبلغ / قیمت فروش:</label>
+                        <input type="text" id="profitSalesCol" class="modal-input" value="B" placeholder="مثلاً: B یا 2" oninput="updateProfitPreview()">
+                    </div>
                 </div>
+
                 <div class="modal-group">
-                    <label class="modal-label">🛒 ستون مبلغ خرید / هزینه (جهت تفریق فروش منهای خرید):</label>
-                    <input type="text" id="profitPurchaseCol" class="modal-input" value="C" placeholder="اختیاری (مثلاً: C یا 3)" oninput="updateProfitPreview()">
+                    <label class="modal-label">🛒 ستون مبلغ خرید / هزینه (در شیت خرید):</label>
+                    <input type="text" id="profitPurchaseCol" class="modal-input" value="C" placeholder="مثلاً: C یا B یا 2 یا 3" oninput="updateProfitPreview()">
                 </div>
+
                 <div class="modal-group">
                     <label class="modal-label">⏱️ دوره زمانی تفکیک سود:</label>
                     <div class="modal-radios">
@@ -879,7 +894,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="modal-preview" id="profitPreviewText">
-                    👁️ پیش‌نمایش: محاسبه سود روزانه، ماهانه و کل از ستون‌های فروش B و خرید C بر اساس تاریخ A
+                    👁️ پیش‌نمایش: محاسبه سود روزانه، ماهانه و کل از ستون فروش B و خرید C بر اساس تاریخ A
                 </div>
             </div>
             <div class="modal-footer">
@@ -946,6 +961,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             try {
                 const res = await fetch('/api/status');
                 const data = await res.json();
+                window.currentSheets = data.sheets || [];
                 document.getElementById('fileName').innerText = '📁 فایل: ' + data.file_name;
                 const select = document.getElementById('sheetSelect');
                 select.innerHTML = '';
@@ -1087,6 +1103,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function openProfitModal() {
+            const sSelect = document.getElementById('profitSalesSheet');
+            const pSelect = document.getElementById('profitPurchaseSheet');
+            if (sSelect && pSelect && window.currentSheets) {
+                sSelect.innerHTML = '';
+                pSelect.innerHTML = '';
+                window.currentSheets.forEach((s, idx) => {
+                    const opt1 = document.createElement('option');
+                    opt1.value = s;
+                    opt1.innerText = s;
+                    sSelect.appendChild(opt1);
+
+                    const opt2 = document.createElement('option');
+                    opt2.value = s;
+                    opt2.innerText = s;
+                    if (idx === 1 || (idx === 0 && window.currentSheets.length === 1)) opt2.selected = true;
+                    pSelect.appendChild(opt2);
+                });
+            }
             document.getElementById('profitModalOverlay').style.display = 'flex';
             updateProfitPreview();
             setTimeout(() => document.getElementById('profitDateCol').focus(), 50);
@@ -1097,22 +1131,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function updateProfitPreview() {
+            const sSheet = (document.getElementById('profitSalesSheet') ? document.getElementById('profitSalesSheet').value : 'Sheet1') || 'Sheet1';
+            const pSheet = (document.getElementById('profitPurchaseSheet') ? document.getElementById('profitPurchaseSheet').value : 'Sheet2') || 'Sheet2';
             const d = (document.getElementById('profitDateCol').value || 'A').trim().toUpperCase();
             const s = (document.getElementById('profitSalesCol').value || 'B').trim().toUpperCase();
-            const p = (document.getElementById('profitPurchaseCol').value || '').trim().toUpperCase();
+            const p = (document.getElementById('profitPurchaseCol').value || 'C').trim().toUpperCase();
             const periodRadios = document.getElementsByName('profitPeriodRadio');
             let period = 'all';
             for (let r of periodRadios) { if (r.checked) { period = r.value; break; } }
             const periodMap = {all: "روزانه، ماهانه، سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
             const pText = periodMap[period] || "روزانه، ماهانه و کل";
-            const formulaText = p ? `سود = ستون ${s} - ستون ${p}` : `سود مستقیم ستون ${s}`;
+            const formulaText = `سود = (${sSheet}!${s}) - (${pSheet}!${p})`;
             document.getElementById('profitPreviewText').innerText = `👁️ پیش‌نمایش: محاسبه سود (${pText}) با فرمول «${formulaText}» بر اساس تاریخ ستون ${d} و ایجاد شیت «گزارش_سود»`;
         }
 
         function submitProfitModal() {
+            const sSheet = (document.getElementById('profitSalesSheet') ? document.getElementById('profitSalesSheet').value : 'Sheet1') || 'Sheet1';
+            const pSheet = (document.getElementById('profitPurchaseSheet') ? document.getElementById('profitPurchaseSheet').value : 'Sheet2') || 'Sheet2';
             const d = (document.getElementById('profitDateCol').value || 'A').trim().toUpperCase();
             const s = (document.getElementById('profitSalesCol').value || 'B').trim().toUpperCase();
-            const p = (document.getElementById('profitPurchaseCol').value || '').trim().toUpperCase();
+            const p = (document.getElementById('profitPurchaseCol').value || 'C').trim().toUpperCase();
             const periodRadios = document.getElementsByName('profitPeriodRadio');
             let period = 'all';
             for (let r of periodRadios) { if (r.checked) { period = r.value; break; } }
@@ -1120,12 +1158,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const pText = periodMap[period] || "روزانه و ماهانه و سالانه و کل";
 
             closeProfitModal();
-            let cmd = "";
-            if (p) {
-                cmd = `محاسبه سود ${pText} ستون فروش ${s} و خرید ${p} بر اساس تاریخ ${d}`;
-            } else {
-                cmd = `محاسبه سود ${pText} ستون فروش ${s} بر اساس تاریخ ${d}`;
-            }
+            const cmd = `محاسبه سود ${pText} ستون فروش ${s} در شیت ${sSheet} و ستون خرید ${p} در شیت ${pSheet} بر اساس تاریخ ستون ${d}`;
             sendCommand(cmd);
         }
 
