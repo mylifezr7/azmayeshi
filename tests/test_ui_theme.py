@@ -67,3 +67,12 @@ def test_web_template_theme_elements():
     assert "btn-sales" in HTML_TEMPLATE
     assert "btn-profit" in HTML_TEMPLATE
     assert "/resources/background.jpg" in HTML_TEMPLATE
+
+
+def test_quick_actions_dropdown_and_scroll_style():
+    """Verify that quick action bar styles include dropdown combo and scroll area."""
+    assert "QComboBox#quickCommandsCombo" in QSS_STYLE
+    assert "QScrollArea#chipsScrollArea" in QSS_STYLE
+    assert "QPushButton.quickChip" in QSS_STYLE
+    assert "chip-select" in HTML_TEMPLATE
+

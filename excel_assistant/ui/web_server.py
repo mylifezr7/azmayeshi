@@ -619,10 +619,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding: 8px 16px;
             background: rgba(8, 16, 38, 0.7);
             display: flex;
+            align-items: center;
             gap: 8px;
             overflow-x: auto;
             border-top: 1px solid var(--border-subtle);
             backdrop-filter: blur(8px);
+        }
+
+        .chip-select {
+            background-color: #0A142A;
+            border: 1px solid var(--accent-blue);
+            color: #93C5FD;
+            padding: 6px 14px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            white-space: nowrap;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .chip-select:hover {
+            border-color: var(--accent-cyan);
+            background-color: #132247;
+            color: #FFFFFF;
         }
 
         .chip {
@@ -794,23 +816,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="chat-section">
             <div class="chat-messages" id="chatFeed"></div>
 
-            <!-- Quick Action Chips -->
+            <!-- Quick Action Chips (Scrollable + Dropdown, no sidebar duplicates) -->
             <div class="chips-bar">
-                <button class="chip" onclick="openProfitModal()">💵 پنجره تعاملی محاسبه سود (روزانه، ماهانه و کل)</button>
-                <button class="chip" onclick="openSalesModal()">💰 پنجره تعاملی محاسبه فروش (روزانه، ماهانه و کل)</button>
-                <button class="chip" onclick="promptArithmetic('add')">➕ جمع ستون‌ها</button>
-                <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
-                <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
-                <button class="chip" onclick="promptArithmetic('divide')">➗ تقسیم ستون‌ها</button>
-                <button class="chip" onclick="promptDiscount()">🏷️ اعمال تخفیف کالاها</button>
-                <button class="chip" onclick="promptInsertDate()">📅 درج تاریخ در شیت</button>
-                <button class="chip" onclick="promptPreventDuplicates()">🔒 قفل داده تکراری در ستون</button>
+                <select class="chip-select" onchange="if(this.value){ sendCommand(this.value); this.selectedIndex=0; }">
+                    <option value="">⚡ منوی کشویی دستورات آماده...</option>
+                    <option value="داده‌های متنی تکراری را رنگ کن">🎨 رنگ‌آمیزی متون تکراری</option>
+                    <option value="ردیف‌های خالی را حذف کن">🧹 حذف ردیف‌های خالی</option>
+                    <option value="سلول‌های بیشتر از 100 را سبز کن">🟩 سلول‌های بیشتر از 100</option>
+                    <option value="عرض ستون‌ها را خودکار تنظیم کن">📐 تنظیم عرض ستون‌ها</option>
+                    <option value="یک جدول بساز">📋 ساخت جدول یکدست</option>
+                    <option value="ستون‌های خالی را حذف کن">🗑️ حذف ستون‌های خالی</option>
+                    <option value="جستجو و جایگزینی مقادیر در شیت">🔍 جستجو و جایگزینی مقادیر</option>
+                    <option value="حاشیه‌گذاری و زیباسازی جدول">✨ زیباسازی و حاشیه‌گذاری جدول</option>
+                </select>
                 <button class="chip" onclick="sendCommand('داده‌های متنی تکراری را رنگ کن')">🎨 رنگ‌آمیزی متون تکراری</button>
-                <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
-                <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100</button>
                 <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 حذف ردیف‌های خالی</button>
+                <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100</button>
                 <button class="chip" onclick="sendCommand('یک جدول بساز')">📋 ساخت جدول یکدست</button>
                 <button class="chip" onclick="sendCommand('عرض ستون‌ها را خودکار تنظیم کن')">📐 تنظیم عرض ستون‌ها</button>
+                <button class="chip" onclick="sendCommand('ستون‌های خالی را حذف کن')">🗑️ حذف ستون‌های خالی</button>
             </div>
 
             <!-- Input Bar -->

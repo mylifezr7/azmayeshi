@@ -315,14 +315,75 @@ QScrollArea#chatScrollArea > QWidget > QWidget {{
 }}
 
 /* Quick Action Chips */
+QComboBox#quickCommandsCombo {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0B1938, stop:1 #132247);
+    border: 1px solid #2563EB;
+    border-radius: 12px;
+    padding: 4px 12px;
+    color: #93C5FD;
+    font-size: 12px;
+    font-weight: bold;
+    min-height: 26px;
+    min-width: 220px;
+}}
+
+QComboBox#quickCommandsCombo:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1D4ED8);
+    border-color: #38BDF8;
+    color: #FFFFFF;
+}}
+
+QComboBox#quickCommandsCombo::drop-down {{
+    border: none;
+    width: 20px;
+}}
+
+QComboBox#quickCommandsCombo QAbstractItemView {{
+    background-color: #070F26;
+    border: 1px solid #1E3A8A;
+    border-radius: 8px;
+    color: #E2E8F0;
+    selection-background-color: #1D4ED8;
+    selection-color: #FFFFFF;
+    padding: 4px;
+}}
+
+QScrollArea#chipsScrollArea {{
+    background: transparent;
+    border: none;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar:horizontal {{
+    height: 4px;
+    background: rgba(8, 16, 38, 0.4);
+    border-radius: 2px;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar::handle:horizontal {{
+    background: #1E3A8A;
+    border-radius: 2px;
+    min-width: 20px;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar::handle:horizontal:hover {{
+    background: #38BDF8;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar::add-line:horizontal,
+QScrollArea#chipsScrollArea QScrollBar::sub-line:horizontal {{
+    width: 0px;
+    height: 0px;
+}}
+
 QPushButton.quickChip {{
     background-color: rgba(10, 20, 42, 0.85);
     border: 1px solid #1E3A8A;
     border-radius: 14px;
-    padding: 5px 12px;
+    padding: 5px 14px;
     font-size: 12px;
     color: #93C5FD;
     font-weight: 500;
+    white-space: nowrap;
 }}
 
 QPushButton.quickChip:hover {{

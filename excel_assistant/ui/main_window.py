@@ -4,11 +4,12 @@ Main Window for Excel AI Assistant (PySide6 / RTL Persian).
 import sys
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QEvent, QObject
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
-    QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog
+    QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog,
+    QScrollArea, QComboBox, QSizePolicy
 )
 
 from excel_assistant.core.connection import ExcelConnectionManager
@@ -23,6 +24,22 @@ from excel_assistant.ui.status_bar import ExcelStatusBar
 from excel_assistant.ui.chat_widget import ChatWidget
 from excel_assistant.ui.history_panel import HistoryPanel
 from excel_assistant.core.exceptions import AmbiguousCommandError
+
+
+class HorizontalWheelFilter(QObject):
+    """Enables smooth horizontal scrolling with mouse wheel on horizontal scroll areas."""
+
+    def __init__(self, scroll_area: QScrollArea):
+        super().__init__(scroll_area)
+        self.scroll_area = scroll_area
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Wheel:
+            delta = event.angleDelta().y() or event.angleDelta().x()
+            sb = self.scroll_area.horizontalScrollBar()
+            sb.setValue(sb.value() - delta)
+            return True
+        return super().eventFilter(obj, event)
 
 
 class MainWindow(QMainWindow):
@@ -71,38 +88,76 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.history_panel, stretch=1)
         main_layout.addLayout(content_layout)
 
-        # 3. Quick Chips Bar
+        # 3. Quick Actions Bar (Dropdown Menu + Horizontal Scrollable Slider - NO duplicates from left sidebar)
         chips_frame = QFrame()
         chips_frame.setStyleSheet("background: transparent; border: none;")
-        chips_layout = QHBoxLayout(chips_frame)
-        chips_layout.setContentsMargins(12, 0, 12, 4)
+        chips_frame_layout = QHBoxLayout(chips_frame)
+        chips_frame_layout.setContentsMargins(12, 0, 12, 4)
+        chips_frame_layout.setSpacing(10)
+
+        # 3.1. Dropdown Combo Box (منوی کشویی دستورات آماده و پرکاربرد)
+        self.quick_combo = QComboBox()
+        self.quick_combo.setObjectName("quickCommandsCombo")
+        self.quick_combo.setToolTip("انتخاب دستور آماده از منوی کشویی")
+        self.quick_combo.addItem("⚡ منوی کشویی دستورات آماده...", None)
+
+        dropdown_commands = [
+            ("🎨 رنگ‌آمیزی متون تکراری", "داده‌های متنی تکراری را رنگ کن"),
+            ("🧹 حذف ردیف‌های خالی", "ردیف‌های خالی را حذف کن"),
+            ("🟩 سلول‌های بیشتر از 100", "سلول‌های بیشتر از 100 را سبز کن"),
+            ("📐 تنظیم خودکار عرض ستون‌ها", "عرض ستون‌ها را خودکار تنظیم کن"),
+            ("📋 ساخت جدول یکدست و استاندارد", "یک جدول بساز"),
+            ("🗑️ حذف ستون‌های خالی شیت", "ستون‌های خالی را حذف کن"),
+            ("🔍 جستجو و جایگزینی مقادیر", "جستجو و جایگزینی مقادیر در شیت"),
+            ("🔤 مرتب‌سازی الفبایی ستون A", "مرتب‌سازی ستون A به ترتیب الفبا"),
+            ("🔢 مرتب‌سازی صعودی اعداد", "مرتب‌سازی صعودی ستون"),
+            ("✨ حاشیه‌گذاری و زیباسازی جدول", "حاشیه‌گذاری و زیباسازی جدول")
+        ]
+        for label, cmd in dropdown_commands:
+            self.quick_combo.addItem(label, cmd)
+
+        self.quick_combo.currentIndexChanged.connect(self._on_quick_combo_selected)
+        chips_frame_layout.addWidget(self.quick_combo)
+
+        # 3.2. Horizontal Scrollable Chips (نوار کشویی افقی برای دسترسی سریع بدون اقلام تکراری پنل سمت چپ)
+        chips_scroll = QScrollArea()
+        chips_scroll.setObjectName("chipsScrollArea")
+        chips_scroll.setWidgetResizable(True)
+        chips_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        chips_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        chips_scroll.setFixedHeight(38)
+
+        chips_container = QWidget()
+        chips_container.setStyleSheet("background: transparent;")
+        chips_layout = QHBoxLayout(chips_container)
+        chips_layout.setContentsMargins(0, 0, 0, 0)
         chips_layout.setSpacing(8)
 
-        quick_prompts = [
-            "💵 محاسبه سود روزانه، ماهانه و کل",
-            "💰 محاسبه فروش روزانه و ماهانه",
-            "➕ جمع ستون‌ها",
-            "➖ تفریق ستون‌ها",
-            "✖️ ضرب ستون‌ها",
-            "➗ تقسیم ستون‌ها",
-            "🏷️ اعمال تخفیف کالاها",
-            "📅 درج تاریخ در شیت",
-            "🔒 جلوگیری از داده تکراری در ستون",
-            "🎨 داده‌های متنی تکراری را رنگ کن",
-            "📊 تحلیل هوشمند شیت",
-            "🧹 ردیف‌های خالی را حذف کن",
-            "🟩 سلول‌های بیشتر از 100",
-            "📐 عرض ستون‌ها را تنظیم کن",
-            "📋 ساخت جدول یکدست"
+        # Non-duplicate items only (items already in the sidebar are excluded)
+        quick_chips = [
+            ("🎨 رنگ‌آمیزی متون تکراری", "داده‌های متنی تکراری را رنگ کن"),
+            ("🧹 حذف ردیف‌های خالی", "ردیف‌های خالی را حذف کن"),
+            ("🟩 سلول‌های بیشتر از 100", "سلول‌های بیشتر از 100 را سبز کن"),
+            ("📐 تنظیم عرض ستون‌ها", "عرض ستون‌ها را خودکار تنظیم کن"),
+            ("📋 ساخت جدول یکدست", "یک جدول بساز"),
+            ("🗑️ حذف ستون‌های خالی", "ستون‌های خالی را حذف کن"),
+            ("✨ زیباسازی و حاشیه‌گذاری", "حاشیه‌گذاری و زیباسازی جدول")
         ]
-        for prompt in quick_prompts:
-            btn = QPushButton(prompt)
+
+        for label, clean_cmd in quick_chips:
+            btn = QPushButton(label)
             btn.setProperty("class", "quickChip")
-            clean_cmd = prompt.split(" ", 1)[-1]
+            btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
             btn.clicked.connect(lambda _, c=clean_cmd: self._on_quick_chip_clicked(c))
             chips_layout.addWidget(btn)
 
         chips_layout.addStretch()
+        chips_scroll.setWidget(chips_container)
+
+        self._wheel_filter = HorizontalWheelFilter(chips_scroll)
+        chips_scroll.viewport().installEventFilter(self._wheel_filter)
+
+        chips_frame_layout.addWidget(chips_scroll, stretch=1)
         main_layout.addWidget(chips_frame)
 
         # 4. Input bar
@@ -229,6 +284,17 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"📌 شیت فعال به **`{sheet_name}`** تغییر یافت.")
         except Exception as e:
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
+
+    def _on_quick_combo_selected(self, index: int):
+        if index <= 0:
+            return
+        cmd = self.quick_combo.itemData(index) or self.quick_combo.itemText(index)
+        self.input_edit.setText(cmd)
+        self.input_edit.setFocus()
+        self._on_send_clicked()
+        self.quick_combo.blockSignals(True)
+        self.quick_combo.setCurrentIndex(0)
+        self.quick_combo.blockSignals(False)
 
     def _on_quick_chip_clicked(self, command: str):
         if "سود" in command:
