@@ -103,6 +103,18 @@ class ApplyDiscountAction(BaseActionModel):
     discount_amount_col: Optional[str] = None  # Optional discount amount column e.g. "E"
 
 
+class InsertDateAction(BaseActionModel):
+    action_type: Literal["insert_date"] = "insert_date"
+    target_col: str = "A"  # e.g. "A" or "1"
+    start_row: int = 1     # e.g. 1
+    end_row: int = 30      # e.g. 30
+    year: int = 1403      # e.g. 1403
+    month: int = 8        # e.g. 8
+    day: int = 29         # e.g. 29
+    mode: Literal["fixed", "sequential"] = "fixed"
+    add_header: bool = False
+
+
 class ApplyFormulaAction(BaseActionModel):
     action_type: Literal["apply_formula"] = "apply_formula"
     target_cell_or_range: str
@@ -122,6 +134,7 @@ ExcelAction = Union[
     ColumnArithmeticAction,
     ColumnStatsAction,
     ApplyDiscountAction,
+    InsertDateAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,

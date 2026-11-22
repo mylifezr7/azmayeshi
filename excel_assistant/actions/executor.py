@@ -17,6 +17,7 @@ from excel_assistant.nlp.intent_models import (
     ColumnArithmeticAction,
     ColumnStatsAction,
     ApplyDiscountAction,
+    InsertDateAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -103,6 +104,9 @@ class ActionExecutor:
 
             elif isinstance(action, SortDataAction):
                 return DataActionHandler.execute_sort(action, ctx)
+
+            elif isinstance(action, InsertDateAction):
+                return DataActionHandler.execute_insert_date(action, ctx)
 
             elif isinstance(action, AutoFitColumnsAction):
                 return FormatActionHandler.execute_autofit(action, ctx)

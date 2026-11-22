@@ -16,6 +16,7 @@ class HistoryPanel(QFrame):
     analyze_requested = Signal()
     arithmetic_requested = Signal()
     discount_requested = Signal()
+    date_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -56,9 +57,15 @@ class HistoryPanel(QFrame):
         self.btn_discount.clicked.connect(self.discount_requested.emit)
         layout.addWidget(self.btn_discount)
 
+        # Date button
+        self.btn_date = QPushButton("📅 درج تاریخ در ستون...")
+        self.btn_date.setStyleSheet("background-color: #0284C7; color: white; font-weight: bold;")
+        self.btn_date.clicked.connect(self.date_requested.emit)
+        layout.addWidget(self.btn_date)
+
         # Analyze button
         self.btn_analyze = QPushButton("📊 تحلیل هوشمند شیت")
-        self.btn_analyze.setStyleSheet("background-color: #0284C7; color: white;")
+        self.btn_analyze.setStyleSheet("background-color: #475569; color: white;")
         self.btn_analyze.clicked.connect(self.analyze_requested.emit)
         layout.addWidget(self.btn_analyze)
 

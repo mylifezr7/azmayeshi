@@ -237,3 +237,30 @@ def test_discount_execution(test_session):
     assert sheet.get_value("E1") == "قیمت بعد از تخفیف"
     assert sheet.get_formula("E2") == "=IF(C2>1, B2*(1-C2/100), B2*(1-C2))"
     assert sheet.get_formula("E3") == "=IF(C3>1, B3*(1-C3/100), B3*(1-C3))"
+
+
+def test_insert_date_execution(test_session):
+    manager, sheet, executor, parser = test_session
+    analysis = SheetInspector.inspect_sheet(sheet)
+    ctx = ActionContext(manager=manager, sheet=sheet, sheet_analysis=analysis, confirmed=True)
+
+    # Insert fixed date into column F from row 1 to 30
+    cmd = "درج تاریخ 1403/08/29 از سطر 1 تا 30 در ستون F"
+    action = parser.parse(cmd, sheet_analysis=analysis)
+    result = executor.execute(action, ctx)
+
+    assert result.success is True
+    assert "تاریخ" in result.message_persian
+    assert sheet.get_value("F1") == "1403/08/29"
+    assert sheet.get_value("F15") == "1403/08/29"
+    assert sheet.get_value("F30") == "1403/08/29"
+
+    # Insert sequential date into column G from row 1 to 3
+    cmd2 = "از سطر 1 تا 3 ستون G تاریخ 1403/08/29 متوالی بنویس"
+    act2 = parser.parse(cmd2, sheet_analysis=analysis)
+    res2 = executor.execute(act2, ctx)
+
+    assert res2.success is True
+    assert sheet.get_value("G1") == "1403/08/29"
+    assert sheet.get_value("G2") == "1403/08/30"
+    assert sheet.get_value("G3") == "1403/09/01"

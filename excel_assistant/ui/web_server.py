@@ -361,6 +361,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('divide')">➗ تقسیم ستون‌ها</button>
+                <button class="chip" onclick="promptInsertDate()">📅 درج تاریخ</button>
                 <button class="chip" onclick="sendCommand('داده‌های متنی تکراری را رنگ کن')">🎨 رنگ‌آمیزی متون تکراری</button>
                 <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل شیت</button>
                 <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100 را سبز کن</button>
@@ -468,6 +469,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const target = prompt(`نتیجه در کدام ستون درج شود؟ (مثلاً: 8 یا H):`, "8");
             if (!target || !target.trim()) return;
             const cmd = `عملیات ${opName} ستون‌های ${cols.trim()} در ستون ${target.trim()}`;
+            sendCommand(cmd);
+        }
+
+        function promptInsertDate() {
+            const col = prompt("تاریخ در کدام ستون درج شود؟ (مثلاً: A یا 1):", "A");
+            if (!col || !col.trim()) return;
+            const range = prompt("محدوده سطرها (از سطر تا سطر):", "از سطر 1 تا 30");
+            if (!range || !range.trim()) return;
+            const date = prompt("تاریخ مورد نظر (مثلاً: 1403/08/29):", "1403/08/29");
+            if (!date || !date.trim()) return;
+            const cmd = `درج تاریخ ${date.trim()} ${range.trim()} در ستون ${col.trim()}`;
             sendCommand(cmd);
         }
 

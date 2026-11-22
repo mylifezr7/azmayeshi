@@ -10,6 +10,7 @@ from excel_assistant.nlp.intent_models import (
     ColumnArithmeticAction,
     ColumnStatsAction,
     ApplyDiscountAction,
+    InsertDateAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -157,6 +158,36 @@ class PersianRuleParser:
                 discount_percent=fixed_pct,
                 target_col=target_c,
                 description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
+            )
+
+        # 7.6 Insert Date: درج تاریخ در اکسل
+        # e.g.: از سطر 1 تا 30 در ستون A تاریخ بزن
+        # e.g.: درج تاریخ 1403/08/29 از ردیف 1 تا 30 در ستون A
+        # e.g.: از سطر 1 تا 30 در ستون 1 تاریخ بنویس
+        if "تاریخ" in text and any(w in text for w in ["بزن", "درج", "بنویس", "قرار", "بذار", "ثبت", "سطر", "ردیف", "تا"]):
+            row_m = re.search(r'از\s*(?:سطر|ردیف)\s*(\d+)\s*تا\s*(?:سطر|ردیف)?\s*(\d+)', text)
+            start_r = int(row_m.group(1)) if row_m else 1
+            end_r = int(row_m.group(2)) if row_m else 30
+
+            date_m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', text)
+            if date_m:
+                y, m, d = int(date_m.group(1)), int(date_m.group(2)), int(date_m.group(3))
+            else:
+                y, m, d = 1403, 8, 29
+
+            col_m = re.search(r'(?:در|توی|روی)?\s*ستون\s*([A-Za-z0-9\u0600-\u06FF]+)', text)
+            col = resolve_column(col_m.group(1), header_map) if col_m else 'A'
+
+            mode = 'sequential' if any(w in text for w in ['متوالی', 'روزشمار', 'پشت سر هم', 'افزایشی']) else 'fixed'
+            return InsertDateAction(
+                target_col=col,
+                start_row=start_r,
+                end_row=end_r,
+                year=y,
+                month=m,
+                day=d,
+                mode=mode,
+                description_persian=f"درج تاریخ {y:04d}/{m:02d}/{d:02d} در ستون {col} از سطر {start_r} تا {end_r}"
             )
 
         # 8. Column Arithmetic: ضرب، جمع، تفریق، تقسیم

@@ -178,6 +178,26 @@ def test_discount_parsing():
     assert act2.target_col == "E"
 
 
+def test_insert_date_parsing():
+    from excel_assistant.nlp.intent_models import InsertDateAction
+    parser = PersianIntentParser()
+
+    cmd1 = "از سطر 1 تا 30 در ستون A تاریخ بزن"
+    act1 = parser.parse(cmd1)
+    assert isinstance(act1, InsertDateAction)
+    assert act1.target_col == "A"
+    assert act1.start_row == 1
+    assert act1.end_row == 30
+
+    cmd2 = "درج تاریخ 1403/08/29 از ردیف 1 تا 30 در ستون B"
+    act2 = parser.parse(cmd2)
+    assert isinstance(act2, InsertDateAction)
+    assert act2.target_col == "B"
+    assert act2.year == 1403
+    assert act2.month == 8
+    assert act2.day == 29
+
+
 def test_ambiguous_command_error():
     parser = PersianIntentParser()
     with pytest.raises(AmbiguousCommandError) as exc_info:
