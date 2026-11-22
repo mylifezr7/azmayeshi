@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setWindowTitle("دستیار هوشمند اکسل | کاربر: MUYUM - Excel AI Assistant")
+        self.setWindowTitle("Excel AI Assistant - MIYUM")
         self.resize(1050, 720)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(QSS_STYLE)
@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
 
         # 3. Quick Chips Bar
         chips_frame = QFrame()
+        chips_frame.setStyleSheet("background: transparent; border: none;")
         chips_layout = QHBoxLayout(chips_frame)
         chips_layout.setContentsMargins(12, 0, 12, 4)
         chips_layout.setSpacing(8)
@@ -82,14 +83,14 @@ class MainWindow(QMainWindow):
             "✖️ ضرب ستون‌ها",
             "➗ تقسیم ستون‌ها",
             "🏷️ اعمال تخفیف کالاها",
-            "📅 درج تاریخ (سطر ۱ تا ۳۰)",
+            "📅 درج تاریخ در شیت",
             "🔒 جلوگیری از داده تکراری در ستون",
             "🎨 داده‌های متنی تکراری را رنگ کن",
-            "📊 تحلیل شیت",
+            "📊 تحلیل هوشمند شیت",
             "🧹 ردیف‌های خالی را حذف کن",
-            "🟩 سلول‌های بیشتر از 100 را سبز کن",
+            "🟩 سلول‌های بیشتر از 100",
             "📐 عرض ستون‌ها را تنظیم کن",
-            "📋 یک جدول بساز"
+            "📋 ساخت جدول یکدست"
         ]
         for prompt in quick_prompts:
             btn = QPushButton(prompt)
@@ -113,11 +114,11 @@ class MainWindow(QMainWindow):
         self.input_edit.setPlaceholderText("دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن و در C بنویس)")
         self.input_edit.returnPressed.connect(self._on_send_clicked)
 
-        self.btn_send = QPushButton("ارسال دستور")
+        self.btn_send = QPushButton("ارسال دستور ✈️")
         self.btn_send.setObjectName("sendButton")
         self.btn_send.clicked.connect(self._on_send_clicked)
 
-        self.btn_stop = QPushButton("توقف")
+        self.btn_stop = QPushButton("توقف ⏹")
         self.btn_stop.setObjectName("stopButton")
         self.btn_stop.setEnabled(False)
 
@@ -151,7 +152,7 @@ class MainWindow(QMainWindow):
             self.status_bar_widget.set_connected(True, desc)
             self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
             self.chat_widget.add_assistant_message(
-                f"سلام **MUYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
                 f"اتصال به فایل **`{info.name}`** و شیت **`{info.active_sheet}`** برقرار شد.\n"
                 f"💡 برای کار روی فایل دیگر، روی دکمهٔ **«📂 باز کردن فایل اکسل...»** در نوار بالا کلیک کنید."
             )

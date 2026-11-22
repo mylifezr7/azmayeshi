@@ -1,6 +1,6 @@
 """
 Lightweight, Zero-Dependency Persian Web UI Server for Excel AI Assistant.
-Provides a modern live web preview with Excel grid view and Persian AI chat.
+Provides a modern live web preview with Excel grid view, deep cosmic glassmorphic theme, and Persian AI chat.
 """
 import http.server
 import json
@@ -20,19 +20,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>دستیار هوشمند اکسل - Excel AI Assistant</title>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>Excel AI Assistant - MIYUM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --excel-green: #107C41;
-            --excel-green-hover: #148A49;
-            --bg-dark: #121418;
-            --card-dark: #1E222B;
-            --border-color: #2F3644;
-            --text-light: #F1F5F9;
+            --bg-deep: #020617;
+            --bg-card: #081026;
+            --border-blue: #1D4ED8;
+            --border-subtle: #132247;
+            --text-light: #F8FAFC;
             --text-muted: #94A3B8;
-            --user-bubble: #1E293B;
-            --ai-bubble: #132E20;
+            --user-bubble: rgba(14, 30, 68, 0.92);
+            --ai-bubble: rgba(8, 16, 38, 0.88);
+            --accent-cyan: #38BDF8;
+            --accent-blue: #2563EB;
         }
 
         * {
@@ -43,7 +44,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         body {
-            background-color: var(--bg-dark);
+            background-color: var(--bg-deep);
             color: var(--text-light);
             height: 100vh;
             display: flex;
@@ -53,56 +54,105 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         /* Top Header */
         header {
-            background-color: var(--card-dark);
-            border-bottom: 2px solid var(--excel-green);
-            padding: 10px 24px;
+            background: linear-gradient(90deg, #09132B, #04091A);
+            border-bottom: 2px solid var(--border-blue);
+            padding: 10px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+            z-index: 10;
         }
 
-        .header-title {
+        .header-right {
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 17px;
-            font-weight: 700;
+            gap: 14px;
         }
 
-        .excel-badge {
-            background-color: var(--excel-green);
-            color: white;
-            padding: 4px 10px;
-            border-radius: 6px;
+        .user-badge {
+            background: linear-gradient(135deg, #08132B, #0E224F);
+            color: var(--accent-cyan);
+            border: 1.5px solid var(--accent-blue);
+            font-weight: 800;
+            padding: 5px 16px;
+            border-radius: 14px;
             font-size: 13px;
-        }
-
-        .status-bar {
+            letter-spacing: 0.5px;
             display: flex;
             align-items: center;
-            gap: 16px;
-            font-size: 13px;
+            gap: 6px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
         }
 
         .status-pill {
             display: flex;
             align-items: center;
-            gap: 6px;
-            background-color: rgba(16, 124, 65, 0.15);
-            border: 1px solid var(--excel-green);
-            padding: 4px 12px;
-            border-radius: 20px;
-            color: #4ADE80;
+            gap: 8px;
+            background-color: #081024;
+            border: 1px solid #1E293B;
+            padding: 5px 14px;
+            border-radius: 14px;
+            color: #E2E8F0;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-pill span.dot {
+            color: #10B981;
+            font-size: 13px;
+        }
+
+        .btn-open-file {
+            background: linear-gradient(90deg, #1D4ED8, #3B82F6);
+            color: white;
+            border: 1px solid #60A5FA;
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-open-file:hover {
+            background: linear-gradient(90deg, #2563EB, #60A5FA);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 12px;
         }
 
         select.sheet-select {
-            background-color: var(--bg-dark);
+            background-color: #081024;
             color: var(--text-light);
-            border: 1px solid var(--border-color);
-            padding: 6px 12px;
-            border-radius: 6px;
+            border: 1px solid var(--border-blue);
+            padding: 5px 12px;
+            border-radius: 8px;
             cursor: pointer;
+            outline: none;
+            font-size: 12px;
+        }
+
+        .btn-reconnect {
+            background-color: #081024;
+            color: #93C5FD;
+            border: 1px solid var(--border-blue);
+            padding: 5px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .btn-reconnect:hover {
+            background-color: var(--border-blue);
+            color: #FFFFFF;
         }
 
         /* Main Container */
@@ -110,15 +160,145 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             flex: 1;
             display: flex;
             overflow: hidden;
+            position: relative;
         }
 
-        /* Left / Center: Chat Area */
+        /* Sidebar Action Panel */
+        .sidebar-panel {
+            width: 250px;
+            background-color: #04091A;
+            border-left: 1px solid var(--border-subtle);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+        }
+
+        .sidebar-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-box {
+            flex: 1;
+            background-color: #020617;
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 6px;
+            overflow-y: auto;
+            min-height: 120px;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .history-item {
+            padding: 6px 8px;
+            border-radius: 6px;
+            color: #CBD5E1;
+            cursor: pointer;
+            transition: background 0.15s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-item:hover {
+            background-color: #0B193D;
+            color: var(--accent-cyan);
+        }
+
+        /* High-Vibrancy Primary Colored Sidebar Buttons */
+        .btn-shortcut {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            color: #FFFFFF;
+            font-weight: 700;
+            font-size: 12.5px;
+            cursor: pointer;
+            text-align: center;
+            border: none;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-undo {
+            background: linear-gradient(90deg, #EA580C, #FB923C);
+            border: 1px solid #F97316;
+        }
+        .btn-undo:hover {
+            background: linear-gradient(90deg, #F97316, #FDBA74);
+            box-shadow: 0 0 12px rgba(249, 115, 22, 0.6);
+        }
+
+        .btn-unique {
+            background: linear-gradient(90deg, #6D28D9, #8B5CF6);
+            border: 1px solid #8B5CF6;
+        }
+        .btn-unique:hover {
+            background: linear-gradient(90deg, #7C3AED, #A78BFA);
+            box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
+        }
+
+        .btn-arithmetic {
+            background: linear-gradient(90deg, #047857, #10B981);
+            border: 1px solid #10B981;
+        }
+        .btn-arithmetic:hover {
+            background: linear-gradient(90deg, #059669, #34D399);
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+        }
+
+        .btn-discount {
+            background: linear-gradient(90deg, #B45309, #F59E0B);
+            border: 1px solid #F59E0B;
+        }
+        .btn-discount:hover {
+            background: linear-gradient(90deg, #D97706, #FBBF24);
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+        }
+
+        .btn-date {
+            background: linear-gradient(90deg, #0284C7, #38BDF8);
+            border: 1px solid #38BDF8;
+        }
+        .btn-date:hover {
+            background: linear-gradient(90deg, #0369A1, #7DD3FC);
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+        }
+
+        .btn-analyze {
+            background: linear-gradient(90deg, #1E3A8A, #2563EB);
+            border: 1px solid #3B82F6;
+        }
+        .btn-analyze:hover {
+            background: linear-gradient(90deg, #1D4ED8, #60A5FA);
+            box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
+        }
+
+        /* Center: Chat Area with Background Wallpaper */
         .chat-section {
             flex: 3;
             display: flex;
             flex-direction: column;
-            border-left: 1px solid var(--border-color);
-            background-color: #16181F;
+            background-color: var(--bg-deep);
+            background-image: url('/resources/background.jpg');
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            background-size: cover;
+            position: relative;
         }
 
         .chat-messages {
@@ -132,11 +312,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .message-bubble {
             max-width: 85%;
-            padding: 12px 16px;
-            border-radius: 12px;
+            padding: 14px 18px;
+            border-radius: 14px;
             line-height: 1.6;
             animation: fadeIn 0.2s ease-in;
             white-space: pre-wrap;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
         }
 
         @keyframes fadeIn {
@@ -147,21 +328,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .message-user {
             align-self: flex-start;
             background-color: var(--user-bubble);
-            border: 1px solid #334155;
+            border: 1.5px solid var(--accent-blue);
             border-top-right-radius: 2px;
         }
 
         .message-ai {
             align-self: flex-end;
             background-color: var(--ai-bubble);
-            border: 1px solid var(--excel-green);
+            border: 1.5px solid var(--border-blue);
             border-top-left-radius: 2px;
         }
 
         .message-confirm {
             align-self: center;
-            background-color: #382718;
-            border: 1px solid #D97706;
+            background-color: rgba(45, 22, 10, 0.94);
+            border: 1.5px solid #F59E0B;
             width: 90%;
         }
 
@@ -172,98 +353,120 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .btn-confirm {
-            background-color: var(--excel-green);
+            background: linear-gradient(90deg, #059669, #10B981);
             color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 6px;
+            border: 1px solid #10B981;
+            padding: 7px 18px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
         }
 
         .btn-cancel {
-            background-color: #991B1B;
+            background: linear-gradient(90deg, #991B1B, #DC2626);
             color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 6px;
+            border: 1px solid #EF4444;
+            padding: 7px 18px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
         }
 
         .sender-tag {
             font-size: 11px;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-            font-weight: 600;
+            color: var(--accent-cyan);
+            margin-bottom: 6px;
+            font-weight: 700;
         }
 
         /* Quick Chips */
         .chips-bar {
             padding: 8px 16px;
-            background-color: var(--card-dark);
+            background: rgba(8, 16, 38, 0.7);
             display: flex;
             gap: 8px;
             overflow-x: auto;
-            border-top: 1px solid var(--border-color);
+            border-top: 1px solid var(--border-subtle);
+            backdrop-filter: blur(8px);
         }
 
         .chip {
-            background-color: var(--bg-dark);
-            border: 1px solid var(--border-color);
-            color: var(--text-muted);
-            padding: 5px 12px;
-            border-radius: 16px;
+            background-color: rgba(10, 20, 42, 0.85);
+            border: 1px solid var(--border-blue);
+            color: #93C5FD;
+            padding: 5px 13px;
+            border-radius: 14px;
             font-size: 12px;
             cursor: pointer;
             white-space: nowrap;
             transition: all 0.2s;
+            font-weight: 500;
         }
 
         .chip:hover {
-            background-color: var(--excel-green);
-            color: white;
-            border-color: var(--excel-green);
+            background-color: var(--border-blue);
+            color: #FFFFFF;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
         }
 
         /* Input Area */
         .input-bar {
-            padding: 14px 18px;
-            background-color: var(--card-dark);
+            padding: 12px 18px;
+            background: linear-gradient(180deg, #09132B, #04091A);
             display: flex;
             gap: 10px;
-            border-top: 1px solid var(--border-color);
+            border-top: 1px solid var(--border-subtle);
         }
 
         .input-bar input {
             flex: 1;
-            background-color: var(--bg-dark);
-            border: 1px solid var(--border-color);
+            background-color: rgba(6, 12, 28, 0.9);
+            border: 1px solid var(--border-blue);
             color: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 11px 16px;
+            border-radius: 10px;
+            font-size: 13px;
             outline: none;
+            transition: border-color 0.2s;
         }
 
         .input-bar input:focus {
-            border-color: var(--excel-green);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
         }
 
         .btn-send {
-            background-color: var(--excel-green);
+            background: linear-gradient(90deg, #1D4ED8, #3B82F6);
             color: white;
-            border: none;
-            padding: 0 24px;
-            border-radius: 8px;
+            border: 1px solid #60A5FA;
+            padding: 0 22px;
+            border-radius: 10px;
             cursor: pointer;
             font-weight: 700;
-            font-size: 14px;
-            transition: background 0.2s;
+            font-size: 13px;
+            transition: all 0.2s;
         }
 
         .btn-send:hover {
-            background-color: var(--excel-green-hover);
+            background: linear-gradient(90deg, #2563EB, #60A5FA);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+        }
+
+        .btn-stop {
+            background: linear-gradient(90deg, #991B1B, #DC2626);
+            color: white;
+            border: 1px solid #EF4444;
+            padding: 0 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn-stop:hover {
+            background: linear-gradient(90deg, #B91C1C, #EF4444);
         }
 
         /* Right: Excel Grid & Inspection View */
@@ -271,18 +474,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             flex: 2;
             display: flex;
             flex-direction: column;
-            background-color: var(--card-dark);
+            background-color: #04091A;
+            border-right: 1px solid var(--border-subtle);
             overflow: hidden;
         }
 
         .grid-header {
             padding: 12px 16px;
             font-weight: 700;
-            font-size: 14px;
-            border-bottom: 1px solid var(--border-color);
+            font-size: 13px;
+            border-bottom: 1px solid var(--border-subtle);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background-color: #081024;
         }
 
         .grid-container {
@@ -295,63 +500,60 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-collapse: collapse;
             width: 100%;
             font-size: 12px;
-            background-color: #1A1D24;
+            background-color: #060B18;
         }
 
         table.excel-table th, table.excel-table td {
-            border: 1px solid #333846;
+            border: 1px solid #132247;
             padding: 6px 10px;
             text-align: center;
         }
 
         table.excel-table th {
-            background-color: #262B36;
+            background-color: #0B1938;
             color: #94A3B8;
             position: sticky;
             top: 0;
             font-weight: 600;
         }
 
-        .cell-yellow { background-color: #6B5B00 !important; color: #FFF; }
-        .cell-green { background-color: #0E4F29 !important; color: #FFF; }
-
-        /* Undo and Action buttons */
-        .btn-undo-panel {
-            background-color: #B45309;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .btn-undo-panel:hover {
-            background-color: #D97706;
-        }
+        .cell-yellow { background-color: #713F12 !important; color: #FFF; }
+        .cell-green { background-color: #064E3B !important; color: #FFF; }
     </style>
 </head>
 <body>
 
+    <!-- Top Header -->
     <header>
-        <div class="header-title">
-            <span class="excel-badge">Excel AI</span>
-            <span>دستیار هوشمند Microsoft Excel 2024</span>
-            <span style="background-color: #1E293B; color: #38BDF8; border: 1px solid #0284C7; font-weight: bold; padding: 3px 10px; border-radius: 12px; font-size: 13px; margin-right: 12px;">👤 MUYUM</span>
+        <div class="header-right">
+            <span class="user-badge">M MIYUM</span>
+            <div class="status-pill" id="statusPill"><span class="dot">🟢</span> Microsoft Excel 2024 (COM)</div>
+            <button class="btn-open-file" onclick="promptOpenFile()">📂 باز کردن فایل اکسل...</button>
         </div>
-        <div class="status-bar">
-            <div class="status-pill" id="statusPill">🟢 متصل به اکسل</div>
-            <div id="fileName">📁 فایل: -</div>
-            <div>📑 شیت:
+        <div class="header-left">
+            <div id="fileName" style="color: #CBD5E1;">📁 فایل: Book1</div>
+            <div style="color: #CBD5E1;">📑 شیت:
                 <select id="sheetSelect" class="sheet-select" onchange="switchSheet(this.value)"></select>
             </div>
-            <button class="btn-undo-panel" onclick="sendCommand('لغو آخرین عملیات')">↩️ بازگردانی (Undo)</button>
+            <button class="btn-reconnect" onclick="fetchStatus()">📶 اتصال مجدد</button>
         </div>
     </header>
 
     <div class="main-container">
-        <!-- Chat Panel -->
+        <!-- Sidebar Panel: History + High-Vibrancy Primary Colored Shortcuts -->
+        <div class="sidebar-panel">
+            <div class="sidebar-title">📜 تاریخچه دستورات</div>
+            <div class="history-box" id="historyBox"></div>
+
+            <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
+            <button class="btn-shortcut btn-unique" onclick="promptPreventDuplicates()">🔒 قفل یکتایی ستون اکسل...</button>
+            <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
+            <button class="btn-shortcut btn-discount" onclick="promptDiscount()">🏷️ محاسبه تخفیف کالاها...</button>
+            <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
+            <button class="btn-shortcut btn-analyze" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
+        </div>
+
+        <!-- Chat Panel with Wallpaper Backdrop -->
         <div class="chat-section">
             <div class="chat-messages" id="chatFeed"></div>
 
@@ -361,20 +563,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button class="chip" onclick="promptArithmetic('subtract')">➖ تفریق ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('multiply')">✖️ ضرب ستون‌ها</button>
                 <button class="chip" onclick="promptArithmetic('divide')">➗ تقسیم ستون‌ها</button>
-                <button class="chip" onclick="promptPreventDuplicates()">🔒 قفل یکتایی ستون</button>
-                <button class="chip" onclick="promptInsertDate()">📅 درج تاریخ</button>
+                <button class="chip" onclick="promptDiscount()">🏷️ اعمال تخفیف کالاها</button>
+                <button class="chip" onclick="promptInsertDate()">📅 درج تاریخ در شیت</button>
+                <button class="chip" onclick="promptPreventDuplicates()">🔒 قفل داده تکراری در ستون</button>
                 <button class="chip" onclick="sendCommand('داده‌های متنی تکراری را رنگ کن')">🎨 رنگ‌آمیزی متون تکراری</button>
-                <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل شیت</button>
-                <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100 را سبز کن</button>
-                <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 ردیف‌های خالی را حذف کن</button>
-                <button class="chip" onclick="sendCommand('یک جدول بساز')">📋 تبدیل به جدول</button>
+                <button class="chip" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
+                <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100</button>
+                <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 حذف ردیف‌های خالی</button>
+                <button class="chip" onclick="sendCommand('یک جدول بساز')">📋 ساخت جدول یکدست</button>
                 <button class="chip" onclick="sendCommand('عرض ستون‌ها را خودکار تنظیم کن')">📐 تنظیم عرض ستون‌ها</button>
             </div>
 
             <!-- Input Bar -->
             <div class="input-bar">
-                <input type="text" id="commandInput" placeholder="دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن)" onkeydown="if(event.key==='Enter') sendInput();">
-                <button class="btn-send" onclick="sendInput()">ارسال دستور</button>
+                <input type="text" id="commandInput" placeholder="دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن و در C بنویس)" onkeydown="if(event.key==='Enter') sendInput();">
+                <button class="btn-send" onclick="sendInput()">ارسال دستور ✈️</button>
+                <button class="btn-stop" onclick="cancelAction()">توقف ⏹</button>
             </div>
         </div>
 
@@ -392,46 +596,54 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <script>
         async function fetchStatus() {
-            const res = await fetch('/api/status');
-            const data = await res.json();
-            document.getElementById('fileName').innerText = '📁 فایل: ' + data.file_name;
-            const select = document.getElementById('sheetSelect');
-            select.innerHTML = '';
-            (data.sheets || []).forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s;
-                opt.innerText = s;
-                if (s === data.active_sheet) opt.selected = true;
-                select.appendChild(opt);
-            });
-            refreshGrid();
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                document.getElementById('fileName').innerText = '📁 فایل: ' + data.file_name;
+                const select = document.getElementById('sheetSelect');
+                select.innerHTML = '';
+                (data.sheets || []).forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    opt.innerText = s;
+                    if (s === data.active_sheet) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                refreshGrid();
+            } catch(e) {
+                console.error("Status error:", e);
+            }
         }
 
         async function refreshGrid() {
-            const res = await fetch('/api/sheet_data');
-            const data = await res.json();
-            const container = document.getElementById('gridContainer');
-            if (!data.matrix || data.matrix.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding:20px; color:#94A3B8;">شیت در حال حاضر خالی است.</div>';
-                return;
-            }
+            try {
+                const res = await fetch('/api/sheet_data');
+                const data = await res.json();
+                const container = document.getElementById('gridContainer');
+                if (!data.matrix || data.matrix.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:20px; color:#94A3B8;">شیت در حال حاضر خالی است.</div>';
+                    return;
+                }
 
-            let html = '<table class="excel-table"><thead><tr><th>#</th>';
-            for (let c = 0; c < (data.matrix[0] || []).length; c++) {
-                html += `<th>${String.fromCharCode(65 + c)}</th>`;
-            }
-            html += '</tr></thead><tbody>';
+                let html = '<table class="excel-table"><thead><tr><th>#</th>';
+                for (let c = 0; c < (data.matrix[0] || []).length; c++) {
+                    html += `<th>${String.fromCharCode(65 + c)}</th>`;
+                }
+                html += '</tr></thead><tbody>';
 
-            data.matrix.forEach((row, rIdx) => {
-                html += `<tr><th>${rIdx + 1}</th>`;
-                row.forEach(val => {
-                    const displayVal = val !== null ? val : '';
-                    html += `<td>${displayVal}</td>`;
+                data.matrix.forEach((row, rIdx) => {
+                    html += `<tr><th>${rIdx + 1}</th>`;
+                    row.forEach(val => {
+                        const displayVal = val !== null ? val : '';
+                        html += `<td>${displayVal}</td>`;
+                    });
+                    html += '</tr>';
                 });
-                html += '</tr>';
-            });
-            html += '</tbody></table>';
-            container.innerHTML = html;
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch(e) {
+                console.error("Grid error:", e);
+            }
         }
 
         function appendMessage(sender, text, isConfirm = false) {
@@ -441,7 +653,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const tag = document.createElement('div');
             tag.className = 'sender-tag';
-            tag.innerText = sender === 'user' ? '👤 شما' : '🤖 دستیار هوشمند اکسل';
+            tag.innerText = sender === 'user' ? '👤 MIYUM' : '🤖 دستیار هوشمند Microsoft Excel';
             bubble.appendChild(tag);
 
             const content = document.createElement('div');
@@ -462,6 +674,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             feed.scrollTop = feed.scrollHeight;
         }
 
+        function addHistoryItem(cmd) {
+            const box = document.getElementById('historyBox');
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.innerText = cmd;
+            item.onclick = () => {
+                document.getElementById('commandInput').value = cmd;
+            };
+            box.insertBefore(item, box.firstChild);
+        }
+
+        function promptOpenFile() {
+            const path = prompt("مسیر یا نام فایل اکسل مورد نظر را وارد کنید:", "sample.xlsx");
+            if (!path || !path.trim()) return;
+            sendCommand(`فایل اکسل ${path.trim()} را باز کن`);
+        }
+
         function promptArithmetic(op) {
             const opNames = {add: 'جمع', subtract: 'تفریق', multiply: 'ضرب', divide: 'تقسیم'};
             const opName = opNames[op] || 'محاسبه';
@@ -470,6 +699,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const target = prompt(`نتیجه در کدام ستون درج شود؟ (مثلاً: 8 یا H):`, "8");
             if (!target || !target.trim()) return;
             const cmd = `عملیات ${opName} ستون‌های ${cols.trim()} در ستون ${target.trim()}`;
+            sendCommand(cmd);
+        }
+
+        function promptDiscount() {
+            const col = prompt("ستون قیمت اصلی کالاها را وارد کنید (مثلاً: B یا 2):", "B");
+            if (!col || !col.trim()) return;
+            const pct = prompt("درصد تخفیف یا ستون درصد (مثلاً: 20 یا 20% یا C):", "20%");
+            if (!pct || !pct.trim()) return;
+            const target = prompt("نتیجه قیمت نهایی در کدام ستون درج شود؟ (مثلاً: D):", "D");
+            if (!target || !target.trim()) return;
+            const cmd = `تخفیف ${pct.trim()} ستون ${col.trim()} در ستون ${target.trim()}`;
             sendCommand(cmd);
         }
 
@@ -485,7 +725,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptPreventDuplicates() {
-            const col = prompt("ستون مورد نظر برای یکتاسازی و جلوگیری از تکرار (مثلاً: 12 یا L):", "12");
+            const col = prompt("ستون مورد نظر برای قفل یکتایی و جلوگیری از تکرار (مثلاً: 12 یا L):", "12");
             if (!col || !col.trim()) return;
             const cmd = `ستون ${col.trim()} نباید داده تکراری داشته باشه`;
             sendCommand(cmd);
@@ -493,14 +733,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         async function sendCommand(cmd) {
             appendMessage('user', cmd);
-            const res = await fetch('/api/command', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: cmd})
-            });
-            const data = await res.json();
-            appendMessage('ai', data.message, data.requires_confirmation);
-            refreshGrid();
+            addHistoryItem(cmd);
+            try {
+                const res = await fetch('/api/command', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd})
+                });
+                const data = await res.json();
+                appendMessage('ai', data.message, data.requires_confirmation);
+                refreshGrid();
+            } catch(e) {
+                appendMessage('ai', 'خطا در ارتباط با سرور: ' + e);
+            }
         }
 
         function sendInput() {
@@ -535,7 +780,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         window.onload = async () => {
             await fetchStatus();
-            appendMessage('ai', 'سلام! من دستیار هوشمند Microsoft Excel هستم.\\nهر دستوری مانند «ستون A را در B ضرب کن»، «میانگین ستون D را حساب کن» یا «داده‌های تکراری را زرد کن» را به زبان فارسی بنویسید تا اجرا کنم.');
+            appendMessage('ai', 'سلام! من دستیار هوشمند Microsoft Excel هستم.\\nهر سوالی در زمینه فرمول‌ها از Excel تا بپرسید.\\nبرای کار روی فایل اکسل خود و وارد کردن فایل اکسل... در نوار بالا کلیک کنید.');
         };
     </script>
 </body>
@@ -562,6 +807,21 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
             return
+
+        if path == "/resources/background.jpg":
+            bg_path = os.path.join(os.path.dirname(__file__), "resources", "background.jpg")
+            if os.path.exists(bg_path):
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                with open(bg_path, "rb") as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_response(404)
+                self.end_headers()
+                return
 
         if path == "/api/status":
             self.send_response(200)
@@ -599,9 +859,10 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        body = self.rfile.read(length) if length > 0 else b""
+
         try:
-            req_data = json.loads(body)
+            req_data = json.loads(body.decode("utf-8")) if body else {}
         except Exception:
             req_data = {}
 
@@ -611,11 +872,12 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({
+            resp = {
                 "success": res.success,
                 "message": res.message_persian,
                 "requires_confirmation": res.requires_confirmation
-            }, ensure_ascii=False).encode("utf-8"))
+            }
+            self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
             return
 
         if path == "/api/confirm":
@@ -623,36 +885,45 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"success": res.success, "message": res.message_persian}, ensure_ascii=False).encode("utf-8"))
+            resp = {
+                "success": res.success,
+                "message": res.message_persian
+            }
+            self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
             return
 
         if path == "/api/cancel":
-            self.controller.cancel_pending_action()
+            res = self.controller.cancel_pending_action()
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "message": "عملیات لغو شد."}, ensure_ascii=False).encode("utf-8"))
+            resp = {
+                "success": res.success,
+                "message": res.message_persian
+            }
+            self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
             return
 
         if path == "/api/switch_sheet":
-            s_name = req_data.get("sheet", "")
-            msg = self.controller.switch_sheet(s_name)
+            sheet_name = req_data.get("sheet", "")
+            msg = self.controller.switch_sheet(sheet_name)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "message": msg}, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps({"message": msg}, ensure_ascii=False).encode("utf-8"))
             return
 
         self.send_response(404)
         self.end_headers()
 
 
-def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Optional[str] = None):
-    controller = AssistantUIController()
-    controller.connect(workbook_path)
+def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Optional[str] = None, controller: Optional[AssistantUIController] = None):
+    """Starts the standalone Persian Web UI Server."""
+    ctrl = controller or AssistantUIController()
+    ctrl.connect(workbook_path)
 
     # Initialize sample data if fresh workbook
-    sheet = controller.manager.get_active_sheet()
+    sheet = ctrl.manager.get_active_sheet()
     if sheet.get_value("A1") is None:
         sheet.set_value("A1", "کالا")
         sheet.set_value("B1", "تعداد")
@@ -675,15 +946,21 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
         sheet.set_value("B5", 10)
         sheet.set_value("C5", 800)
 
-        # Empty row
         sheet.set_value("A7", "مانیتور")
         sheet.set_value("B7", 3)
         sheet.set_value("C7", 300)
 
-    class CustomServer(socketserver.TCPServer):
+    WebAssistantHandler.controller = ctrl
+    server_address = (host, port)
+
+    class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
-    WebAssistantHandler.controller = controller
-    with CustomServer((host, port), WebAssistantHandler) as httpd:
-        print(f"🚀 Excel AI Assistant Web Server running at http://{host}:{port}")
+    with ReusableTCPServer(server_address, WebAssistantHandler) as httpd:
+        print(f"🚀 سرور وب دستیار هوشمند اکسل با تم تیره و مدرن فعال شد:")
+        print(f"👉 http://127.0.0.1:{port}")
         httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    start_web_server(8080)

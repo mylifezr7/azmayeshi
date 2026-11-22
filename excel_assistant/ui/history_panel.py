@@ -1,10 +1,11 @@
 """
 Command History and Quick Actions Sidebar Panel.
+Features vibrant distinct primary gradient buttons and modern dark glassmorphism.
 """
 from typing import List, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QListWidget, QPushButton, QFrame, QHBoxLayout
+    QWidget, QVBoxLayout, QLabel, QListWidget, QPushButton, QFrame
 )
 
 
@@ -21,8 +22,9 @@ class HistoryPanel(QFrame):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setMinimumWidth(220)
-        self.setMaximumWidth(280)
+        self.setObjectName("sidebarPanel")
+        self.setMinimumWidth(230)
+        self.setMaximumWidth(290)
         self.setLayoutDirection(Qt.RightToLeft)
 
         layout = QVBoxLayout(self)
@@ -31,7 +33,7 @@ class HistoryPanel(QFrame):
 
         # Title
         title_lbl = QLabel("📜 تاریخچه دستورات")
-        title_lbl.setStyleSheet("font-weight: bold; color: #94A3B8; font-size: 13px;")
+        title_lbl.setStyleSheet("font-weight: bold; color: #CBD5E1; font-size: 13px; margin-bottom: 2px;")
         layout.addWidget(title_lbl)
 
         # History list
@@ -40,39 +42,117 @@ class HistoryPanel(QFrame):
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.list_widget)
 
-        # Undo button
+        # 1. Undo button: Warm Vibrant Orange / Amber
         self.btn_undo = QPushButton("↩️ لغو آخرین تغییر (Undo)")
         self.btn_undo.setObjectName("undoButton")
+        self.btn_undo.setProperty("class", "sidebarActionBtn")
+        self.btn_undo.setStyleSheet(
+            "QPushButton#undoButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #EA580C, stop:1 #FB923C);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #F97316; border-radius: 10px;"
+            "}"
+            "QPushButton#undoButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F97316, stop:1 #FDBA74);"
+            "  border: 1px solid #FDBA74;"
+            "}"
+            "QPushButton#undoButton:pressed { background: #C2410C; }"
+        )
         self.btn_undo.clicked.connect(self.undo_requested.emit)
         layout.addWidget(self.btn_undo)
 
-        # Unique column validation button
-        self.btn_unique = QPushButton("🔒 قفل یکتایی ستون (کد ملی/محصول)...")
-        self.btn_unique.setStyleSheet("background-color: #8B5CF6; color: white; font-weight: bold;")
+        # 2. Unique column lock button: Vibrant Royal Purple / Violet
+        self.btn_unique = QPushButton("🔒 قفل یکتایی ستون اکسل...")
+        self.btn_unique.setObjectName("uniqueColButton")
+        self.btn_unique.setProperty("class", "sidebarActionBtn")
+        self.btn_unique.setStyleSheet(
+            "QPushButton#uniqueColButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6D28D9, stop:1 #8B5CF6);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #8B5CF6; border-radius: 10px;"
+            "}"
+            "QPushButton#uniqueColButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #7C3AED, stop:1 #A78BFA);"
+            "  border: 1px solid #A78BFA;"
+            "}"
+            "QPushButton#uniqueColButton:pressed { background: #5B21B6; }"
+        )
         self.btn_unique.clicked.connect(self.unique_col_requested.emit)
         layout.addWidget(self.btn_unique)
 
-        # Arithmetic button
+        # 3. Arithmetic operations button: Rich Vibrant Emerald Green
         self.btn_arithmetic = QPushButton("🧮 ۴ عمل اصلی ستون‌ها...")
-        self.btn_arithmetic.setStyleSheet("background-color: #107C41; color: white; font-weight: bold;")
+        self.btn_arithmetic.setObjectName("arithmeticButton")
+        self.btn_arithmetic.setProperty("class", "sidebarActionBtn")
+        self.btn_arithmetic.setStyleSheet(
+            "QPushButton#arithmeticButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #10B981; border-radius: 10px;"
+            "}"
+            "QPushButton#arithmeticButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #34D399);"
+            "  border: 1px solid #34D399;"
+            "}"
+            "QPushButton#arithmeticButton:pressed { background: #064E3B; }"
+        )
         self.btn_arithmetic.clicked.connect(self.arithmetic_requested.emit)
         layout.addWidget(self.btn_arithmetic)
 
-        # Discount button
+        # 4. Product discount button: Warm Vibrant Mango / Amber Orange
         self.btn_discount = QPushButton("🏷️ محاسبه تخفیف کالاها...")
-        self.btn_discount.setStyleSheet("background-color: #D97706; color: white; font-weight: bold;")
+        self.btn_discount.setObjectName("discountButton")
+        self.btn_discount.setProperty("class", "sidebarActionBtn")
+        self.btn_discount.setStyleSheet(
+            "QPushButton#discountButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #B45309, stop:1 #F59E0B);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #F59E0B; border-radius: 10px;"
+            "}"
+            "QPushButton#discountButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #D97706, stop:1 #FBBF24);"
+            "  border: 1px solid #FBBF24;"
+            "}"
+            "QPushButton#discountButton:pressed { background: #78350F; }"
+        )
         self.btn_discount.clicked.connect(self.discount_requested.emit)
         layout.addWidget(self.btn_discount)
 
-        # Date button
-        self.btn_date = QPushButton("📅 درج تاریخ در ستون...")
-        self.btn_date.setStyleSheet("background-color: #0284C7; color: white; font-weight: bold;")
+        # 5. Insert Date button: Vibrant Sky Blue / Azure
+        self.btn_date = QPushButton("📅 درج تاریخ در شیت...")
+        self.btn_date.setObjectName("dateButton")
+        self.btn_date.setProperty("class", "sidebarActionBtn")
+        self.btn_date.setStyleSheet(
+            "QPushButton#dateButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0284C7, stop:1 #38BDF8);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #38BDF8; border-radius: 10px;"
+            "}"
+            "QPushButton#dateButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0369A1, stop:1 #7DD3FC);"
+            "  border: 1px solid #7DD3FC;"
+            "}"
+            "QPushButton#dateButton:pressed { background: #075985; }"
+        )
         self.btn_date.clicked.connect(self.date_requested.emit)
         layout.addWidget(self.btn_date)
 
-        # Analyze button
+        # 6. Smart Analysis button: Deep Sapphire / Royal Blue
         self.btn_analyze = QPushButton("📊 تحلیل هوشمند شیت")
-        self.btn_analyze.setStyleSheet("background-color: #475569; color: white;")
+        self.btn_analyze.setObjectName("analyzeButton")
+        self.btn_analyze.setProperty("class", "sidebarActionBtn")
+        self.btn_analyze.setStyleSheet(
+            "QPushButton#analyzeButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #2563EB);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #3B82F6; border-radius: 10px;"
+            "}"
+            "QPushButton#analyzeButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #60A5FA);"
+            "  border: 1px solid #60A5FA;"
+            "}"
+            "QPushButton#analyzeButton:pressed { background: #172554; }"
+        )
         self.btn_analyze.clicked.connect(self.analyze_requested.emit)
         layout.addWidget(self.btn_analyze)
 
