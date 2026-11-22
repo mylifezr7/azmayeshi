@@ -766,20 +766,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptProfitCalculation() {
-            const period = prompt("دوره زمانی محاسبه سود (all: روزانه، ماهانه، سالانه و کل | daily: روزانه | monthly: ماهانه | yearly: سالانه | total: کل | sheets: مقایسه شیت ۱ و ۲):", "all");
-            if (!period || !period.trim()) return;
-            const p = period.trim().toLowerCase();
-            if (p === "sheets" || p === "شیت" || p === "2") {
-                const sSheet = prompt("نام یا شماره شیت فروش (پیش‌فرض: شیت اول):", "Sheet1") || "1";
-                const pSheet = prompt("نام یا شماره شیت خرید (پیش‌فرض: شیت دوم):", "Sheet2") || "2";
-                const cmd = `تعداد فروش و قیمت فروش در ${sSheet.trim()} و تعداد خرید و قیمت خرید در ${pSheet.trim()}، فروش رو منهای خرید کن تا سود به دست بیاد`;
-                sendCommand(cmd);
+            const dateCol = prompt("ستون تاریخ را وارد کنید (مثلاً: A یا 1):", "A");
+            if (!dateCol || !dateCol.trim()) return;
+            const salesCol = prompt("ستون مبلغ فروش را وارد کنید (مثلاً: B یا 2 یا C):", "B");
+            if (!salesCol || !salesCol.trim()) return;
+            const purchaseCol = prompt("ستون مبلغ خرید/هزینه (اختیاری جهت تفریق، مثلاً: C یا 3):", "C");
+            const period = prompt("دوره زمانی محاسبه سود (all: روزانه، ماهانه، سالانه و کل | daily: روزانه | monthly: ماهانه | yearly: سالانه | total: کل):", "all");
+            const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
+            const pText = periodMap[period ? period.trim().toLowerCase() : "all"] || "روزانه و ماهانه و سالانه و کل";
+            let cmd = "";
+            if (purchaseCol && purchaseCol.trim()) {
+                cmd = `محاسبه سود ${pText} ستون فروش ${salesCol.trim()} و خرید ${purchaseCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
             } else {
-                const periodMap = {all: "روزانه و ماهانه و سالانه و کل", daily: "روزانه", monthly: "ماهانه", yearly: "سالانه", total: "کل"};
-                const pText = periodMap[p] || "روزانه و ماهانه و سالانه و کل";
-                const cmd = `محاسبه سود ${pText}`;
-                sendCommand(cmd);
+                cmd = `محاسبه سود ${pText} ستون فروش ${salesCol.trim()} بر اساس تاریخ ${dateCol.trim()}`;
             }
+            sendCommand(cmd);
         }
 
         async function sendCommand(cmd) {

@@ -723,7 +723,26 @@ class MathActionHandler:
             sp_raw = str(action.sales_price_col).strip().upper()
             s_price_col = col_index_to_letter(int(sp_raw)) if sp_raw.isdigit() else sp_raw
 
-        if not s_prod_col: s_prod_col = "A" if s_date_col != "A" else "B"
+        if action.sales_col:
+            sc_raw = str(action.sales_col).strip().upper()
+            action.sales_col = col_index_to_letter(int(sc_raw)) if sc_raw.isdigit() else sc_raw
+            s_price_col = action.sales_col
+
+        if action.purchase_col:
+            pc_raw = str(action.purchase_col).strip().upper()
+            action.purchase_col = col_index_to_letter(int(pc_raw)) if pc_raw.isdigit() else pc_raw
+            s_explicit_cost_col = action.purchase_col
+
+        if s_prod_col in [s_date_col, s_price_col, s_explicit_cost_col, action.sales_col, action.purchase_col]:
+            s_prod_col = None
+
+        if not s_prod_col:
+            for c in range(s_min_c, s_max_c + 1):
+                c_let = col_index_to_letter(c)
+                if c_let not in [s_date_col, s_qty_col, s_price_col, s_explicit_cost_col, s_explicit_profit_col]:
+                    s_prod_col = c_let
+                    break
+
         if not s_qty_col: s_qty_col = "B" if s_prod_col != "B" and s_date_col != "B" else "C"
         if not s_price_col: s_price_col = "C" if s_qty_col != "C" and s_prod_col != "C" and s_date_col != "C" else "D"
 
@@ -790,9 +809,10 @@ class MathActionHandler:
             direct_profit = clean_val(s_sheet.get_value(f"{s_explicit_profit_col}{r}")) if s_explicit_profit_col else None
 
             if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str:
+                p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else f"ردیف {r}"
                 sales_records.append({
                     "row": r,
-                    "product": str(prod).strip() if prod is not None else f"ردیف {r}",
+                    "product": p_label,
                     "qty": qty if qty > 0 else 1.0,
                     "price": price if price > 0 else tot_sales,
                     "total_sales": tot_sales,
