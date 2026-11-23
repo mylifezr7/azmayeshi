@@ -314,17 +314,16 @@ QScrollArea#chatScrollArea > QWidget > QWidget {{
     background: transparent;
 }}
 
-/* Quick Action Chips & Cascading 5-Category Dropdowns */
+/* Quick Action Chips & Cascading 5-Category Dropdowns (Enlarged & Prominent) */
 QComboBox#quickCommandsCombo, QComboBox#quickCategoryCombo, QComboBox#quickActionCombo {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0B1938, stop:1 #132247);
-    border: 1px solid #2563EB;
+    border: 2px solid #2563EB;
     border-radius: 12px;
-    padding: 4px 12px;
+    padding: 8px 18px;
     color: #93C5FD;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: bold;
-    min-height: 26px;
-    min-width: 170px;
+    min-height: 42px;
 }}
 
 QComboBox#quickCommandsCombo:hover, QComboBox#quickCategoryCombo:hover, QComboBox#quickActionCombo:hover {{
@@ -335,31 +334,35 @@ QComboBox#quickCommandsCombo:hover, QComboBox#quickCategoryCombo:hover, QComboBo
 
 QComboBox#quickCommandsCombo::drop-down, QComboBox#quickCategoryCombo::drop-down, QComboBox#quickActionCombo::drop-down {{
     border: none;
-    width: 20px;
+    width: 28px;
 }}
 
 QComboBox#quickCommandsCombo QAbstractItemView, QComboBox#quickCategoryCombo QAbstractItemView, QComboBox#quickActionCombo QAbstractItemView {{
     background-color: #070F26;
-    border: 1px solid #1E3A8A;
-    border-radius: 8px;
+    border: 2px solid #2563EB;
+    border-radius: 10px;
     color: #E2E8F0;
     selection-background-color: #1D4ED8;
     selection-color: #FFFFFF;
-    padding: 4px;
+    padding: 6px;
+    font-size: 13px;
+    font-weight: 500;
 }}
 
 QPushButton#runQuickActionButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);
     color: #FFFFFF;
+    font-size: 14px;
     font-weight: bold;
-    border-radius: 10px;
-    padding: 5px 14px;
+    border-radius: 12px;
+    padding: 8px 24px;
     border: none;
-    min-height: 26px;
+    min-height: 42px;
 }}
 
 QPushButton#runQuickActionButton:hover {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #059669);
+    border: 1px solid #34D399;
 }}
 
 QScrollArea#chipsScrollArea {{

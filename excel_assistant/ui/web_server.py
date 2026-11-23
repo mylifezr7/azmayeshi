@@ -614,37 +614,64 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-weight: 700;
         }
 
-        /* Quick Chips */
+        /* Quick Action Bar */
         .chips-bar {
-            padding: 8px 16px;
-            background: rgba(8, 16, 38, 0.7);
+            padding: 10px 18px;
+            background: rgba(8, 16, 38, 0.85);
             display: flex;
             align-items: center;
-            gap: 8px;
-            overflow-x: auto;
+            gap: 12px;
             border-top: 1px solid var(--border-subtle);
             backdrop-filter: blur(8px);
         }
 
         .chip-select {
             background-color: #0A142A;
-            border: 1px solid var(--accent-blue);
-            color: #93C5FD;
-            padding: 6px 14px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
+            border: 2px solid var(--accent-blue);
+            color: #E2E8F0;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
             outline: none;
             white-space: nowrap;
             font-family: inherit;
             transition: all 0.2s;
+            flex: 1;
+            min-height: 44px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
         }
 
-        .chip-select:hover {
+        .chip-select:hover, .chip-select:focus {
             border-color: var(--accent-cyan);
-            background-color: #132247;
+            background-color: #112042;
             color: #FFFFFF;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+        }
+
+        .action-run-btn {
+            background: linear-gradient(135deg, #059669, #10B981);
+            color: #FFFFFF;
+            font-weight: bold;
+            font-size: 14px;
+            border: 2px solid #34D399;
+            padding: 8px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            outline: none;
+            font-family: inherit;
+            transition: all 0.2s;
+            min-height: 44px;
+            box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35);
+            flex-shrink: 0;
+        }
+
+        .action-run-btn:hover {
+            background: linear-gradient(135deg, #047857, #059669);
+            border-color: #6EE7B7;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.5);
         }
 
         .chip {
@@ -816,12 +843,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="chat-section">
             <div class="chat-messages" id="chatFeed"></div>
 
-            <!-- Quick Action Chips (Scrollable + Dropdown, no sidebar duplicates) -->
-            <!-- Quick Action Chips (Cascading 5-Category Dropdown + Action Selector + Horizontal Scrollable Chips) -->
+            <!-- Quick Action Cascading Selector (5 Categories) -->
             <div class="chips-bar">
-                <!-- Dropdown 1: انتخاب دسته‌بندی ۵ گانه -->
+                <!-- Dropdown 1: انتخاب حوزه ۵ گانه -->
                 <select id="catSelect" class="chip-select" onchange="onCategoryChanged(this.value)">
-                    <option value="">📁 ۱. انتخاب حوزه (۵ بخش)...</option>
+                    <option value="">📁 ۱. انتخاب حوزه (۵ دسته‌بندی اصلی)...</option>
                     <option value="essential">⚡ ۱. قابلیت‌های ضروری</option>
                     <option value="accounting">💼 ۲. قابلیت‌های حسابداری</option>
                     <option value="sales_inventory">🛒 ۳. قابلیت‌های فروش و انبارداری</option>
@@ -831,36 +857,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 <!-- Dropdown 2: انتخاب عملیات زیرمجموعه -->
                 <select id="actSelect" class="chip-select" onchange="onActionSelected(this.value)">
-                    <option value="">🎯 ۲. انتخاب عملیات...</option>
+                    <option value="">🎯 ۲. ابتدا حوزه را انتخاب کنید...</option>
                 </select>
 
                 <!-- دکمه اجرای عملیات انتخابی -->
-                <button class="chip" style="background: linear-gradient(135deg, #059669, #10B981); color: #FFF; font-weight: bold; border-color: #34D399;" onclick="runSelectedAction()">اجرا 🚀</button>
-
-                <button class="chip" onclick="sendCommand('مغایرت‌گیری ستون A و B')">⚖️ مغایرت‌گیری</button>
-                <button class="chip" onclick="sendCommand('ثبت فاکتور فروش')">🧾 صدور فاکتور</button>
-                <button class="chip" onclick="sendCommand('محاسبه حقوق و دستمزد')">💼 حقوق و دستمزد</button>
-                <button class="chip" onclick="sendCommand('موجودی انبار و هشدار کمبود موجودی')">📦 کنترل موجودی</button>
-                <button class="chip" onclick="sendCommand('تهیه تراز آزمایشی')">📊 تراز آزمایشی</button>
-                <button class="chip" onclick="sendCommand('محاسبه مانده حساب')">💳 مانده حساب</button>
-                <button class="chip" onclick="sendCommand('محاسبه استهلاک')">📉 استهلاک</button>
-                <button class="chip" onclick="sendCommand('محاسبه بدهی و طلب مشتریان')">👥 بدهی مشتریان</button>
-                <button class="chip" onclick="sendCommand('گزارش پرفروش‌ترین کالاها')">🏆 پرفروش‌ترین‌ها</button>
-                <button class="chip" onclick="sendCommand('قیمت‌های ستون C را ۱۵ درصد افزایش بده')">🏷️ ۱۵٪ افزایش قیمت</button>
-                <button class="chip" onclick="sendCommand('سلامت فایل و بررسی خطاهای اکسل')">🩺 سلامت فایل</button>
-                <button class="chip" onclick="sendCommand('رسم نمودار ستونی')">📊 رسم نمودار</button>
-                <button class="chip" onclick="sendCommand('ذخیره نسخه پشتیبان')">💾 نسخه پشتیبان</button>
-                <button class="chip" onclick="sendCommand('خروجی PDF از شیت')">📄 خروجی PDF</button>
-                <button class="chip" onclick="sendCommand('فیلتر هوشمند جدول')">🔍 فیلتر هوشمند</button>
-                <button class="chip" onclick="sendCommand('مرتب‌سازی صعودی ستون A')">🔄 سورت صعودی</button>
-                <button class="chip" onclick="sendCommand('مرتب‌سازی نزولی ستون A')">🔽 سورت نزولی</button>
-                <button class="chip" onclick="sendCommand('حذف داده‌های تکراری')">🗑️ حذف تکراری‌ها</button>
-                <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 حذف سطرهای خالی</button>
-                <button class="chip" onclick="sendCommand('تبدیل متن به عدد در ستون A')">🔢 متن به عدد</button>
-                <button class="chip" onclick="sendCommand('تفکیک نام و نام خانوادگی در ستون A')">✂️ تفکیک متن</button>
-                <button class="chip" onclick="sendCommand('سلول‌های A1:B1 را ادغام کن')">🔗 ادغام سلول‌ها</button>
-                <button class="chip" onclick="sendCommand('فرمت ستون B را به تومان تغییر بده')">💲 فرمت تومان</button>
-                <button class="chip" onclick="sendCommand('فرمت ستون C را درصدی کن')">📈 فرمت درصد</button>
+                <button class="action-run-btn" onclick="runSelectedAction()">اجرا 🚀</button>
             </div>
 
             <!-- Input Bar -->
@@ -1331,21 +1332,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         function onCategoryChanged(catKey) {
             const actSelect = document.getElementById('actSelect');
-            actSelect.innerHTML = '<option value="">🎯 ۲. انتخاب عملیات...</option>';
             if (catKey && FIVE_CATEGORIES[catKey]) {
+                actSelect.innerHTML = '<option value="">🎯 ۲. انتخاب عملیات...</option>';
                 FIVE_CATEGORIES[catKey].commands.forEach(item => {
                     const opt = document.createElement('option');
                     opt.value = item.cmd;
                     opt.innerText = item.label;
                     actSelect.appendChild(opt);
                 });
+            } else {
+                actSelect.innerHTML = '<option value="">🎯 ۲. ابتدا حوزه را انتخاب کنید...</option>';
             }
         }
 
         function onActionSelected(cmd) {
             if (cmd) {
                 document.getElementById('commandInput').value = cmd;
-                sendCommand(cmd);
+                document.getElementById('commandInput').focus();
             }
         }
 
@@ -1355,7 +1358,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (cmd) {
                 sendCommand(cmd);
             } else {
-                appendMessage('ai', '⚠️ لطفاً ابتدا یک عملیات را از منوی کشویی انتخاب کنید.');
+                appendMessage('ai', '⚠️ لطفاً ابتدا یک عملیات را از منوی کشویی انتخاب کنید یا دستور خود را بنویسید.');
             }
         }
 

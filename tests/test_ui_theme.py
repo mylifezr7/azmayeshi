@@ -92,3 +92,27 @@ def test_five_categories_cascading_dropdowns():
     assert "⚙️ ۵. امکانات مدیریتی خود برنامه" in HTML_TEMPLATE
     assert "runSelectedAction" in HTML_TEMPLATE
 
+
+def test_dropup_and_enlarged_controls():
+    """Verify that action controls are enlarged, dropup combobox is used, and chips bar is removed."""
+    # 1. Enlarged QSS styles
+    assert "min-height: 42px;" in QSS_STYLE
+    assert "font-size: 14px;" in QSS_STYLE
+    assert "QComboBox#quickCategoryCombo" in QSS_STYLE
+    assert "QComboBox#quickActionCombo" in QSS_STYLE
+    assert "QPushButton#runQuickActionButton" in QSS_STYLE
+
+    # 2. Main window uses DropUpComboBox and removed chips_scroll
+    main_window_src = (Path(__file__).parent.parent / "excel_assistant" / "ui" / "main_window.py").read_text(encoding="utf-8")
+    assert "class DropUpComboBox(QComboBox):" in main_window_src
+    assert "self.category_combo = DropUpComboBox()" in main_window_src
+    assert "self.action_combo = DropUpComboBox()" in main_window_src
+    assert "chips_scroll = QScrollArea()" not in main_window_src
+    assert "HorizontalWheelFilter(chips_scroll)" not in main_window_src
+
+    # 3. Web UI uses action-run-btn and removed bottom chip buttons from chips-bar
+    assert "class=\"action-run-btn\"" in HTML_TEMPLATE
+    assert "min-height: 44px" in HTML_TEMPLATE
+    assert "<button class=\"chip\" onclick=\"sendCommand('مغایرت‌گیری" not in HTML_TEMPLATE
+
+
