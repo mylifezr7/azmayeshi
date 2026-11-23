@@ -88,61 +88,104 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.history_panel, stretch=1)
         main_layout.addLayout(content_layout)
 
-        # 3. Quick Actions Bar (Dropdown Menu + Horizontal Scrollable Slider - NO duplicates from left sidebar)
+        # 3. Quick Actions Bar (Cascading 5-Category Dropdown + Action Selector + Horizontal Scrollable Chips)
         chips_frame = QFrame()
         chips_frame.setStyleSheet("background: transparent; border: none;")
         chips_frame_layout = QHBoxLayout(chips_frame)
         chips_frame_layout.setContentsMargins(12, 0, 12, 4)
-        chips_frame_layout.setSpacing(10)
+        chips_frame_layout.setSpacing(8)
 
-        # 3.1. Dropdown Combo Box (منوی کشویی دستورات آماده و پرکاربرد)
-        self.quick_combo = QComboBox()
-        self.quick_combo.setObjectName("quickCommandsCombo")
-        self.quick_combo.setToolTip("انتخاب دستور آماده از منوی کشویی")
-        self.quick_combo.addItem("⚡ منوی کشویی دستورات آماده...", None)
+        # 3.1. Structure of the 5 requested categories
+        self.five_categories = {
+            "essential": {
+                "title": "⚡ ۱. قابلیت‌های ضروری",
+                "commands": [
+                    ("🔍 فیلتر هوشمند اطلاعات", "فیلتر هوشمند جدول"),
+                    ("🔄 مرتب‌سازی صعودی داده‌ها", "مرتب‌سازی صعودی ستون A"),
+                    ("🔽 مرتب‌سازی نزولی داده‌ها", "مرتب‌سازی نزولی ستون A"),
+                    ("🗑️ حذف موارد تکراری", "حذف داده‌های تکراری"),
+                    ("🧹 حذف سطرهای خالی", "ردیف‌های خالی را حذف کن"),
+                    ("➕ جمع خودکار (AutoSum)", "جمع خودکار ستون A"),
+                    ("📊 محاسبه میانگین داده‌ها", "میانگین ستون A"),
+                    ("🔺 بیشترین و کمترین (MAX / MIN)", "بیشترین مقدار ستون A"),
+                    ("🔢 شمارش اطلاعات و سلول‌های پر", "شمارش سلول‌های پر ستون A"),
+                    ("🔢 تبدیل متن به عدد (اصلاح داده‌ها)", "تبدیل متن به عدد در ستون A"),
+                ]
+            },
+            "accounting": {
+                "title": "💼 ۲. قابلیت‌های حسابداری",
+                "commands": [
+                    ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
+                    ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
+                    ("💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", "محاسبه مانده حساب"),
+                    ("💼 لیست حقوق و دستمزد، بیمه و مالیات", "محاسبه حقوق و دستمزد"),
+                    ("📉 محاسبه جدول استهلاک دارایی‌ها", "محاسبه استهلاک"),
+                    ("📈 تهیه صورت سود و زیان جامع دوره", "صورت سود و زیان جامع"),
+                    ("🏛️ تهیه ترازنامه مالی (بیلان)", "ترازنامه"),
+                ]
+            },
+            "sales_inventory": {
+                "title": "🛒 ۳. قابلیت‌های فروش و انبارداری",
+                "commands": [
+                    ("🧾 صدور و ثبت فاکتور رسمی فروش", "ثبت فاکتور فروش"),
+                    ("🛒 صدور و ثبت فاکتور رسمی خرید", "ثبت فاکتور خرید"),
+                    ("📦 کنترل موجودی و هشدار کمبود انبار", "موجودی انبار و هشدار کمبود موجودی"),
+                    ("💰 محاسبه ارزش ریالی کل موجودی انبار", "ارزش کل موجودی انبار"),
+                    ("👥 محاسبه بدهی و طلب مشتریان", "محاسبه بدهی و طلب مشتریان"),
+                    ("🏆 گزارش پرفروش‌ترین کالاها", "گزارش پرفروش‌ترین کالاها"),
+                    ("🏷️ افزایش ۱۵ درصدی قیمت‌های ستون C", "قیمت‌های ستون C را ۱۵ درصد افزایش بده"),
+                ]
+            },
+            "smart": {
+                "title": "🤖 ۴. قابلیت‌های هوشمند و کاربردی",
+                "commands": [
+                    ("🩺 چکاپ عمیق سلامت و خطاهای فایل", "سلامت فایل و بررسی خطاهای اکسل"),
+                    ("🧮 میانگین سطری بین ستون‌ها (B و C در D)", "از ستون B و C میانگین بگیر و نتیجه را در D بنویس"),
+                    ("📊 گزارش‌ساز خودکار با نمودار گرافیکی", "رسم نمودار ستونی"),
+                    ("📋 تشخیص و ساخت جدول اکسل", "یک جدول بساز"),
+                    ("✂️ تفکیک نام و نام خانوادگی", "تفکیک نام و نام خانوادگی در ستون A"),
+                    ("🔗 ادغام سلول‌ها (Merge)", "سلول‌های A1:B1 را ادغام کن"),
+                ]
+            },
+            "management": {
+                "title": "⚙️ ۵. امکانات مدیریتی خود برنامه",
+                "commands": [
+                    ("💾 ذخیره نسخه پشتیبان (Backup)", "ذخیره نسخه پشتیبان"),
+                    ("📄 تولید خروجی PDF استاندارد", "خروجی PDF از شیت"),
+                    ("↩️ لغو آخرین عملیات (Undo چندمرحله‌ای)", "لغو آخرین عملیات"),
+                    ("📐 تنظیم خودکار عرض ستون‌ها (AutoFit)", "عرض ستون‌ها را خودکار تنظیم کن"),
+                    ("🎨 رنگ‌آمیزی متون تکراری", "داده‌های متنی تکراری را رنگ کن"),
+                    ("💲 تغییر فرمت به واحد پول (تومان)", "فرمت ستون B را به تومان تغییر بده"),
+                    ("📈 تغییر فرمت به درصد (%)", "فرمت ستون C را درصدی کن"),
+                    ("📅 تغییر فرمت به تاریخ", "فرمت ستون A را به تاریخ تغییر بده"),
+                ]
+            }
+        }
 
-        dropdown_commands = [
-            ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
-            ("🧾 صدور فاکتور رسمی فروش", "ثبت فاکتور فروش"),
-            ("🛒 صدور فاکتور رسمی خرید", "ثبت فاکتور خرید"),
-            ("💼 محاسبه حقوق و دستمزد، بیمه و مالیات", "محاسبه حقوق و دستمزد"),
-            ("📦 کنترل موجودی و هشدار کمبود انبار", "موجودی انبار و هشدار کمبود موجودی"),
-            ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
-            ("💳 محاسبه مانده حساب بدهکار/بستانکار", "محاسبه مانده حساب"),
-            ("📉 محاسبه جدول استهلاک دارایی‌ها", "محاسبه استهلاک"),
-            ("👥 محاسبه بدهی و طلب مشتریان", "محاسبه بدهی و طلب مشتریان"),
-            ("🏆 گزارش پرفروش‌ترین کالاها", "گزارش پرفروش‌ترین کالاها"),
-            ("🏷️ افزایش ۱۵ درصدی قیمت‌های ستون C", "قیمت‌های ستون C را ۱۵ درصد افزایش بده"),
-            ("📈 تهیه صورت سود و زیان جامع", "صورت سود و زیان جامع"),
-            ("🏛️ تهیه ترازنامه مالی (بیلان)", "ترازنامه"),
-            ("🩺 تحلیل عمیق سلامت و خطاهای فایل", "سلامت فایل و بررسی خطاهای اکسل"),
-            ("📊 تولید خودکار نمودار گرافیکی", "رسم نمودار ستونی"),
-            ("💾 ذخیره نسخه پشتیبان (Backup)", "ذخیره نسخه پشتیبان"),
-            ("📄 تولید خروجی PDF استاندارد", "خروجی PDF از شیت"),
-            ("🔍 فیلتر هوشمند اطلاعات", "فیلتر هوشمند جدول"),
-            ("🔄 مرتب‌سازی صعودی داده‌ها", "مرتب‌سازی صعودی ستون A"),
-            ("🔽 مرتب‌سازی نزولی داده‌ها", "مرتب‌سازی نزولی ستون A"),
-            ("🗑️ حذف موارد تکراری", "حذف داده‌های تکراری"),
-            ("🧹 حذف سطرهای خالی", "ردیف‌های خالی را حذف کن"),
-            ("➕ جمع خودکار (AutoSum)", "جمع خودکار ستون A"),
-            ("📊 محاسبه میانگین داده‌ها", "میانگین ستون A"),
-            ("🔺 بیشترین و کمترین (MAX / MIN)", "بیشترین مقدار ستون A"),
-            ("🔢 شمارش اطلاعات و سلول‌های پر", "شمارش سلول‌های پر ستون A"),
-            ("🔢 تبدیل متن به عدد (اصلاح داده‌ها)", "تبدیل متن به عدد در ستون A"),
-            ("✂️ جدا کردن متن (تفکیک نام و نام خانوادگی)", "تفکیک نام و نام خانوادگی در ستون A"),
-            ("🔗 ادغام سلول‌ها (Merge)", "سلول‌های A1:B1 را ادغام کن"),
-            ("💲 تغییر فرمت به واحد پول (تومان)", "فرمت ستون B را به تومان تغییر بده"),
-            ("📈 تغییر فرمت به درصد (%)", "فرمت ستون C را درصدی کن"),
-            ("📅 تغییر فرمت به تاریخ", "فرمت ستون A را به تاریخ تغییر بده"),
-            ("🎨 رنگ‌آمیزی متون تکراری", "داده‌های متنی تکراری را رنگ کن"),
-            ("📐 تنظیم خودکار عرض ستون‌ها", "عرض ستون‌ها را خودکار تنظیم کن"),
-            ("📋 ساخت جدول یکدست و زیبا", "یک جدول بساز"),
-        ]
-        for label, cmd in dropdown_commands:
-            self.quick_combo.addItem(label, cmd)
+        # Dropdown 1: انتخاب دسته‌بندی اصلی (۵ بخش)
+        self.category_combo = QComboBox()
+        self.category_combo.setObjectName("quickCategoryCombo")
+        self.category_combo.setToolTip("۱. ابتدا حوزه یا دسته‌بندی کار خود را انتخاب کنید")
+        self.category_combo.addItem("📁 ۱. انتخاب حوزه (۵ دسته‌بندی)...", None)
+        for cat_key, cat_data in self.five_categories.items():
+            self.category_combo.addItem(cat_data["title"], cat_key)
+        self.category_combo.currentIndexChanged.connect(self._on_category_selected)
+        chips_frame_layout.addWidget(self.category_combo)
 
-        self.quick_combo.currentIndexChanged.connect(self._on_quick_combo_selected)
-        chips_frame_layout.addWidget(self.quick_combo)
+        # Dropdown 2: انتخاب عملیات زیرمجموعه
+        self.action_combo = QComboBox()
+        self.action_combo.setObjectName("quickActionCombo")
+        self.action_combo.setToolTip("۲. عملیات مورد نظر در این حوزه را انتخاب کنید")
+        self.action_combo.addItem("🎯 ۲. انتخاب عملیات...", None)
+        self.action_combo.currentIndexChanged.connect(self._on_action_selected)
+        chips_frame_layout.addWidget(self.action_combo)
+
+        # دکمه اجرای سریع عملیات انتخابی
+        self.btn_run_action = QPushButton("اجرا 🚀")
+        self.btn_run_action.setObjectName("runQuickActionButton")
+        self.btn_run_action.setToolTip("اجرای عملیات انتخاب‌شده")
+        self.btn_run_action.clicked.connect(self._on_run_action_clicked)
+        chips_frame_layout.addWidget(self.btn_run_action)
 
         # 3.2. Horizontal Scrollable Chips (نوار کشویی افقی برای دسترسی سریع بدون اقلام تکراری پنل سمت چپ)
         chips_scroll = QScrollArea()
@@ -357,6 +400,38 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"📌 شیت فعال به **`{sheet_name}`** تغییر یافت.")
         except Exception as e:
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
+
+    def _on_category_selected(self, index: int):
+        cat_key = self.category_combo.itemData(index)
+        self.action_combo.blockSignals(True)
+        self.action_combo.clear()
+        self.action_combo.addItem("🎯 ۲. انتخاب عملیات...", None)
+
+        if cat_key and cat_key in self.five_categories:
+            for label, cmd in self.five_categories[cat_key]["commands"]:
+                self.action_combo.addItem(label, cmd)
+        self.action_combo.setCurrentIndex(0)
+        self.action_combo.blockSignals(False)
+
+    def _on_action_selected(self, index: int):
+        if index <= 0:
+            return
+        cmd = self.action_combo.itemData(index) or self.action_combo.itemText(index)
+        if cmd:
+            self.input_edit.setText(cmd)
+            self.input_edit.setFocus()
+
+    def _on_run_action_clicked(self):
+        curr_idx = self.action_combo.currentIndex()
+        if curr_idx > 0:
+            cmd = self.action_combo.itemData(curr_idx) or self.action_combo.itemText(curr_idx)
+            if cmd:
+                self.input_edit.setText(cmd)
+                self._on_send_clicked()
+        elif self.input_edit.text().strip():
+            self._on_send_clicked()
+        else:
+            self.chat_widget.add_assistant_message("⚠️ لطفاً ابتدا یک عملیات را از منوی کشویی انتخاب کنید یا دستور خود را بنویسید.")
 
     def _on_quick_combo_selected(self, index: int):
         if index <= 0:

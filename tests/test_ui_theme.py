@@ -72,7 +72,23 @@ def test_web_template_theme_elements():
 def test_quick_actions_dropdown_and_scroll_style():
     """Verify that quick action bar styles include dropdown combo and scroll area."""
     assert "QComboBox#quickCommandsCombo" in QSS_STYLE
+    assert "QComboBox#quickCategoryCombo" in QSS_STYLE
+    assert "QComboBox#quickActionCombo" in QSS_STYLE
+    assert "QPushButton#runQuickActionButton" in QSS_STYLE
     assert "QScrollArea#chipsScrollArea" in QSS_STYLE
     assert "QPushButton.quickChip" in QSS_STYLE
     assert "chip-select" in HTML_TEMPLATE
+
+
+def test_five_categories_cascading_dropdowns():
+    """Verify that Web UI template has the 5 categories cascading selector and options."""
+    assert "id=\"catSelect\"" in HTML_TEMPLATE
+    assert "id=\"actSelect\"" in HTML_TEMPLATE
+    assert "FIVE_CATEGORIES" in HTML_TEMPLATE
+    assert "⚡ ۱. قابلیت‌های ضروری" in HTML_TEMPLATE
+    assert "💼 ۲. قابلیت‌های حسابداری" in HTML_TEMPLATE
+    assert "🛒 ۳. قابلیت‌های فروش و انبارداری" in HTML_TEMPLATE
+    assert "🤖 ۴. قابلیت‌های هوشمند و کاربردی" in HTML_TEMPLATE
+    assert "⚙️ ۵. امکانات مدیریتی خود برنامه" in HTML_TEMPLATE
+    assert "runSelectedAction" in HTML_TEMPLATE
 
