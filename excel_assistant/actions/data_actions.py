@@ -1,15 +1,18 @@
 """
 Data Management Actions for Excel Assistant.
-Handles deleting empty rows, removing duplicate rows, and sorting data.
+Handles deleting empty rows, removing duplicate rows, sorting data, filtering, text conversions, splitting, merging, and formatting.
 """
+from collections import Counter
+import re
 from typing import Any, Dict, List, Set, Union
 
 from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.nlp.intent_models import (
-    DeleteEmptyRowsAction, DeleteDuplicatesAction, SortDataAction, InsertDateAction, PreventDuplicatesAction
+    DeleteEmptyRowsAction, DeleteDuplicatesAction, SortDataAction, InsertDateAction, PreventDuplicatesAction,
+    FilterDataAction, ConvertTextToNumberAction, SplitTextAction, MergeCellsAction, SetCellFormatAction
 )
 from excel_assistant.core.utils import (
-    col_letter_to_index, col_index_to_letter, bounds_to_range_str
+    col_letter_to_index, col_index_to_letter, bounds_to_range_str, parse_range_address
 )
 
 
@@ -204,3 +207,254 @@ class DataActionHandler:
             )
 
         return ActionResult(success=True, message_persian=msg, data={"column": col_let, "existing_duplicates": existing_dups})
+
+    @classmethod
+    def execute_filter(cls, action: FilterDataAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+        start_r = min_r + 1
+        range_str = action.range_str or bounds_to_range_str(min_r, min_c, max_r, max_c)
+
+        if action.condition == "clear":
+            # Unhide all rows
+            for r in range(start_r, max_r + 1):
+                sheet.set_row_hidden(r, False)
+            return ActionResult(
+                success=True,
+                message_persian="🔄 تمام فیلترها پاک شدند و کلیه سطرهای جدول مجدداً نمایش داده شدند.",
+                affected_range=range_str
+            )
+
+        if action.condition == "autofilter" or not action.target_col:
+            sheet.apply_filter(range_str)
+            return ActionResult(
+                success=True,
+                message_persian="🔘 **فیلتر هوشمند (AutoFilter)** روی سرستون‌های جدول با موفقیت فعال شد. اکنون می‌توانید روی علامت فلش هر ستون در اکسل کلیک کرده و داده‌ها را فیلتر کنید.",
+                affected_range=range_str
+            )
+
+        # Apply specific filter condition
+        sheet.apply_filter(range_str)
+        raw_c = str(action.target_col).strip().upper()
+        col_let = col_index_to_letter(int(raw_c)) if raw_c.isdigit() else raw_c
+
+        vals = sheet.get_column_values(col_let, include_header=True)
+        thresh = None
+        if action.value is not None:
+            try:
+                thresh = float(str(action.value).replace(',', '').strip())
+            except ValueError:
+                pass
+        str_val = str(action.value).strip().lower() if action.value is not None else ""
+
+        matched_count = 0
+        hidden_count = 0
+
+        for r in range(start_r, max_r + 1):
+            idx_in_vals = r - 1
+            v = vals[idx_in_vals] if idx_in_vals < len(vals) else None
+            is_match = False
+
+            if v is not None:
+                v_str = str(v).strip().lower()
+                num_v = None
+                try:
+                    num_v = float(str(v).replace(',', '').strip())
+                except ValueError:
+                    pass
+
+                if action.condition in ("gt", "gte") and thresh is not None and num_v is not None:
+                    is_match = (num_v >= thresh) if action.condition == "gte" else (num_v > thresh)
+                elif action.condition in ("lt", "lte") and thresh is not None and num_v is not None:
+                    is_match = (num_v <= thresh) if action.condition == "lte" else (num_v < thresh)
+                elif action.condition == "eq":
+                    if thresh is not None and num_v is not None:
+                        is_match = (num_v == thresh)
+                    else:
+                        is_match = (v_str == str_val)
+                elif action.condition == "neq":
+                    if thresh is not None and num_v is not None:
+                        is_match = (num_v != thresh)
+                    else:
+                        is_match = (v_str != str_val)
+                elif action.condition == "contains":
+                    is_match = (str_val in v_str)
+            else:
+                is_match = False
+
+            if is_match:
+                sheet.set_row_hidden(r, False)
+                matched_count += 1
+            else:
+                sheet.set_row_hidden(r, True)
+                hidden_count += 1
+
+        cond_fa_map = {
+            "gt": "بزرگتر از",
+            "gte": "بزرگتر یا مساوی با",
+            "lt": "کوچکتر از",
+            "lte": "کوچکتر یا مساوی با",
+            "eq": "برابر با",
+            "neq": "نامساوی با",
+            "contains": "شامل عبارت"
+        }
+        cond_fa = cond_fa_map.get(action.condition, "مطابق شرط")
+
+        msg = (
+            f"🔍 **فیلتر هوشمند روی ستون `{col_let}` اعمال شد:**\n"
+            f"📌 شرط: مقادیر **{cond_fa} `{action.value}`**\n"
+            f"👁️ تعداد **{matched_count}** سطر مطابق شرط نمایش داده شد (و {hidden_count} سطر دیگر مخفی گردید)."
+        )
+        return ActionResult(success=True, message_persian=msg, affected_range=range_str, data={"matched": matched_count, "hidden": hidden_count})
+
+    @classmethod
+    def execute_convert_text_to_number(cls, action: ConvertTextToNumberAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+        start_r = min_r + 1
+
+        raw_c = str(action.target_col or "A").strip().upper()
+        col_let = col_index_to_letter(int(raw_c)) if raw_c.isdigit() else raw_c
+
+        digit_trans = str.maketrans(
+            "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+            "01234567890123456789"
+        )
+
+        converted_count = 0
+        for r in range(start_r, max_r + 1):
+            cell_addr = f"{col_let}{r}"
+            val = sheet.get_value(cell_addr)
+            if val is None or str(val).startswith('='):
+                continue
+
+            val_str = str(val).translate(digit_trans)
+            clean = val_str.replace(',', '').replace('،', '').replace(' ', '').replace('تومان', '').replace('ریال', '').replace('$', '').replace('€', '').strip()
+            if not clean:
+                continue
+
+            try:
+                if '.' in clean:
+                    num_val = float(clean)
+                else:
+                    num_val = int(clean)
+
+                sheet.set_value(cell_addr, num_val)
+                sheet.set_number_format(cell_addr, "#,##0" if isinstance(num_val, int) else "#,##0.00")
+                converted_count += 1
+            except ValueError:
+                pass
+
+        col_range = f"{col_let}{start_r}:{col_let}{max_r}"
+        sheet.auto_fit_columns([col_let])
+        msg = (
+            f"🔢 **اصلاح و تبدیل متن به عدد با موفقیت انجام شد:**\n"
+            f"✅ تعداد **{converted_count}** سلول متنی در ستون `{col_let}` به **عدد واقعی اکسل** تبدیل شد.\n"
+            f"✨ فرمت جداسازی ارقام (سه‌رقم‌سه‌رقم) نیز روی آن‌ها اعمال گردید."
+        )
+        return ActionResult(success=True, message_persian=msg, affected_range=col_range, data=converted_count)
+
+    @classmethod
+    def execute_split_text(cls, action: SplitTextAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+        header_r = min_r
+        start_r = min_r + 1
+
+        raw_c = str(action.source_col).strip().upper()
+        s_col = col_index_to_letter(int(raw_c)) if raw_c.isdigit() else raw_c
+
+        if action.target_col1 and action.target_col2:
+            t1_col = action.target_col1.upper()
+            t2_col = action.target_col2.upper()
+        else:
+            t1_idx = max_c + 1
+            t2_idx = max_c + 2
+            t1_col = col_index_to_letter(t1_idx)
+            t2_col = col_index_to_letter(t2_idx)
+
+        sheet.set_value(f"{t1_col}{header_r}", action.header1 or "بخش ۱")
+        sheet.set_value(f"{t2_col}{header_r}", action.header2 or "بخش ۲")
+        sheet.set_font(f"{t1_col}{header_r}", bold=True)
+        sheet.set_font(f"{t2_col}{header_r}", bold=True)
+
+        split_count = 0
+        for r in range(start_r, max_r + 1):
+            val = sheet.get_value(f"{s_col}{r}")
+            if val is not None and str(val).strip():
+                txt = str(val).strip()
+                if action.delimiter == " ":
+                    parts = txt.split(None, 1)
+                else:
+                    parts = txt.split(action.delimiter, 1)
+
+                part1 = parts[0].strip() if len(parts) > 0 else ""
+                part2 = parts[1].strip() if len(parts) > 1 else ""
+
+                sheet.set_value(f"{t1_col}{r}", part1)
+                sheet.set_value(f"{t2_col}{r}", part2)
+                split_count += 1
+
+        sheet.auto_fit_columns([t1_col, t2_col])
+        affected = f"{t1_col}{header_r}:{t2_col}{max_r}"
+        msg = (
+            f"✂️ **تفکیک و جداسازی متن ستون `{s_col}` با موفقیت انجام شد:**\n"
+            f"🔹 بخش اول («{action.header1}») در ستون `{t1_col}` درج شد.\n"
+            f"🔹 بخش دوم («{action.header2}») در ستون `{t2_col}` درج شد.\n"
+            f"📊 تعداد ردیف‌های تفکیک‌شده: **{split_count}** مورد."
+        )
+        return ActionResult(success=True, message_persian=msg, affected_range=affected, data=split_count)
+
+    @classmethod
+    def execute_merge_cells(cls, action: MergeCellsAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        clean_rng = action.range_str.strip().upper()
+        sheet.merge_cells(clean_rng)
+        sheet.set_font(clean_rng, bold=True)
+
+        msg = f"🔗 سلول‌های محدوده **`{clean_rng}`** با موفقیت ادغام (Merge) و محتوای آن در مرکز تراز گردید."
+        return ActionResult(success=True, message_persian=msg, affected_range=clean_rng)
+
+    @classmethod
+    def execute_set_cell_format(cls, action: SetCellFormatAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+
+        target = action.target.strip().upper()
+        if ":" not in target and re.match(r"^[A-Z]+$", target):
+            target_range = f"{target}1:{target}{max(max_r, 1)}"
+            col_letter = target
+        else:
+            target_range = target
+            col_letter = target.split(":")[0] if ":" in target else target
+
+        fmt_type = action.format_type
+        if action.custom_format:
+            fmt_code = action.custom_format
+            fmt_name_fa = f"سفارشی ({fmt_code})"
+        elif fmt_type == "currency":
+            fmt_code = '#,##0 "تومان"'
+            fmt_name_fa = "واحد پول (تومان)"
+        elif fmt_type in ("number", "thousands"):
+            fmt_code = "#,##0"
+            fmt_name_fa = "عدد با جداکننده هزارگان"
+        elif fmt_type == "percentage":
+            fmt_code = "0.0%"
+            fmt_name_fa = "درصد (%)"
+        elif fmt_type == "date":
+            fmt_code = "yyyy/mm/dd"
+            fmt_name_fa = "تاریخ (yyyy/mm/dd)"
+        elif fmt_type == "text":
+            fmt_code = "@"
+            fmt_name_fa = "متنی (Text)"
+        else:
+            fmt_code = "#,##0"
+            fmt_name_fa = fmt_type
+
+        sheet.set_number_format(target_range, fmt_code)
+        if re.match(r"^[A-Z]+$", col_letter):
+            sheet.auto_fit_columns([col_letter])
+
+        msg = f"🎨 فرمت سلول‌های محدوده `{target_range}` با موفقیت به **{fmt_name_fa}** تغییر یافت."
+        return ActionResult(success=True, message_persian=msg, affected_range=target_range)
+

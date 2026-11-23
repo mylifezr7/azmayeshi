@@ -24,7 +24,7 @@ class ColumnArithmeticAction(BaseActionModel):
 
 class ColumnStatsAction(BaseActionModel):
     action_type: Literal["column_stats"] = "column_stats"
-    stat_type: Literal["sum", "average", "median", "max", "min", "count", "percentage"]  # میانگین، مجموع، میانه، بیشترین، کمترین، تعداد، درصد
+    stat_type: Literal["sum", "average", "median", "max", "min", "count", "counta", "percentage"]  # میانگین، مجموع، میانه، بیشترین، کمترین، تعداد، درصد
     source_col: str  # e.g. "D"
     target_cell: Optional[str] = None  # cell to write result into, or just return result in chat
 
@@ -160,6 +160,48 @@ class ProfitCalculationAction(BaseActionModel):
     description_persian: str = "محاسبه سود (روزانه، ماهانه، سالانه و کل)"
 
 
+class FilterDataAction(BaseActionModel):
+    action_type: Literal["filter_data"] = "filter_data"
+    target_col: Optional[str] = None
+    condition: Literal["gt", "gte", "lt", "lte", "eq", "neq", "contains", "autofilter", "clear"] = "autofilter"
+    value: Optional[Union[float, int, str]] = None
+    range_str: Optional[str] = None
+    description_persian: str = "فیلتر هوشمند داده‌ها"
+
+
+class ConvertTextToNumberAction(BaseActionModel):
+    action_type: Literal["convert_text_to_number"] = "convert_text_to_number"
+    target_col: Optional[str] = "A"
+    range_str: Optional[str] = None
+    description_persian: str = "تبدیل متن به عدد واقعی و اصلاح داده‌های عددی"
+
+
+class SplitTextAction(BaseActionModel):
+    action_type: Literal["split_text"] = "split_text"
+    source_col: str = "A"
+    delimiter: str = " "
+    target_col1: Optional[str] = None
+    target_col2: Optional[str] = None
+    header1: str = "نام"
+    header2: str = "نام خانوادگی"
+    description_persian: str = "جدا کردن متن و تفکیک ستون"
+
+
+class MergeCellsAction(BaseActionModel):
+    action_type: Literal["merge_cells"] = "merge_cells"
+    range_str: str = "A1:B1"
+    align_center: bool = True
+    description_persian: str = "ادغام سلول‌های محدوده"
+
+
+class SetCellFormatAction(BaseActionModel):
+    action_type: Literal["set_cell_format"] = "set_cell_format"
+    target: str = "A"  # e.g. "B" or "A1:C10"
+    format_type: Literal["currency", "percentage", "date", "number", "text", "thousands"] = "currency"
+    custom_format: Optional[str] = None
+    description_persian: str = "تغییر فرمت نمایش سلول‌ها"
+
+
 class UndoLastAction(BaseActionModel):
     action_type: Literal["undo_last_action"] = "undo_last_action"
 
@@ -183,5 +225,10 @@ ExcelAction = Union[
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    FilterDataAction,
+    ConvertTextToNumberAction,
+    SplitTextAction,
+    MergeCellsAction,
+    SetCellFormatAction,
     UndoLastAction,
 ]

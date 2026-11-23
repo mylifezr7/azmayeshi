@@ -178,7 +178,16 @@ class MathActionHandler:
 
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
         start_r = min_r + 1
-        end_r = max_r
+        # Determine last data row excluding summary/formula cells at the bottom
+        end_r = start_r
+        for r_idx in range(start_r, max_r + 1):
+            form = sheet.get_formula(f"{source_col}{r_idx}")
+            if form and str(form).startswith("="):
+                break
+            val = sheet.get_value(f"{source_col}{r_idx}")
+            if val is not None and str(val).strip() != "":
+                end_r = max(end_r, r_idx)
+
         range_ref = f"{source_col}{start_r}:{source_col}{end_r}"
 
         formula_map = {
@@ -187,23 +196,27 @@ class MathActionHandler:
             "max": f"=MAX({range_ref})",
             "min": f"=MIN({range_ref})",
             "median": f"=MEDIAN({range_ref})",
-            "count": f"=COUNT({range_ref})"
+            "count": f"=COUNT({range_ref})",
+            "counta": f"=COUNTA({range_ref})"
         }
 
         stat_fa_map = {
-            "sum": "مجموع",
+            "sum": "جمع خودکار (مجموع)",
             "average": "میانگین",
             "median": "میانه",
             "max": "بیشترین مقدار (حداکثر)",
             "min": "کمترین مقدار (حداقل)",
-            "count": "تعداد داده‌ها",
+            "count": "تعداد سلول‌های عددی",
+            "counta": "تعداد سلول‌های پر (غیرخالی)",
             "percentage": "محاسبه درصد"
         }
         stat_fa = stat_fa_map.get(action.stat_type, "آمار")
 
         # Compute calculated value in Python
         calc_val = None
-        if num_vals:
+        if action.stat_type == "counta":
+            calc_val = sum(1 for v in values if v is not None and str(v).strip() != "")
+        elif num_vals:
             if action.stat_type == "sum":
                 calc_val = sum(num_vals)
             elif action.stat_type == "average":

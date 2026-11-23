@@ -127,6 +127,26 @@ class ISheet(ABC):
         """Applies Excel data validation rule to ensure all entries in column must be unique."""
         pass
 
+    @abstractmethod
+    def merge_cells(self, range_str: str) -> None:
+        """Merges specified cell range (e.g. 'A1:D1')."""
+        pass
+
+    @abstractmethod
+    def set_number_format(self, range_str: str, num_format: str) -> None:
+        """Sets Excel number format (e.g. '#,##0', '0.0%', 'yyyy/mm/dd') on range."""
+        pass
+
+    @abstractmethod
+    def apply_filter(self, range_str: Optional[str] = None) -> None:
+        """Enables AutoFilter on table header or specified range."""
+        pass
+
+    @abstractmethod
+    def set_row_hidden(self, row: int, hidden: bool = True) -> None:
+        """Hides or unhides a row by 1-based index."""
+        pass
+
 
 class IExcelDriver(ABC):
     """Abstract interface for Excel application automation drivers."""

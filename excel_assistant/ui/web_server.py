@@ -820,21 +820,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="chips-bar">
                 <select class="chip-select" onchange="if(this.value){ sendCommand(this.value); this.selectedIndex=0; }">
                     <option value="">⚡ منوی کشویی دستورات آماده...</option>
+                    <option value="مرتب‌سازی صعودی ستون A">🔄 مرتب‌سازی صعودی داده‌ها</option>
+                    <option value="مرتب‌سازی نزولی ستون A">🔽 مرتب‌سازی نزولی داده‌ها</option>
+                    <option value="فیلتر هوشمند جدول">🔍 فیلتر هوشمند اطلاعات</option>
+                    <option value="حذف داده‌های تکراری">🗑️ حذف موارد تکراری</option>
+                    <option value="ردیف‌های خالی را حذف کن">🧹 حذف سطرهای خالی</option>
+                    <option value="جمع خودکار ستون A">➕ جمع خودکار (AutoSum)</option>
+                    <option value="میانگین ستون A">📊 محاسبه میانگین داده‌ها</option>
+                    <option value="بیشترین مقدار ستون A">🔺 بیشترین و کمترین (MAX / MIN)</option>
+                    <option value="شمارش سلول‌های پر ستون A">🔢 شمارش اطلاعات و سلول‌های پر</option>
+                    <option value="تبدیل متن به عدد در ستون A">🔢 تبدیل متن به عدد (اصلاح داده‌ها)</option>
+                    <option value="تفکیک نام و نام خانوادگی در ستون A">✂️ جدا کردن متن (تفکیک نام و نام خانوادگی)</option>
+                    <option value="سلول‌های A1:B1 را ادغام کن">🔗 ادغام سلول‌ها (Merge)</option>
+                    <option value="فرمت ستون B را به تومان تغییر بده">💲 تغییر فرمت به واحد پول (تومان)</option>
+                    <option value="فرمت ستون C را درصدی کن">📈 تغییر فرمت به درصد (%)</option>
+                    <option value="فرمت ستون A را به تاریخ تغییر بده">📅 تغییر فرمت به تاریخ</option>
                     <option value="داده‌های متنی تکراری را رنگ کن">🎨 رنگ‌آمیزی متون تکراری</option>
-                    <option value="ردیف‌های خالی را حذف کن">🧹 حذف ردیف‌های خالی</option>
-                    <option value="سلول‌های بیشتر از 100 را سبز کن">🟩 سلول‌های بیشتر از 100</option>
-                    <option value="عرض ستون‌ها را خودکار تنظیم کن">📐 تنظیم عرض ستون‌ها</option>
-                    <option value="یک جدول بساز">📋 ساخت جدول یکدست</option>
-                    <option value="ستون‌های خالی را حذف کن">🗑️ حذف ستون‌های خالی</option>
-                    <option value="جستجو و جایگزینی مقادیر در شیت">🔍 جستجو و جایگزینی مقادیر</option>
-                    <option value="حاشیه‌گذاری و زیباسازی جدول">✨ زیباسازی و حاشیه‌گذاری جدول</option>
+                    <option value="یک جدول بساز">📋 ساخت جدول یکدست و زیبا</option>
+                    <option value="عرض ستون‌ها را خودکار تنظیم کن">📐 تنظیم خودکار عرض ستون‌ها</option>
                 </select>
-                <button class="chip" onclick="sendCommand('داده‌های متنی تکراری را رنگ کن')">🎨 رنگ‌آمیزی متون تکراری</button>
-                <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 حذف ردیف‌های خالی</button>
-                <button class="chip" onclick="sendCommand('سلول‌های بیشتر از 100 را سبز کن')">🟩 سلول‌های بیشتر از 100</button>
-                <button class="chip" onclick="sendCommand('یک جدول بساز')">📋 ساخت جدول یکدست</button>
-                <button class="chip" onclick="sendCommand('عرض ستون‌ها را خودکار تنظیم کن')">📐 تنظیم عرض ستون‌ها</button>
-                <button class="chip" onclick="sendCommand('ستون‌های خالی را حذف کن')">🗑️ حذف ستون‌های خالی</button>
+                <button class="chip" onclick="sendCommand('فیلتر هوشمند جدول')">🔍 فیلتر هوشمند</button>
+                <button class="chip" onclick="sendCommand('مرتب‌سازی صعودی ستون A')">🔄 سورت صعودی</button>
+                <button class="chip" onclick="sendCommand('مرتب‌سازی نزولی ستون A')">🔽 سورت نزولی</button>
+                <button class="chip" onclick="sendCommand('حذف داده‌های تکراری')">🗑️ حذف تکراری‌ها</button>
+                <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 حذف سطرهای خالی</button>
+                <button class="chip" onclick="sendCommand('جمع خودکار ستون A')">➕ جمع خودکار</button>
+                <button class="chip" onclick="sendCommand('میانگین ستون A')">📊 میانگین‌گیری</button>
+                <button class="chip" onclick="sendCommand('بیشترین مقدار ستون A')">🔺 بیشترین/کمترین</button>
+                <button class="chip" onclick="sendCommand('شمارش سلول‌های پر ستون A')">🔢 شمارش داده‌ها</button>
+                <button class="chip" onclick="sendCommand('تبدیل متن به عدد در ستون A')">🔢 متن به عدد</button>
+                <button class="chip" onclick="sendCommand('تفکیک نام و نام خانوادگی در ستون A')">✂️ تفکیک متن</button>
+                <button class="chip" onclick="sendCommand('سلول‌های A1:B1 را ادغام کن')">🔗 ادغام سلول‌ها</button>
+                <button class="chip" onclick="sendCommand('فرمت ستون B را به تومان تغییر بده')">💲 فرمت تومان</button>
+                <button class="chip" onclick="sendCommand('فرمت ستون C را درصدی کن')">📈 فرمت درصد</button>
             </div>
 
             <!-- Input Bar -->

@@ -30,6 +30,11 @@ from excel_assistant.nlp.intent_models import (
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    FilterDataAction,
+    ConvertTextToNumberAction,
+    SplitTextAction,
+    MergeCellsAction,
+    SetCellFormatAction,
     UndoLastAction,
 )
 from excel_assistant.core.exceptions import (
@@ -128,6 +133,21 @@ class ActionExecutor:
 
             elif isinstance(action, FormatCellsAction):
                 return FormatActionHandler.execute_format_cells(action, ctx)
+
+            elif isinstance(action, FilterDataAction):
+                return DataActionHandler.execute_filter(action, ctx)
+
+            elif isinstance(action, ConvertTextToNumberAction):
+                return DataActionHandler.execute_convert_text_to_number(action, ctx)
+
+            elif isinstance(action, SplitTextAction):
+                return DataActionHandler.execute_split_text(action, ctx)
+
+            elif isinstance(action, MergeCellsAction):
+                return DataActionHandler.execute_merge_cells(action, ctx)
+
+            elif isinstance(action, SetCellFormatAction):
+                return DataActionHandler.execute_set_cell_format(action, ctx)
 
             else:
                 return ActionResult(

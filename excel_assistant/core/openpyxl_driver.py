@@ -298,6 +298,25 @@ class OpenpyxlSheet(ISheet):
         self._ws.add_data_validation(dv)
         dv.add(f"{col_let}1:{col_let}10000")
 
+    def merge_cells(self, range_str: str) -> None:
+        self._ws.merge_cells(range_str)
+
+    def set_number_format(self, range_str: str, num_format: str) -> None:
+        r1, c1, r2, c2 = parse_range_address(range_str)
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                self._ws.cell(row=r, column=c).number_format = num_format
+
+    def apply_filter(self, range_str: Optional[str] = None) -> None:
+        if range_str:
+            self._ws.auto_filter.ref = range_str
+        else:
+            min_r, min_c, max_r, max_c = self.get_used_range_bounds()
+            self._ws.auto_filter.ref = bounds_to_range_str(min_r, min_c, max_r, max_c)
+
+    def set_row_hidden(self, row: int, hidden: bool = True) -> None:
+        self._ws.row_dimensions[row].hidden = hidden
+
 
 class OpenpyxlDriver(IExcelDriver):
     """Driver implementation using openpyxl for standalone/testing Excel operations."""

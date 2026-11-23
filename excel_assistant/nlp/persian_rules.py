@@ -24,6 +24,11 @@ from excel_assistant.nlp.intent_models import (
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    FilterDataAction,
+    ConvertTextToNumberAction,
+    SplitTextAction,
+    MergeCellsAction,
+    SetCellFormatAction,
     UndoLastAction,
 )
 from excel_assistant.nlp.persian_normalizer import (
@@ -495,13 +500,17 @@ class PersianRuleParser:
                     description_persian=f"{op_fa} ستون‌های {'، '.join(source_cols)}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
                 )
 
-        # 9. Statistical calculations: میانگین، مجموع، بیشترین، کمترین، میانه، تعداد
+        # 9. Statistical calculations: جمع خودکار، میانگین، بیشترین، کمترین، میانه، تعداد سلول‌های پر
         # e.g.: میانگین ستون D را حساب کن
-        # e.g.: مجموع ستون B
+        # e.g.: جمع خودکار ستون B
+        # e.g.: بیشترین و کمترین ستون C
         stats_map = {
             "میانگین": "average",
             "معدل": "average",
             "مجموع": "sum",
+            "جمع خودکار": "sum",
+            "اتوسام": "sum",
+            "اتو سام": "sum",
             "جمع": "sum",
             "کل": "sum",
             "بیشترین": "max",
@@ -511,13 +520,20 @@ class PersianRuleParser:
             "حداقل": "min",
             "مینیمم": "min",
             "میانه": "median",
+            "سلول های پر": "counta",
+            "سلول‌های پر": "counta",
+            "سلولهای پر": "counta",
+            "غیر خالی": "counta",
+            "غیرخالی": "counta",
             "تعداد": "count",
             "شمارش": "count",
             "درصد": "percentage",
         }
 
-        for stat_word, stat_code in stats_map.items():
+        for stat_word, stat_code in sorted(stats_map.items(), key=lambda x: len(x[0]), reverse=True):
             if stat_word in text:
+                if stat_code == "percentage" and "فرمت" in text_lower:
+                    continue
                 # Find source column
                 col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
                 source_col = resolve_column(col_match.group(1), header_map) if col_match else None
@@ -528,15 +544,164 @@ class PersianRuleParser:
                         source_col = letter_match.group(1).upper()
 
                 if source_col:
-                    stat_fa = {"average": "میانگین", "sum": "مجموع", "max": "بیشترین", "min": "کمترین",
-                               "median": "میانه", "count": "تعداد", "percentage": "درصد"}[stat_code]
+                    stat_fa = {"average": "میانگین", "sum": "جمع خودکار", "max": "بیشترین مقدار (MAX)", "min": "کمترین مقدار (MIN)",
+                               "median": "میانه", "count": "تعداد عددی", "counta": "تعداد سلول‌های پر", "percentage": "درصد"}[stat_code]
                     return ColumnStatsAction(
                         stat_type=stat_code,
                         source_col=source_col,
                         description_persian=f"محاسبه {stat_fa} برای ستون {source_col}"
                     )
 
-        # 10. Conditional Highlighting:
+        # 10. Merge Cells: ادغام سلول‌ها
+        # e.g.: سلول‌های A1:D1 را ادغام کن
+        # e.g.: ادغام A1 تا B1
+        if any(w in text_lower for w in ["ادغام", "مرج", "merge", "یکپارچه سازی سلول"]):
+            rng_m = re.search(r'([A-Za-z]+\d+)\s*(?::|تا|الی|to|-)\s*([A-Za-z]+\d+)', text)
+            if rng_m:
+                range_str = f"{rng_m.group(1).upper()}:{rng_m.group(2).upper()}"
+            else:
+                single_m = re.search(r'\b([A-Za-z]+\d+:[A-Za-z]+\d+)\b', text)
+                range_str = single_m.group(1).upper() if single_m else "A1:B1"
+
+            return MergeCellsAction(
+                range_str=range_str,
+                align_center=True,
+                description_persian=f"ادغام سلول‌های محدوده {range_str} و تراز در مرکز"
+            )
+
+        # 11. Convert text to number: تبدیل متن به عدد و اصلاح داده‌های عددی
+        # e.g.: تبدیل متن به عدد در ستون B
+        # e.g.: اصلاح داده‌های عددی ستون A
+        # e.g.: اعداد متنی ستون C را به عدد واقعی تبدیل کن
+        if any(w in text_lower for w in ["متن به عدد", "تبدیل به عدد", "اصلاح داده‌های عددی", "اصلاح اعداد", "اعداد متنی", "تبدیل اعداد", "اصلاح داده"]):
+            col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+            target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not target_col:
+                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
+                target_col = let_m.group(1).upper() if let_m else "A"
+            return ConvertTextToNumberAction(
+                target_col=target_col,
+                description_persian=f"تبدیل متون عددی ستون {target_col} به عدد واقعی و اصلاح فرمت"
+            )
+
+        # 12. Split text / Text to columns: جدا کردن متن (تفکیک نام، نام خانوادگی و...)
+        # e.g.: تفکیک نام و نام خانوادگی در ستون A
+        # e.g.: جدا کردن متن ستون B بر اساس فاصله
+        # e.g.: تفکیک ستون A با خط تیره
+        if any(w in text_lower for w in ["جدا کردن متن", "تفکیک نام", "تفکیک ستون", "جداسازی متن", "جدا کردن ستون", "تفکیک متن", "جداسازی نام", "split"]):
+            col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+            source_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not source_col:
+                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
+                source_col = let_m.group(1).upper() if let_m else "A"
+
+            delim = " "
+            if any(w in text_lower for w in ["خط تیره", "دش", "-", "منها"]):
+                delim = "-"
+            elif any(w in text_lower for w in ["کاما", "ویرگول", ","]):
+                delim = ","
+            elif any(w in text_lower for w in ["اسلش", "/"]):
+                delim = "/"
+
+            h1 = "نام" if "نام" in text else "بخش ۱"
+            h2 = "نام خانوادگی" if "خانوادگی" in text else "بخش ۲"
+
+            return SplitTextAction(
+                source_col=source_col,
+                delimiter=delim,
+                header1=h1,
+                header2=h2,
+                description_persian=f"تفکیک و جدا کردن متن ستون {source_col} به ستون‌های مجزا"
+            )
+
+        # 13. Smart Filter: فیلتر هوشمند اطلاعات بر اساس شرط یا اتوفیلتر
+        # e.g.: فیلتر ستون B بزرگتر از 100
+        # e.g.: فیلتر هوشمند جدول
+        # e.g.: حذف فیلتر
+        if "فیلتر" in text_lower or "filter" in text_lower:
+            if any(w in text_lower for w in ["حذف فیلتر", "پاک کردن فیلتر", "بدون فیلتر", "پاکسازی فیلتر"]):
+                return FilterDataAction(
+                    condition="clear",
+                    description_persian="پاک کردن تمام فیلترها و نمایش همه سطرها"
+                )
+
+            col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+            target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+
+            cond_type = None
+            val = None
+            if any(w in text_lower for w in ["بزرگتر", "بیشتر", "بالای", ">"]):
+                cond_type = "gt"
+                vm = re.search(r'(?:بزرگتر|بیشتر|بالای|>)\s*(?:از)?\s*([-+]?\d*\.?\d+)', text)
+                val = float(vm.group(1)) if vm else None
+            elif any(w in text_lower for w in ["کوچکتر", "کمتر", "پایین", "<"]):
+                cond_type = "lt"
+                vm = re.search(r'(?:کوچکتر|کمتر|پایین|<)\s*(?:از)?\s*([-+]?\d*\.?\d+)', text)
+                val = float(vm.group(1)) if vm else None
+            elif any(w in text_lower for w in ["مساوی", "برابر", "="]):
+                cond_type = "eq"
+                vm = re.search(r'(?:مساوی|برابر|=)\s*(?:با)?\s*([^\s]+)', text)
+                val = vm.group(1) if vm else None
+            elif any(w in text_lower for w in ["شامل", "حاوی"]):
+                cond_type = "contains"
+                vm = re.search(r'(?:شامل|حاوی)\s+([^\s]+)', text)
+                val = vm.group(1) if vm else None
+
+            if cond_type and target_col:
+                return FilterDataAction(
+                    target_col=target_col,
+                    condition=cond_type,
+                    value=val,
+                    description_persian=f"فیلتر هوشمند ستون {target_col} بر اساس شرط"
+                )
+            else:
+                return FilterDataAction(
+                    condition="autofilter",
+                    target_col=target_col,
+                    description_persian="فعال‌سازی فیلتر هوشمند (AutoFilter) روی سرستون‌های جدول"
+                )
+
+        # 14. Set Cell Format: تغییر فرمت سلول (عدد، درصد، تاریخ، واحد پول)
+        # e.g.: فرمت ستون B را به تومان تغییر بده
+        # e.g.: فرمت درصدی برای ستون C
+        # e.g.: فرمت ستون A تاریخ
+        if "فرمت" in text_lower or any(w in text_lower for w in ["سه رقم", "هزارگان", "درصدی", "تومانی"]):
+            fmt_type = "currency"
+            if any(w in text_lower for w in ["تومان", "ریال", "واحد پول", "پول"]):
+                fmt_type = "currency"
+            elif any(w in text_lower for w in ["درصد", "%", "درصدی"]):
+                fmt_type = "percentage"
+            elif "تاریخ" in text_lower:
+                fmt_type = "date"
+            elif any(w in text_lower for w in ["سه رقم", "کاما", "هزارگان", "عدد", "عددی"]):
+                fmt_type = "thousands"
+            elif "متن" in text_lower:
+                fmt_type = "text"
+
+            range_match = re.search(r'\b([A-Za-z]+\d+:[A-Za-z]+\d+)\b', text)
+            if range_match:
+                target = range_match.group(1).upper()
+            else:
+                col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+                target = resolve_column(col_match.group(1), header_map) if col_match else None
+                if not target:
+                    let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
+                    target = let_m.group(1).upper() if let_m else "A"
+
+            fmt_fa_names = {
+                "currency": "واحد پول (تومان)",
+                "percentage": "درصد (%)",
+                "date": "تاریخ (yyyy/mm/dd)",
+                "thousands": "عدد با جداکننده سه‌رقم‌سه‌رقم",
+                "text": "متن (Text)"
+            }
+            return SetCellFormatAction(
+                target=target,
+                format_type=fmt_type,
+                description_persian=f"تغییر فرمت {target} به {fmt_fa_names.get(fmt_type, fmt_type)}"
+            )
+
+        # 15. Conditional Highlighting:
         # e.g.: سلول‌های بیشتر از 100 را سبز کن
         # e.g.: ستون B کمتر از 50 را قرمز کن
         cond_matches = [

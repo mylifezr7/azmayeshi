@@ -278,6 +278,31 @@ class XlwingsSheet(ISheet):
         except Exception:
             pass
 
+    def merge_cells(self, range_str: str) -> None:
+        try:
+            self._sheet.range(range_str).merge()
+        except Exception:
+            pass
+
+    def set_number_format(self, range_str: str, num_format: str) -> None:
+        try:
+            self._sheet.range(range_str).number_format = num_format
+        except Exception:
+            pass
+
+    def apply_filter(self, range_str: Optional[str] = None) -> None:
+        try:
+            target_rng = self._sheet.range(range_str) if range_str else self._sheet.used_range
+            target_rng.api.AutoFilter()
+        except Exception:
+            pass
+
+    def set_row_hidden(self, row: int, hidden: bool = True) -> None:
+        try:
+            self._sheet.range(f"{row}:{row}").api.EntireRow.Hidden = hidden
+        except Exception:
+            pass
+
 
 class XlwingsDriver(IExcelDriver):
     """Driver for connecting to Microsoft Excel 2024 via xlwings / COM."""
