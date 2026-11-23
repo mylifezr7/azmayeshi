@@ -103,32 +103,48 @@ class ExcelConnectionManager:
         info = self.active_driver.switch_workbook(workbook_name)
         return info
 
+    def _ensure_connected(self) -> None:
+        if not self.is_connected():
+            try:
+                self.connect()
+            except Exception:
+                try:
+                    self.connect(force_driver='openpyxl')
+                except Exception:
+                    pass
+
     def get_workbook_info(self) -> WorkbookInfo:
+        self._ensure_connected()
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")
         return self.active_driver.get_workbook_info()
 
     def get_active_sheet(self) -> ISheet:
+        self._ensure_connected()
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")
         return self.active_driver.get_active_sheet()
 
     def get_sheet(self, sheet_name: str) -> ISheet:
+        self._ensure_connected()
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")
         return self.active_driver.get_sheet(sheet_name)
 
     def activate_sheet(self, sheet_name: str) -> ISheet:
+        self._ensure_connected()
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")
         return self.active_driver.activate_sheet(sheet_name)
 
     def list_open_workbooks(self) -> List[str]:
+        self._ensure_connected()
         if not self.active_driver:
             return []
         return self.active_driver.list_open_workbooks()
 
     def list_sheets(self) -> List[str]:
+        self._ensure_connected()
         if not self.is_connected():
             return []
         return self.active_driver.get_sheet_names()
@@ -137,6 +153,7 @@ class ExcelConnectionManager:
         return self.list_sheets()
 
     def create_sheet(self, name: str) -> ISheet:
+        self._ensure_connected()
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")
         return self.active_driver.create_sheet(name)

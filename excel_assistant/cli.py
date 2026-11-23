@@ -32,7 +32,7 @@ def run_cli(workbook_path: Optional[str] = None):
     executor = ActionExecutor(undo_mgr)
 
     print("\n💡 راهنما: دستورات خود را به زبان فارسی بنویسید (مثلاً: «ستون A را در ستون B ضرب کن»)")
-    print("برای خروج، عبارت «خروج» یا «exit» را وارد کنید.\n")
+    print("برای مشاهده لیست امکانات عبارت «راهنما»، و برای خروج عبارت «خروج» یا «exit» را وارد کنید.\n")
 
     while True:
         try:
@@ -42,6 +42,26 @@ def run_cli(workbook_path: Optional[str] = None):
             if cmd.lower() in ("خروج", "exit", "quit", "q"):
                 print("خداحافظ! 👋")
                 break
+
+            # Handle terminal/CMD shell commands mistakenly typed inside assistant prompt
+            cmd_lower = cmd.lower()
+            if cmd_lower.endswith((".bat", ".cmd", ".exe", ".sh")) or any(cmd_lower.startswith(p) for p in ["pip ", "python ", "cd ", "dir", "cls", "run"]):
+                print("\n💡 **نکته:** شما هم‌اکنون داخل محیط تعاملی دستیار هوشمند اکسل (MIYUM) قرار دارید!")
+                print("• نیازی به تایپ دستورات خط فرمان مانند run.bat یا pip در این بخش نیست.")
+                print("• می‌توانید مستقیماً دستورات کاری اکسل را بنویسید، مانند:")
+                print("    - ثبت فاکتور فروش")
+                print("    - مغایرت‌گیری ستون A و B")
+                print("    - محاسبه حقوق و دستمزد")
+                print("    - موجودی انبار و هشدار کمبود موجودی")
+                print("• اگر می‌خواهید به محیط CMD ویندوز بازگردید، کلمه «exit» یا «خروج» را تایپ کنید.\n")
+                continue
+
+            if cmd_lower in ("راهنما", "help", "?", "دستورات"):
+                print("\n📋 **راهنمای سریع دستورات دستیار هوشمند اکسل MIYUM:**")
+                print("💼 **حسابداری:** «مغایرت‌گیری ستون A و B»، «ثبت فاکتور فروش»، «تهیه تراز آزمایشی»، «محاسبه حقوق و دستمزد»، «محاسبه مانده حساب»، «محاسبه استهلاک»")
+                print("🛒 **فروش و انبار:** «موجودی انبار و هشدار کمبود موجودی»، «گزارش پرفروش‌ترین کالاها»، «محاسبه بدهی و طلب مشتریان»، «قیمت‌های ستون C را ۱۵ درصد افزایش بده»")
+                print("🩺 **هوشمند و مدیریتی:** «سلامت فایل و بررسی خطاهای اکسل»، «رسم نمودار ستونی»، «ذخیره نسخه پشتیبان»، «خروجی PDF از شیت»، «حذف ردیف‌های خالی»، «فیلتر هوشمند»\n")
+                continue
 
             sheet = manager.get_active_sheet()
             sa = SheetInspector.inspect_sheet(sheet)
