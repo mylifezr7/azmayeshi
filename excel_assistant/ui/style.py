@@ -314,8 +314,8 @@ QScrollArea#chatScrollArea > QWidget > QWidget {{
     background: transparent;
 }}
 
-/* Quick Action Chips */
-QComboBox#quickCommandsCombo {{
+/* Quick Action Chips & Cascading 5-Category Dropdowns */
+QComboBox#quickCommandsCombo, QComboBox#quickCategoryCombo, QComboBox#quickActionCombo {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0B1938, stop:1 #132247);
     border: 1px solid #2563EB;
     border-radius: 12px;
@@ -324,21 +324,21 @@ QComboBox#quickCommandsCombo {{
     font-size: 12px;
     font-weight: bold;
     min-height: 26px;
-    min-width: 220px;
+    min-width: 170px;
 }}
 
-QComboBox#quickCommandsCombo:hover {{
+QComboBox#quickCommandsCombo:hover, QComboBox#quickCategoryCombo:hover, QComboBox#quickActionCombo:hover {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1D4ED8);
     border-color: #38BDF8;
     color: #FFFFFF;
 }}
 
-QComboBox#quickCommandsCombo::drop-down {{
+QComboBox#quickCommandsCombo::drop-down, QComboBox#quickCategoryCombo::drop-down, QComboBox#quickActionCombo::drop-down {{
     border: none;
     width: 20px;
 }}
 
-QComboBox#quickCommandsCombo QAbstractItemView {{
+QComboBox#quickCommandsCombo QAbstractItemView, QComboBox#quickCategoryCombo QAbstractItemView, QComboBox#quickActionCombo QAbstractItemView {{
     background-color: #070F26;
     border: 1px solid #1E3A8A;
     border-radius: 8px;
@@ -346,6 +346,20 @@ QComboBox#quickCommandsCombo QAbstractItemView {{
     selection-background-color: #1D4ED8;
     selection-color: #FFFFFF;
     padding: 4px;
+}}
+
+QPushButton#runQuickActionButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);
+    color: #FFFFFF;
+    font-weight: bold;
+    border-radius: 10px;
+    padding: 5px 14px;
+    border: none;
+    min-height: 26px;
+}}
+
+QPushButton#runQuickActionButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #059669);
 }}
 
 QScrollArea#chipsScrollArea {{

@@ -817,44 +817,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="chat-messages" id="chatFeed"></div>
 
             <!-- Quick Action Chips (Scrollable + Dropdown, no sidebar duplicates) -->
+            <!-- Quick Action Chips (Cascading 5-Category Dropdown + Action Selector + Horizontal Scrollable Chips) -->
             <div class="chips-bar">
-                <select class="chip-select" onchange="if(this.value){ sendCommand(this.value); this.selectedIndex=0; }">
-                    <option value="">⚡ منوی کشویی دستورات آماده...</option>
-                    <optgroup label="💼 قابلیت‌های حسابداری">
-                        <option value="مغایرت‌گیری ستون A و B">⚖️ مغایرت‌گیری دو ستون (Reconciliation)</option>
-                        <option value="تهیه تراز آزمایشی">📊 تهیه تراز آزمایشی چهار ستونه</option>
-                        <option value="محاسبه مانده حساب">💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)</option>
-                        <option value="محاسبه حقوق و دستمزد">💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات</option>
-                        <option value="محاسبه استهلاک">📉 محاسبه جدول استهلاک دارایی‌ها</option>
-                        <option value="صورت سود و زیان جامع">📈 صورت سود و زیان جامع دوره</option>
-                        <option value="ترازنامه">🏛️ ترازنامه مالی (بیلان)</option>
-                    </optgroup>
-                    <optgroup label="🛒 فروش و انبارداری">
-                        <option value="ثبت فاکتور فروش">🧾 صدور و ثبت فاکتور رسمی فروش</option>
-                        <option value="ثبت فاکتور خرید">🛒 صدور و ثبت فاکتور رسمی خرید</option>
-                        <option value="موجودی انبار و هشدار کمبود موجودی">📦 کنترل موجودی و هشدار کمبود انبار</option>
-                        <option value="محاسبه بدهی و طلب مشتریان">👥 محاسبه بدهی و طلب مشتریان</option>
-                        <option value="گزارش پرفروش‌ترین کالاها">🏆 گزارش پرفروش‌ترین کالاها</option>
-                        <option value="قیمت‌های ستون C را ۱۵ درصد افزایش بده">🏷️ افزایش ۱۵ درصدی قیمت‌های ستون C</option>
-                    </optgroup>
-                    <optgroup label="🩺 امکانات هوشمند و مدیریتی">
-                        <option value="سلامت فایل و بررسی خطاهای اکسل">🩺 چکاپ هوشمند سلامت فایل و خطاها</option>
-                        <option value="رسم نمودار ستونی">📊 گزارش‌ساز خودکار با نمودار گرافیکی</option>
-                        <option value="ذخیره نسخه پشتیبان">💾 ذخیره نسخه پشتیبان (Backup)</option>
-                        <option value="خروجی PDF از شیت">📄 تولید خروجی PDF استاندارد</option>
-                        <option value="فیلتر هوشمند جدول">🔍 فیلتر هوشمند اطلاعات</option>
-                        <option value="مرتب‌سازی صعودی ستون A">🔄 مرتب‌سازی صعودی داده‌ها</option>
-                        <option value="مرتب‌سازی نزولی ستون A">🔽 مرتب‌سازی نزولی داده‌ها</option>
-                        <option value="حذف داده‌های تکراری">🗑️ حذف موارد تکراری</option>
-                        <option value="ردیف‌های خالی را حذف کن">🧹 حذف سطرهای خالی</option>
-                        <option value="تبدیل متن به عدد در ستون A">🔢 تبدیل متن به عدد (اصلاح داده‌ها)</option>
-                        <option value="تفکیک نام و نام خانوادگی در ستون A">✂️ تفکیک نام و نام خانوادگی</option>
-                        <option value="سلول‌های A1:B1 را ادغام کن">🔗 ادغام سلول‌ها (Merge)</option>
-                        <option value="فرمت ستون B را به تومان تغییر بده">💲 تغییر فرمت به واحد پول (تومان)</option>
-                        <option value="فرمت ستون C را درصدی کن">📈 تغییر فرمت به درصد (%)</option>
-                        <option value="عرض ستون‌ها را خودکار تنظیم کن">📐 تنظیم خودکار عرض ستون‌ها</option>
-                    </optgroup>
+                <!-- Dropdown 1: انتخاب دسته‌بندی ۵ گانه -->
+                <select id="catSelect" class="chip-select" onchange="onCategoryChanged(this.value)">
+                    <option value="">📁 ۱. انتخاب حوزه (۵ بخش)...</option>
+                    <option value="essential">⚡ ۱. قابلیت‌های ضروری</option>
+                    <option value="accounting">💼 ۲. قابلیت‌های حسابداری</option>
+                    <option value="sales_inventory">🛒 ۳. قابلیت‌های فروش و انبارداری</option>
+                    <option value="smart">🤖 ۴. قابلیت‌های هوشمند و کاربردی</option>
+                    <option value="management">⚙️ ۵. امکانات مدیریتی خود برنامه</option>
                 </select>
+
+                <!-- Dropdown 2: انتخاب عملیات زیرمجموعه -->
+                <select id="actSelect" class="chip-select" onchange="onActionSelected(this.value)">
+                    <option value="">🎯 ۲. انتخاب عملیات...</option>
+                </select>
+
+                <!-- دکمه اجرای عملیات انتخابی -->
+                <button class="chip" style="background: linear-gradient(135deg, #059669, #10B981); color: #FFF; font-weight: bold; border-color: #34D399;" onclick="runSelectedAction()">اجرا 🚀</button>
+
                 <button class="chip" onclick="sendCommand('مغایرت‌گیری ستون A و B')">⚖️ مغایرت‌گیری</button>
                 <button class="chip" onclick="sendCommand('ثبت فاکتور فروش')">🧾 صدور فاکتور</button>
                 <button class="chip" onclick="sendCommand('محاسبه حقوق و دستمزد')">💼 حقوق و دستمزد</button>
@@ -1280,6 +1262,102 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 closeSalesModal();
             }
         });
+
+        const FIVE_CATEGORIES = {
+            "essential": {
+                "title": "⚡ ۱. قابلیت‌های ضروری",
+                "commands": [
+                    {label: "🔍 فیلتر هوشمند اطلاعات", cmd: "فیلتر هوشمند جدول"},
+                    {label: "🔄 مرتب‌سازی صعودی داده‌ها", cmd: "مرتب‌سازی صعودی ستون A"},
+                    {label: "🔽 مرتب‌سازی نزولی داده‌ها", cmd: "مرتب‌سازی نزولی ستون A"},
+                    {label: "🗑️ حذف موارد تکراری", cmd: "حذف داده‌های تکراری"},
+                    {label: "🧹 حذف سطرهای خالی", cmd: "ردیف‌های خالی را حذف کن"},
+                    {label: "➕ جمع خودکار (AutoSum)", cmd: "جمع خودکار ستون A"},
+                    {label: "📊 محاسبه میانگین داده‌ها", cmd: "میانگین ستون A"},
+                    {label: "🔺 بیشترین و کمترین (MAX / MIN)", cmd: "بیشترین مقدار ستون A"},
+                    {label: "🔢 شمارش اطلاعات و سلول‌های پر", cmd: "شمارش سلول‌های پر ستون A"},
+                    {label: "🔢 تبدیل متن به عدد (اصلاح داده‌ها)", cmd: "تبدیل متن به عدد در ستون A"}
+                ]
+            },
+            "accounting": {
+                "title": "💼 ۲. قابلیت‌های حسابداری",
+                "commands": [
+                    {label: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B"},
+                    {label: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی"},
+                    {label: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب"},
+                    {label: "💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد"},
+                    {label: "📉 محاسبه جدول استهلاک دارایی‌ها", cmd: "محاسبه استهلاک"},
+                    {label: "📈 تهیه صورت سود و زیان جامع دوره", cmd: "صورت سود و زیان جامع"},
+                    {label: "🏛️ تهیه ترازنامه مالی (بیلان)", cmd: "ترازنامه"}
+                ]
+            },
+            "sales_inventory": {
+                "title": "🛒 ۳. قابلیت‌های فروش و انبارداری",
+                "commands": [
+                    {label: "🧾 صدور و ثبت فاکتور رسمی فروش", cmd: "ثبت فاکتور فروش"},
+                    {label: "🛒 صدور و ثبت فاکتور رسمی خرید", cmd: "ثبت فاکتور خرید"},
+                    {label: "📦 کنترل موجودی و هشدار کمبود انبار", cmd: "موجودی انبار و هشدار کمبود موجودی"},
+                    {label: "💰 محاسبه ارزش ریالی کل موجودی انبار", cmd: "ارزش کل موجودی انبار"},
+                    {label: "👥 محاسبه بدهی و طلب مشتریان", cmd: "محاسبه بدهی و طلب مشتریان"},
+                    {label: "🏆 گزارش پرفروش‌ترین کالاها", cmd: "گزارش پرفروش‌ترین کالاها"},
+                    {label: "🏷️ افزایش ۱۵ درصدی قیمت‌های ستون C", cmd: "قیمت‌های ستون C را ۱۵ درصد افزایش بده"}
+                ]
+            },
+            "smart": {
+                "title": "🤖 ۴. قابلیت‌های هوشمند و کاربردی",
+                "commands": [
+                    {label: "🩺 چکاپ عمیق سلامت و خطاهای فایل", cmd: "سلامت فایل و بررسی خطاهای اکسل"},
+                    {label: "🧮 میانگین سطری بین ستون‌ها (B و C در D)", cmd: "از ستون B و C میانگین بگیر و نتیجه را در D بنویس"},
+                    {label: "📊 گزارش‌ساز خودکار با نمودار گرافیکی", cmd: "رسم نمودار ستونی"},
+                    {label: "📋 تشخیص و ساخت جدول اکسل", cmd: "یک جدول بساز"},
+                    {label: "✂️ تفکیک نام و نام خانوادگی", cmd: "تفکیک نام و نام خانوادگی در ستون A"},
+                    {label: "🔗 ادغام سلول‌ها (Merge)", cmd: "سلول‌های A1:B1 را ادغام کن"}
+                ]
+            },
+            "management": {
+                "title": "⚙️ ۵. امکانات مدیریتی خود برنامه",
+                "commands": [
+                    {label: "💾 ذخیره نسخه پشتیبان (Backup)", cmd: "ذخیره نسخه پشتیبان"},
+                    {label: "📄 تولید خروجی PDF استاندارد", cmd: "خروجی PDF از شیت"},
+                    {label: "↩️ لغو آخرین عملیات (Undo چندمرحله‌ای)", cmd: "لغو آخرین عملیات"},
+                    {label: "📐 تنظیم خودکار عرض ستون‌ها (AutoFit)", cmd: "عرض ستون‌ها را خودکار تنظیم کن"},
+                    {label: "🎨 رنگ‌آمیزی متون تکراری", cmd: "داده‌های متنی تکراری را رنگ کن"},
+                    {label: "💲 تغییر فرمت به واحد پول (تومان)", cmd: "فرمت ستون B را به تومان تغییر بده"},
+                    {label: "📈 تغییر فرمت به درصد (%)", cmd: "فرمت ستون C را درصدی کن"},
+                    {label: "📅 تغییر فرمت به تاریخ", cmd: "فرمت ستون A را به تاریخ تغییر بده"}
+                ]
+            }
+        };
+
+        function onCategoryChanged(catKey) {
+            const actSelect = document.getElementById('actSelect');
+            actSelect.innerHTML = '<option value="">🎯 ۲. انتخاب عملیات...</option>';
+            if (catKey && FIVE_CATEGORIES[catKey]) {
+                FIVE_CATEGORIES[catKey].commands.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.cmd;
+                    opt.innerText = item.label;
+                    actSelect.appendChild(opt);
+                });
+            }
+        }
+
+        function onActionSelected(cmd) {
+            if (cmd) {
+                document.getElementById('commandInput').value = cmd;
+                sendCommand(cmd);
+            }
+        }
+
+        function runSelectedAction() {
+            const actSelect = document.getElementById('actSelect');
+            const cmd = actSelect.value || document.getElementById('commandInput').value.trim();
+            if (cmd) {
+                sendCommand(cmd);
+            } else {
+                appendMessage('ai', '⚠️ لطفاً ابتدا یک عملیات را از منوی کشویی انتخاب کنید.');
+            }
+        }
 
         async function sendCommand(cmd) {
             appendMessage('user', cmd);
