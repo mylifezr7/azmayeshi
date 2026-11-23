@@ -212,24 +212,48 @@ class MainWindow(QMainWindow):
 
     def _perform_initial_connection(self):
         try:
-            if not self.manager.is_connected():
+            from excel_assistant.core.xlwings_driver import check_xlwings, XLWINGS_AVAILABLE
+            check_xlwings()
+
+            if not self.manager.is_connected() or (sys.platform == 'win32' and self.manager.driver_type != 'xlwings'):
                 info = self.manager.connect()
             else:
                 info = self.manager.get_workbook_info()
+
             desc = "Microsoft Excel 2024 (COM)" if self.manager.driver_type == "xlwings" else "موتور مستقل اکسل"
             open_wbs = self.manager.list_open_workbooks()
             self.status_bar_widget.set_connected(True, desc)
             self.status_bar_widget.update_workbook_info(info.name, info.sheets, info.active_sheet, open_wbs)
-            self.chat_widget.add_assistant_message(
-                f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
-                f"اتصال به فایل **`{info.name}`** و شیت **`{info.active_sheet}`** برقرار شد.\n"
-                f"💡 برای کار روی فایل دیگر، روی دکمهٔ **«📂 باز کردن فایل اکسل...»** در نوار بالا کلیک کنید."
-            )
+
+            if self.manager.driver_type == "xlwings":
+                self.chat_widget.add_assistant_message(
+                    f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                    f"🟢 **اتصال زنده به نرم‌افزار Microsoft Excel برقرار شد.**\n"
+                    f"فایل فعال: **`{info.name}`** | شیت: **`{info.active_sheet}`**\n"
+                    f"💡 هر دستوری بدهید، تغییرات مستقیماً و به صورت زنده در نرم‌افزار اکسل شما اعمال خواهد شد."
+                )
+            else:
+                warn_text = (
+                    f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                    f"📌 برنامه در حال حاضر با **موتور مستقل اکسل (آفلاین)** به فایل **`{info.name}`** متصل است.\n"
+                )
+                if sys.platform == "win32":
+                    warn_text += (
+                        "\n⚠️ **نرم‌افزار مایکروسافت اکسل باز نشد!**\n"
+                        "برای اینکه نرم‌افزار رسمی اکسل هم‌زمان با برنامه باز شود و تغییرات را زنده ببینید، پکیج `xlwings` لازم است.\n"
+                        "💡 **راه‌حل:** در پنجره CMD دستور زیر را بزنید:\n"
+                        "```cmd\n"
+                        "pip install xlwings\n"
+                        "```\n"
+                        "سپس دکمهٔ **«📶 اتصال مجدد»** در بالای پنجره را بزنید تا اکسل فوراً روی صفحه باز شود."
+                    )
+                self.chat_widget.add_assistant_message(warn_text)
+
         except Exception as e:
             self.status_bar_widget.set_connected(False)
             self.chat_widget.add_assistant_message(
                 f"⚠️ خطا در اتصال به اکسل: {e}\n"
-                f"لطفاً مطمئن شوید Microsoft Excel باز است یا فایلی برای کار انتخاب شده است."
+                f"لطفاً مطمئن شوید Microsoft Excel نصب و باز است."
             )
 
     def _on_open_file_clicked(self):

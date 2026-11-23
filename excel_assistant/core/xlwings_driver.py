@@ -13,6 +13,19 @@ except ImportError:
     xw = None
     XLWINGS_AVAILABLE = False
 
+
+def check_xlwings() -> bool:
+    """Attempts to dynamically import xlwings if it wasn't available at startup."""
+    global xw, XLWINGS_AVAILABLE
+    if not XLWINGS_AVAILABLE:
+        try:
+            import xlwings as xw_module
+            xw = xw_module
+            XLWINGS_AVAILABLE = True
+        except ImportError:
+            pass
+    return XLWINGS_AVAILABLE
+
 from excel_assistant.core.interfaces import ISheet, IExcelDriver, WorkbookInfo
 from excel_assistant.core.exceptions import (
     ExcelNotRunningError, ExcelConnectionError, SheetNotFoundError,
@@ -270,6 +283,7 @@ class XlwingsDriver(IExcelDriver):
     """Driver for connecting to Microsoft Excel 2024 via xlwings / COM."""
 
     def __init__(self):
+        check_xlwings()
         if not XLWINGS_AVAILABLE:
             raise ExcelConnectionError("xlwings is not installed in the environment.")
         self._app: Optional[xw.App] = None
@@ -278,6 +292,7 @@ class XlwingsDriver(IExcelDriver):
     @classmethod
     def is_excel_installed(cls) -> bool:
         """Check if Excel COM can be reached."""
+        check_xlwings()
         if not XLWINGS_AVAILABLE:
             return False
         try:
@@ -287,23 +302,34 @@ class XlwingsDriver(IExcelDriver):
             return False
 
     def connect(self, workbook_name_or_path: Optional[str] = None) -> WorkbookInfo:
+        check_xlwings()
         if not XLWINGS_AVAILABLE:
             raise ExcelConnectionError("xlwings is required for Microsoft Excel 2024 live connection.")
 
         try:
-            # 1. Connect to active instance of Excel or start one
+            # 1. Connect to active instance of Excel or start a new visible one
+            self._app = None
             if len(xw.apps) > 0:
-                self._app = xw.apps.active
-            else:
+                try:
+                    self._app = xw.apps.active
+                    # Test if the COM object is responsive and make visible
+                    _ = self._app.version
+                    self._app.visible = True
+                except Exception:
+                    self._app = None
+
+            if not self._app:
+                # Launch a new visible Microsoft Excel instance
                 self._app = xw.App(visible=True, add_book=False)
+                self._app.visible = True
 
             # 2. Find or open target workbook
             if workbook_name_or_path:
-                return self.open_workbook(workbook_name_or_path)
+                info = self.open_workbook(workbook_name_or_path)
             else:
                 # Connect to currently active workbook if open
+                chosen = None
                 if len(self._app.books) > 0:
-                    chosen = None
                     try:
                         chosen = self._app.books.active
                     except Exception:
@@ -326,21 +352,40 @@ class XlwingsDriver(IExcelDriver):
                                         pass
                         except Exception:
                             pass
-                    self._book = chosen or self._app.books.add()
-                else:
-                    self._book = self._app.books.add()
 
-            return self.get_workbook_info()
+                self._book = chosen or self._app.books.add()
+                info = self.get_workbook_info()
+
+            # 3. Explicitly activate Excel window and workbook so it pops open on screen
+            try:
+                self._app.visible = True
+                self._app.activate(steal_focus=False)
+                if self._book:
+                    self._book.activate()
+            except Exception:
+                pass
+
+            return info
         except Exception as e:
             raise ExcelConnectionError(f"Failed to connect to Microsoft Excel 2024: {e}")
 
     def open_workbook(self, file_path: str) -> WorkbookInfo:
         """Opens an existing workbook file in live Excel or attaches to it."""
+        check_xlwings()
         if not self._app:
             if len(xw.apps) > 0:
-                self._app = xw.apps.active
+                try:
+                    self._app = xw.apps.active
+                    self._app.visible = True
+                except Exception:
+                    self._app = xw.App(visible=True, add_book=False)
             else:
                 self._app = xw.App(visible=True, add_book=False)
+
+        try:
+            self._app.visible = True
+        except Exception:
+            pass
 
         base_target = os.path.basename(file_path).lower()
         abs_target = os.path.abspath(file_path).lower()
@@ -353,6 +398,8 @@ class XlwingsDriver(IExcelDriver):
                 if b_name == base_target or (b_full and b_full == abs_target):
                     self._book = b
                     try:
+                        self._app.visible = True
+                        self._app.activate(steal_focus=False)
                         b.activate()
                     except Exception:
                         pass
@@ -364,6 +411,8 @@ class XlwingsDriver(IExcelDriver):
         if os.path.exists(file_path):
             self._book = self._app.books.open(os.path.abspath(file_path))
             try:
+                self._app.visible = True
+                self._app.activate(steal_focus=False)
                 self._book.activate()
             except Exception:
                 pass

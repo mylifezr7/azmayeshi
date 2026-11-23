@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Type
 
 from excel_assistant.core.interfaces import IExcelDriver, ISheet, WorkbookInfo
 from excel_assistant.core.openpyxl_driver import OpenpyxlDriver
-from excel_assistant.core.xlwings_driver import XlwingsDriver, XLWINGS_AVAILABLE
+from excel_assistant.core.xlwings_driver import XlwingsDriver, XLWINGS_AVAILABLE, check_xlwings
 from excel_assistant.core.exceptions import (
     ExcelConnectionError, WorkbookNotFoundError, SheetNotFoundError
 )
@@ -25,18 +25,18 @@ class ExcelConnectionManager:
         self.preferred_driver = preferred_driver
         self.active_driver: Optional[IExcelDriver] = None
         self.driver_type: Optional[str] = None
+        self.last_driver_error: Optional[str] = None
 
     def detect_best_driver(self) -> str:
         """Determines whether live Microsoft Excel 2024 (xlwings) or Openpyxl should be used."""
         if self.preferred_driver:
             return self.preferred_driver
 
+        check_xlwings()
+        from excel_assistant.core.xlwings_driver import XLWINGS_AVAILABLE
+
         if sys.platform == 'win32' and XLWINGS_AVAILABLE:
-            try:
-                # If Excel is installed on Windows, prioritize xlwings
-                return 'xlwings'
-            except Exception:
-                pass
+            return 'xlwings'
 
         # Also check if xlwings apps are currently alive
         if XLWINGS_AVAILABLE:
@@ -55,6 +55,7 @@ class ExcelConnectionManager:
         """
         target_driver_name = force_driver or self.detect_best_driver()
         last_error = None
+        self.last_driver_error = None
 
         if target_driver_name == 'xlwings':
             try:
@@ -62,9 +63,11 @@ class ExcelConnectionManager:
                 info = driver.connect(workbook_path_or_name)
                 self.active_driver = driver
                 self.driver_type = 'xlwings'
+                self.last_driver_error = None
                 return info
             except Exception as e:
                 last_error = e
+                self.last_driver_error = str(e)
                 # Fallback to openpyxl if xlwings fails (e.g. running in container or Excel not installed)
                 if not force_driver:
                     target_driver_name = 'openpyxl'
