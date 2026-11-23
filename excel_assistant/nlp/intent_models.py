@@ -14,7 +14,7 @@ class BaseActionModel(BaseModel):
 
 class ColumnArithmeticAction(BaseActionModel):
     action_type: Literal["column_arithmetic"] = "column_arithmetic"
-    operation: Literal["multiply", "add", "subtract", "divide"]  # ضرب، جمع، تفریق، تقسیم
+    operation: Literal["multiply", "add", "subtract", "divide", "average"]  # ضرب، جمع، تفریق، تقسیم، میانگین سطری
     col1: Optional[str] = "A"  # e.g. "A" or header name
     col2: Optional[str] = "B"  # e.g. "B"
     columns: Optional[List[str]] = None  # multi-column operands e.g. ["2", "4", "5"] or ["B", "D", "E"]
@@ -202,6 +202,136 @@ class SetCellFormatAction(BaseActionModel):
     description_persian: str = "تغییر فرمت نمایش سلول‌ها"
 
 
+class PriceAdjustmentAction(BaseActionModel):
+    action_type: Literal["price_adjustment"] = "price_adjustment"
+    target_col: str = "C"
+    percentage: float = 15.0  # e.g. 15.0 for 15% increase, -10.0 for 10% decrease
+    operation: Literal["increase", "decrease"] = "increase"
+    in_place: bool = False
+    target_result_col: Optional[str] = None
+    description_persian: str = "افزایش یا کاهش درصدی قیمت‌ها"
+
+
+class ReconciliationAction(BaseActionModel):
+    action_type: Literal["reconcile_columns"] = "reconcile_columns"
+    col1: str = "A"
+    col2: str = "B"
+    highlight_mismatches: bool = True
+    create_report: bool = True
+    description_persian: str = "مغایرت‌گیری دو ستون و شناسایی اختلافات"
+
+
+class InvoiceAction(BaseActionModel):
+    action_type: Literal["create_invoice"] = "create_invoice"
+    invoice_type: Literal["sales", "purchase"] = "sales"  # فروش یا خرید
+    invoice_number: Optional[str] = None
+    buyer_name: Optional[str] = None
+    seller_name: Optional[str] = None
+    date_str: Optional[str] = None
+    tax_percent: float = 10.0  # 10% VAT
+    include_sample_items: bool = True
+    description_persian: str = "ثبت و صدور فاکتور رسمی"
+
+
+class InventoryAlertAction(BaseActionModel):
+    action_type: Literal["inventory_alert"] = "inventory_alert"
+    product_col: Optional[str] = None
+    stock_col: Optional[str] = None
+    min_threshold: float = 5.0
+    purchase_price_col: Optional[str] = None
+    highlight_low_stock: bool = True
+    description_persian: str = "کنترل موجودی انبار و هشدار کمبود موجودی"
+
+
+class TopSellingAction(BaseActionModel):
+    action_type: Literal["top_selling"] = "top_selling"
+    product_col: Optional[str] = None
+    qty_col: Optional[str] = None
+    amount_col: Optional[str] = None
+    top_n: int = 5
+    description_persian: str = "گزارش پرفروش‌ترین کالاها"
+
+
+class CustomerLedgerAction(BaseActionModel):
+    action_type: Literal["customer_ledger"] = "customer_ledger"
+    customer_col: Optional[str] = None
+    debit_col: Optional[str] = None   # بدهی / فاکتورها
+    credit_col: Optional[str] = None  # طلب / واریزی‌ها
+    description_persian: str = "محاسبه بدهی و طلب مشتریان"
+
+
+class TrialBalanceAction(BaseActionModel):
+    action_type: Literal["trial_balance"] = "trial_balance"
+    account_col: Optional[str] = None
+    debit_col: Optional[str] = None
+    credit_col: Optional[str] = None
+    description_persian: str = "تهیه تراز آزمایشی ۴ ستونه"
+
+
+class AccountBalanceAction(BaseActionModel):
+    action_type: Literal["account_balance"] = "account_balance"
+    debit_col: Optional[str] = None
+    credit_col: Optional[str] = None
+    target_balance_col: Optional[str] = None
+    description_persian: str = "محاسبه مانده حساب بدهکار و بستانکار"
+
+
+class PayrollAction(BaseActionModel):
+    action_type: Literal["payroll_calculation"] = "payroll_calculation"
+    name_col: Optional[str] = None
+    base_salary_col: Optional[str] = None
+    overtime_hours_col: Optional[str] = None
+    insurance_rate_employee: float = 7.0   # 7% سهم کارگر
+    insurance_rate_employer: float = 23.0  # 23% سهم کارفرما
+    tax_bracket: float = 10.0              # 10% مالیات
+    tax_exempt_ceiling: float = 12000000.0 # سقف معافیت
+    create_payslip_sheet: bool = True
+    description_persian: str = "محاسبه حقوق و دستمزد، اضافه‌کاری، بیمه و مالیات"
+
+
+class DepreciationAction(BaseActionModel):
+    action_type: Literal["asset_depreciation"] = "asset_depreciation"
+    cost: Optional[float] = 100000000.0
+    salvage_value: float = 10000000.0
+    useful_life_years: int = 5
+    method: Literal["straight_line", "declining_balance"] = "straight_line"
+    depreciation_rate: Optional[float] = None
+    asset_name: str = "دارایی ثابت"
+    description_persian: str = "محاسبه استهلاک دارایی‌ها (خط مستقیم و نزولی)"
+
+
+class FinancialStatementAction(BaseActionModel):
+    action_type: Literal["financial_statement"] = "financial_statement"
+    statement_type: Literal["income_statement", "balance_sheet"] = "income_statement"
+    description_persian: str = "تهیه صورت سود و زیان یا ترازنامه استاندارد"
+
+
+class DeepFileAuditAction(BaseActionModel):
+    action_type: Literal["deep_file_audit"] = "deep_file_audit"
+    description_persian: str = "تحلیل هوشمند و عمیق فایل اکسل (سلول‌های خالی، خطاهای فرمول، تکراری، ستون ناقص)"
+
+
+class AutoChartAction(BaseActionModel):
+    action_type: Literal["auto_chart"] = "auto_chart"
+    chart_type: Literal["bar", "col", "line", "pie"] = "col"
+    title: str = "نمودار تحلیل داده‌ها"
+    label_col: Optional[str] = None
+    value_col: Optional[str] = None
+    description_persian: str = "رسم نمودار گرافیکی و گزارش‌ساز خودکار"
+
+
+class BackupAction(BaseActionModel):
+    action_type: Literal["backup_workbook"] = "backup_workbook"
+    description_persian: str = "ذخیره نسخه پشتیبان از فایل اکسل"
+
+
+class PdfExportAction(BaseActionModel):
+    action_type: Literal["export_pdf"] = "export_pdf"
+    output_filename: Optional[str] = None
+    sheet_name: Optional[str] = None
+    description_persian: str = "تولید خروجی PDF از فایل اکسل"
+
+
 class UndoLastAction(BaseActionModel):
     action_type: Literal["undo_last_action"] = "undo_last_action"
 
@@ -230,5 +360,20 @@ ExcelAction = Union[
     SplitTextAction,
     MergeCellsAction,
     SetCellFormatAction,
+    PriceAdjustmentAction,
+    ReconciliationAction,
+    InvoiceAction,
+    InventoryAlertAction,
+    TopSellingAction,
+    CustomerLedgerAction,
+    TrialBalanceAction,
+    AccountBalanceAction,
+    PayrollAction,
+    DepreciationAction,
+    FinancialStatementAction,
+    DeepFileAuditAction,
+    AutoChartAction,
+    BackupAction,
+    PdfExportAction,
     UndoLastAction,
 ]

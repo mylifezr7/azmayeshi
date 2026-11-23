@@ -133,6 +133,14 @@ class ExcelConnectionManager:
             return []
         return self.active_driver.get_sheet_names()
 
+    def get_sheet_names(self) -> List[str]:
+        return self.list_sheets()
+
+    def create_sheet(self, name: str) -> ISheet:
+        if not self.is_connected():
+            raise WorkbookNotFoundError("No Excel workbook currently connected.")
+        return self.active_driver.create_sheet(name)
+
     def save(self, path: Optional[str] = None) -> str:
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")

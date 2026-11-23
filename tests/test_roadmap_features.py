@@ -1,0 +1,481 @@
+"""
+Comprehensive Test Suite for MIYUM Next Version Features:
+1. Accounting (قابلیت‌های حسابداری):
+   - مغایرت‌گیری دو ستون (Reconciliation)
+   - تراز آزمایشی (Trial Balance)
+   - محاسبه مانده حساب (Running Balance)
+   - محاسبه حقوق و دستمزد، اضافه‌کاری، بیمه و مالیات (Payroll)
+   - استهلاک دارایی‌ها (Depreciation)
+   - صورت سود و زیان و ترازنامه (Financial Statements)
+2. Sales & Inventory (قابلیت‌های فروش و انبارداری):
+   - ثبت فاکتور فروش و خرید (Invoices)
+   - مدیریت موجودی، هشدار کمبود و ارزش کل انبار (Inventory Alerts)
+   - پرفروش‌ترین کالاها (Top-Selling)
+   - بدهی و طلب مشتریان (Customer Balances)
+   - افزایش و کاهش درصدی قیمت‌ها (Price Adjustment)
+3. Smart & Management Capabilities (امکانات هوشمند و مدیریتی):
+   - میانگین سطری بین ستون‌ها
+   - تحلیل هوشمند سلامت و خطاهای فایل (Deep File Health Audit)
+   - رسم خودکار نمودار گرافیکی (Auto Chart)
+   - ذخیره نسخه پشتیبان (Backup)
+   - خروجی PDF استاندارد (ReportLab)
+   - Natural Persian Command Parsing
+"""
+import os
+import pytest
+
+from excel_assistant.core.openpyxl_driver import OpenpyxlDriver
+from excel_assistant.core.connection import ExcelConnectionManager
+from excel_assistant.actions.base import ActionContext
+from excel_assistant.actions.accounting_actions import AccountingActionHandler
+from excel_assistant.actions.business_actions import BusinessActionHandler
+from excel_assistant.actions.executor import ActionExecutor
+from excel_assistant.analyzer.deep_auditor import DeepFileAuditor
+from excel_assistant.nlp.persian_rules import PersianRuleParser
+from excel_assistant.nlp.intent_models import (
+    ReconciliationAction,
+    TrialBalanceAction,
+    AccountBalanceAction,
+    PayrollAction,
+    DepreciationAction,
+    FinancialStatementAction,
+    InvoiceAction,
+    InventoryAlertAction,
+    TopSellingAction,
+    CustomerLedgerAction,
+    PriceAdjustmentAction,
+    ColumnArithmeticAction,
+    DeepFileAuditAction,
+    AutoChartAction,
+    BackupAction,
+    PdfExportAction,
+)
+
+
+@pytest.fixture
+def test_manager():
+    driver = OpenpyxlDriver()
+    driver.connect()
+    manager = ExcelConnectionManager()
+    manager.active_driver = driver
+    return manager
+
+
+# 1. Reconciliation Test (مغایرت‌گیری دو ستون)
+def test_reconciliation_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "صورت حساب بانک")
+    sheet.set_value("B1", "دفاتر مالی شرکت")
+    # Row 2: match
+    sheet.set_value("A2", 1000000)
+    sheet.set_value("B2", 1000000)
+    # Row 3: discrepancy
+    sheet.set_value("A3", 2500000)
+    sheet.set_value("B3", 2300000)
+    # Row 4: match
+    sheet.set_value("A4", 500000)
+    sheet.set_value("B4", 500000)
+
+    action = ReconciliationAction(col1="A", col2="B", highlight_mismatches=True, create_report=True)
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_reconciliation(action, ctx)
+
+    assert res.success is True
+    assert "گزارش مغایرت‌گیری" in res.message_persian
+    assert "2" in res.message_persian  # 2 matched
+    assert "1" in res.message_persian  # 1 mismatch
+
+    # Check status column values
+    assert sheet.get_value("C2") == "منطبق ✅"
+    assert sheet.get_value("C3") == "⚠️ مغایرت عددی"
+    assert sheet.get_value("D3") == 200000  # 2500000 - 2300000
+    assert "مغایرت_گیری" in test_manager.get_sheet_names()
+
+
+# 2. Trial Balance Test (تراز آزمایشی)
+def test_trial_balance_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    action = TrialBalanceAction()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_trial_balance(action, ctx)
+
+    assert res.success is True
+    assert "تراز آزمایشی چهار ستونه" in res.message_persian
+    assert "تراز_آزمایشی" in test_manager.get_sheet_names()
+
+    tb = test_manager.get_sheet("تراز_آزمایشی")
+    assert tb.get_value("A1") == "تراز آزمایشی چهار ستونه حساب‌ها"
+    assert "IF(C5>D5" in str(tb.get_formula("E5"))
+    assert "=SUM(C5:" in str(tb.get_formula("C17"))
+
+
+# 3. Account Balance Test (محاسبه مانده حساب جاری)
+def test_account_balance_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "تاریخ")
+    sheet.set_value("B1", "شرح سند")
+    sheet.set_value("C1", "بدهکار")
+    sheet.set_value("D1", "بستانکار")
+
+    sheet.set_value("C2", 1500000)
+    sheet.set_value("D2", 0)
+    sheet.set_value("C3", 500000)
+    sheet.set_value("D3", 800000)
+
+    action = AccountBalanceAction(debit_col="C", credit_col="D")
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_account_balance(action, ctx)
+
+    assert res.success is True
+    assert "مانده حساب" in res.message_persian
+    # Check formulas
+    assert str(sheet.get_formula("E2")) == "=C2-D2"
+    assert str(sheet.get_formula("E3")) == "=E2+C3-D3"
+    assert "IF(E2>0" in str(sheet.get_formula("F2"))
+
+
+# 4. Payroll Test (محاسبه حقوق و مزایا، اضافه‌کاری، بیمه و مالیات)
+def test_payroll_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    action = PayrollAction()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_payroll(action, ctx)
+
+    assert res.success is True
+    assert "فیش_حقوق_و_دستمزد" in test_manager.get_sheet_names()
+    ps = test_manager.get_sheet("فیش_حقوق_و_دستمزد")
+
+    assert ps.get_value("A1") == "لیست و محاسبات جامع حقوق و دستمزد و بیمه و مالیات"
+    # Check formulas for overtime, gross, insurance 7%, net pay
+    assert "C4/220)*1.4*E4" in str(ps.get_formula("F4"))
+    assert "=C4+D4+F4" == str(ps.get_formula("G4"))
+    assert "*0.07" in str(ps.get_formula("H4"))
+    assert "=G4-H4-J4" == str(ps.get_formula("K4"))
+
+
+# 5. Depreciation Test (محاسبه استهلاک دارایی‌ها)
+def test_depreciation_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    action = DepreciationAction(
+        cost=120000000,
+        salvage_value=20000000,
+        useful_life_years=5,
+        method="straight_line",
+        asset_name="ماشین‌آلات تولید"
+    )
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_depreciation(action, ctx)
+
+    assert res.success is True
+    assert "جدول_استهلاک_دارایی" in test_manager.get_sheet_names()
+    ds = test_manager.get_sheet("جدول_استهلاک_دارایی")
+    assert ds.get_value("A5") == "سال 1"
+    assert ds.get_value("C5") == 20000000.0  # (120M - 20M) / 5 = 20M
+    assert ds.get_value("E9") == 20000000.0  # Ending book value after 5 years = salvage value
+
+
+# 6. Financial Statements Test (صورت سود و زیان و ترازنامه)
+def test_financial_statements(test_manager):
+    sheet = test_manager.get_active_sheet()
+    # Income statement
+    inc_action = FinancialStatementAction(statement_type="income_statement")
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res_inc = AccountingActionHandler.execute_financial_statement(inc_action, ctx)
+    assert res_inc.success is True
+    assert "صورت_سود_و_زیان" in test_manager.get_sheet_names()
+
+    # Balance sheet
+    bs_action = FinancialStatementAction(statement_type="balance_sheet")
+    res_bs = AccountingActionHandler.execute_financial_statement(bs_action, ctx)
+    assert res_bs.success is True
+    assert "ترازنامه" in test_manager.get_sheet_names()
+
+
+# 7. Sales & Purchase Invoice Test (صدور و ثبت فاکتور)
+def test_invoice_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    action = InvoiceAction(
+        invoice_type="sales",
+        invoice_number="98234",
+        seller_name="شرکت رایان داده",
+        buyer_name="فروشگاه مرکزی",
+        tax_percent=10.0
+    )
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_invoice(action, ctx)
+
+    assert res.success is True
+    assert "فاکتور_فروش_98234" in test_manager.get_sheet_names()
+    inv = test_manager.get_sheet("فاکتور_فروش_98234")
+    assert inv.get_value("A1") == "فاکتور فروش کالا و خدمات"
+    assert "D8*F8" in str(inv.get_formula("G8"))
+    assert "=SUM(" in str(inv.get_formula("G12"))
+
+
+# 8. Inventory Alert & Valuation Test (مدیریت موجودی انبار و هشدار کسری)
+def test_inventory_alert_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "کد کالا")
+    sheet.set_value("B1", "نام کالا")
+    sheet.set_value("C1", "موجودی")
+    sheet.set_value("D1", "قیمت خرید")
+
+    sheet.set_value("B2", "مانیتور")
+    sheet.set_value("C2", 2)  # Low stock <= 5
+    sheet.set_value("D2", 5000000)
+
+    sheet.set_value("B3", "کیبورد")
+    sheet.set_value("C3", 40) # Sufficient stock
+    sheet.set_value("D3", 800000)
+
+    action = InventoryAlertAction(min_threshold=5.0, highlight_low_stock=True)
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+    assert res.success is True
+    assert "کسری موجودی" in res.message_persian
+    assert "مانیتور" in res.message_persian
+    assert "42,000,000" in res.message_persian  # 2*5M + 40*800k = 42M
+    assert "IF(C2<=5" in str(sheet.get_formula("E2"))
+
+
+# 9. Top-Selling Products Test (پرفروش‌ترین کالاها)
+def test_top_selling_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "کالا")
+    sheet.set_value("B1", "تعداد فروش")
+    sheet.set_value("C1", "مبلغ فروش")
+
+    sheet.set_value("A2", "ماوس گیمینگ")
+    sheet.set_value("B2", 150)
+    sheet.set_value("C2", 150000000)
+
+    sheet.set_value("A3", "لپ‌تاپ گیمینگ")
+    sheet.set_value("B3", 10)
+    sheet.set_value("C3", 600000000)
+
+    action = TopSellingAction(top_n=3)
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_top_selling(action, ctx)
+
+    assert res.success is True
+    assert "ماوس گیمینگ" in res.message_persian
+    assert "150" in res.message_persian
+
+
+# 10. Customer Balances Test (محاسبه بدهی و طلب مشتریان)
+def test_customer_ledger_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "نام مشتری")
+    sheet.set_value("B1", "فاکتور (بدهی)")
+    sheet.set_value("C1", "واریزی (طلب)")
+
+    sheet.set_value("A2", "شرکت سپهر")
+    sheet.set_value("B2", 80000000)
+    sheet.set_value("C2", 50000000)
+
+    sheet.set_value("A3", "فروشگاه آریا")
+    sheet.set_value("B3", 30000000)
+    sheet.set_value("C3", 40000000)
+
+    action = CustomerLedgerAction()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_customer_ledger(action, ctx)
+
+    assert res.success is True
+    assert "مانده_حساب_مشتریان" in test_manager.get_sheet_names()
+    cs = test_manager.get_sheet("مانده_حساب_مشتریان")
+    assert cs.get_value("B4") == "شرکت سپهر"
+    assert str(cs.get_formula("E4")) == "=C4-D4"
+
+
+# 11. Price Adjustment Test (افزایش یا کاهش درصدی قیمت‌ها)
+def test_price_adjustment_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "کالا")
+    sheet.set_value("B1", "قیمت فعلی")
+    sheet.set_value("B2", 100000)
+    sheet.set_value("B3", 200000)
+
+    # 15% increase into column C
+    action = PriceAdjustmentAction(target_col="B", percentage=15.0, operation="increase", in_place=False)
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_price_adjustment(action, ctx)
+
+    assert res.success is True
+    assert "تغییر درصدی قیمت‌ها" in res.message_persian
+    assert str(sheet.get_formula("C2")) == "=ROUND(B2*1.1500, 0)"
+    assert str(sheet.get_formula("C3")) == "=ROUND(B3*1.1500, 0)"
+
+
+# 12. Row-by-Row Multi-Column Average Test (میانگین سطری بین دو یا چند ستون)
+def test_row_by_row_average(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "ردیف")
+    sheet.set_value("B1", "نمره میانترم")
+    sheet.set_value("C1", "نمره پایانترم")
+    sheet.set_value("B2", 16)
+    sheet.set_value("C2", 18)
+    sheet.set_value("B3", 12)
+    sheet.set_value("C3", 14)
+
+    action = ColumnArithmeticAction(
+        operation="average",
+        col1="B",
+        col2="C",
+        columns=["B", "C"],
+        target_col="D",
+        as_formula=True
+    )
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    executor = ActionExecutor()
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    assert str(sheet.get_formula("D2")) == "=AVERAGE(B2, C2)"
+    assert str(sheet.get_formula("D3")) == "=AVERAGE(B3, C3)"
+
+
+# 13. Deep File Health Audit Test (تحلیل هوشمند و سلامت فایل)
+def test_deep_file_auditor(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "کد")
+    sheet.set_value("B1", "تعداد")
+    sheet.set_value("C1", "قیمت")
+
+    sheet.set_value("A2", 101)
+    sheet.set_value("B2", 5)
+    sheet.set_value("C2", None)  # Empty cell
+
+    sheet.set_value("A3", 102)
+    sheet.set_value("B3", "#DIV/0!")  # Formula error
+    sheet.set_value("C3", 2000)
+
+    sheet.set_value("A4", 101)
+    sheet.set_value("B4", 5)
+    sheet.set_value("C4", None)  # Duplicate row
+
+    audit_res = DeepFileAuditor.audit_sheet(sheet)
+    assert audit_res.health_score < 100
+    assert len(audit_res.empty_cells) >= 1
+    assert len(audit_res.formula_errors) >= 1
+    assert "گزارش تحلیل هوشمند و سلامت فایل اکسل" in audit_res.persian_summary
+
+
+# 14. Auto Chart Generation Test (رسم نمودار گرافیکی خودکار)
+def test_auto_chart_action(test_manager):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "محصول")
+    sheet.set_value("B1", "فروش")
+    sheet.set_value("A2", "ماوس")
+    sheet.set_value("B2", 500)
+    sheet.set_value("A3", "کیبورد")
+    sheet.set_value("B3", 750)
+
+    action = AutoChartAction(chart_type="col", label_col="A", value_col="B", title="فروش ماهانه")
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_auto_chart(action, ctx)
+
+    assert res.success is True
+    assert "نمودار تحلیلی گرافیکی" in res.message_persian
+    # Check chart in openpyxl sheet
+    ws = getattr(sheet, "_ws", None)
+    assert len(ws._charts) > 0
+
+
+# 15. Backup & PDF Export Tests
+def test_backup_and_pdf(test_manager, tmp_path):
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "نام")
+    sheet.set_value("B1", "مبلغ")
+    sheet.set_value("A2", "سود خالص")
+    sheet.set_value("B2", 15000000)
+
+    # Test Backup
+    backup_act = BackupAction()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res_b = BusinessActionHandler.execute_backup(backup_act, ctx)
+    assert res_b.success is True
+    assert "نسخه پشتیبان" in res_b.message_persian
+
+    # Test PDF Export
+    pdf_path = str(tmp_path / "test_report.pdf")
+    pdf_act = PdfExportAction(output_filename=pdf_path)
+    res_p = BusinessActionHandler.execute_pdf_export(pdf_act, ctx)
+    assert res_p.success is True
+    assert "خروجی PDF" in res_p.message_persian
+    assert os.path.exists(pdf_path)
+    assert os.path.getsize(pdf_path) > 500
+
+
+# 16. Natural Persian NLP Rules Parser Coverage
+def test_persian_rule_parser_new_features():
+    header_map = {"نام کالا": "A", "قیمت": "B", "تعداد": "C", "فروش": "D"}
+
+    # Reconciliation
+    a1 = PersianRuleParser.parse("مغایرت‌گیری ستون A و B", header_map)
+    assert isinstance(a1, ReconciliationAction)
+    assert a1.col1 == "A" and a1.col2 == "B"
+
+    # Invoice
+    a2 = PersianRuleParser.parse("ثبت فاکتور فروش رسمی", header_map)
+    assert isinstance(a2, InvoiceAction)
+    assert a2.invoice_type == "sales"
+
+    # Payroll
+    a3 = PersianRuleParser.parse("محاسبه حقوق و دستمزد و بیمه", header_map)
+    assert isinstance(a3, PayrollAction)
+
+    # Inventory Alert
+    a4 = PersianRuleParser.parse("موجودی انبار و هشدار کمبود موجودی", header_map)
+    assert isinstance(a4, InventoryAlertAction)
+
+    # Trial Balance
+    a5 = PersianRuleParser.parse("تهیه تراز آزمایشی چهار ستونه", header_map)
+    assert isinstance(a5, TrialBalanceAction)
+
+    # Account Balance
+    a6 = PersianRuleParser.parse("محاسبه مانده حساب بدهکار و بستانکار", header_map)
+    assert isinstance(a6, AccountBalanceAction)
+
+    # Depreciation
+    a7 = PersianRuleParser.parse("محاسبه جدول استهلاک دارایی", header_map)
+    assert isinstance(a7, DepreciationAction)
+
+    # Financial Statements
+    a8 = PersianRuleParser.parse("تهیه صورت سود و زیان جامع", header_map)
+    assert isinstance(a8, FinancialStatementAction)
+    assert a8.statement_type == "income_statement"
+
+    a9 = PersianRuleParser.parse("تهیه ترازنامه مالی", header_map)
+    assert isinstance(a9, FinancialStatementAction)
+    assert a9.statement_type == "balance_sheet"
+
+    # Price Adjustment
+    a10 = PersianRuleParser.parse("قیمت‌های ستون C را ۱۵ درصد افزایش بده", header_map)
+    assert isinstance(a10, PriceAdjustmentAction)
+    assert a10.percentage == 15.0
+    assert a10.operation == "increase"
+    assert a10.target_col == "C"
+
+    # Multi-Column Row Average
+    a11 = PersianRuleParser.parse("از ستون B و C میانگین بگیر و نتیجه را در D بنویس", header_map)
+    assert isinstance(a11, ColumnArithmeticAction)
+    assert a11.operation == "average"
+    assert "B" in a11.columns and "C" in a11.columns
+    assert a11.target_col == "D"
+
+    # Deep File Health Audit
+    a12 = PersianRuleParser.parse("سلامت فایل و بررسی خطاهای اکسل", header_map)
+    assert isinstance(a12, DeepFileAuditAction)
+
+    # Auto Chart
+    a13 = PersianRuleParser.parse("رسم نمودار ستونی فروش", header_map)
+    assert isinstance(a13, AutoChartAction)
+
+    # Backup & PDF
+    a14 = PersianRuleParser.parse("ذخیره نسخه پشتیبان از فایل", header_map)
+    assert isinstance(a14, BackupAction)
+
+    a15 = PersianRuleParser.parse("خروجی PDF از شیت", header_map)
+    assert isinstance(a15, PdfExportAction)

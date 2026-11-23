@@ -29,6 +29,21 @@ from excel_assistant.nlp.intent_models import (
     SplitTextAction,
     MergeCellsAction,
     SetCellFormatAction,
+    PriceAdjustmentAction,
+    ReconciliationAction,
+    InvoiceAction,
+    InventoryAlertAction,
+    TopSellingAction,
+    CustomerLedgerAction,
+    TrialBalanceAction,
+    AccountBalanceAction,
+    PayrollAction,
+    DepreciationAction,
+    FinancialStatementAction,
+    DeepFileAuditAction,
+    AutoChartAction,
+    BackupAction,
+    PdfExportAction,
     UndoLastAction,
 )
 from excel_assistant.nlp.persian_normalizer import (
@@ -69,6 +84,143 @@ class PersianRuleParser:
         # 1. Undo command
         if any(w in text_lower for w in ["لغو", "اندو", "آندو", "برگرد عقب", "بازگرداندن"]):
             return UndoLastAction(description_persian="لغو آخرین عملیات انجام‌شده")
+
+        # 1.5 Deep File Audit / سلامت و خطاهای فایل اکسل
+        if any(w in text_lower for w in ["سلامت فایل", "خطاهای فایل", "بررسی خطاهای فایل", "چکاپ فایل", "سلول های خالی", "فرمول های اشتباه", "تحلیل هوشمند فایل", "خطاهای محاسباتی", "داده های نامعتبر"]):
+            return DeepFileAuditAction(description_persian="تحلیل هوشمند و عمیق سلامت فایل اکسل")
+
+        # 1.6 Backup / نسخه پشتیبان
+        if any(w in text_lower for w in ["پشتیبان", "بکاپ", "backup"]):
+            return BackupAction(description_persian="ذخیره نسخه پشتیبان از فایل اکسل")
+
+        # 1.7 PDF Export / خروجی PDF
+        if any(w in text_lower for w in ["pdf", "پی دی اف", "پرینت"]) and any(w in text_lower for w in ["خروجی", "دانلود", "تبدیل", "صادر", "گرفتن", "بگیر"]):
+            return PdfExportAction(description_persian="تولید خروجی PDF استاندارد از شیت فعال")
+
+        # 1.8 Reconciliation / مغایرت‌گیری دو ستون یا دو فهرست
+        if any(w in text_lower for w in ["مغایرت", "تطبیق دو ستون", "مقایسه دو ستون", "مغایرت گیری", "مغایرت‌گیری"]):
+            cols_found = []
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in cols_found:
+                    cols_found.append(res)
+            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text):
+                c_up = c_let.upper()
+                if c_up not in cols_found:
+                    cols_found.append(c_up)
+            c1 = cols_found[0] if len(cols_found) >= 1 else "A"
+            c2 = cols_found[1] if len(cols_found) >= 2 else "B"
+            return ReconciliationAction(
+                col1=c1,
+                col2=c2,
+                description_persian=f"مغایرت‌گیری بین ستون {c1} و ستون {c2}"
+            )
+
+        # 1.9 Invoice generation / فاکتور فروش و خرید
+        if "فاکتور" in text_lower:
+            inv_type = "purchase" if "خرید" in text_lower else "sales"
+            inv_title = "فاکتور خرید" if inv_type == "purchase" else "فاکتور فروش"
+            return InvoiceAction(
+                invoice_type=inv_type,
+                description_persian=f"ثبت و صدور {inv_title} رسمی با محاسبات ارزش افزوده و تخفیف"
+            )
+
+        # 1.10 Payroll, Overtime, Insurance & Salary Tax / حقوق و دستمزد
+        if any(w in text_lower for w in ["حقوق و دستمزد", "حقوق", "دستمزد", "اضافه کاری", "اضافه‌کاری", "بیمه کارگر", "بیمه تامین اجتماعی", "مالیات حقوق", "فیش حقوق"]):
+            return PayrollAction(description_persian="محاسبه لیست حقوق، اضافه‌کاری، بیمه و مالیات")
+
+        # 1.11 Inventory Alert & Valuation / موجودی انبار و هشدار کمبود موجودی
+        if any(w in text_lower for w in ["کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار", "کنترل انبار", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی"]):
+            return InventoryAlertAction(description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی")
+
+        # 1.12 Top Selling Products / پرفروش‌ترین کالاها
+        if any(w in text_lower for w in ["پرفروش ترین", "پرفروش‌ترین", "کالاهای پرفروش", "بیشترین فروش کالا", "پرفروش"]):
+            return TopSellingAction(description_persian="گزارش پرفروش‌ترین کالاهای ثبت‌شده")
+
+        # 1.13 Customer Ledger / بدهی و طلب مشتریان
+        if any(w in text_lower for w in ["بدهی مشتری", "طلب مشتری", "بدهی و طلب", "مانده مشتری", "طرف حساب"]):
+            return CustomerLedgerAction(description_persian="محاسبه مانده بدهی و طلب مشتریان")
+
+        # 1.14 Trial Balance / تراز آزمایشی
+        if any(w in text_lower for w in ["تراز آزمایشی", "تراز ازمایشی", "تراز ۴ ستونه", "تراز چهار ستونه", "تراز ۶ ستونه", "تراز شش ستونه"]):
+            return TrialBalanceAction(description_persian="تهیه تراز آزمایشی چهار ستونه حسابداری")
+
+        # 1.15 Account Balance / محاسبه مانده حساب (بدهکار و بستانکار)
+        if any(w in text_lower for w in ["مانده حساب", "مانده بدهکار و بستانکار", "محاسبه مانده بدهکار", "مانده گیری", "ستون مانده"]):
+            return AccountBalanceAction(description_persian="محاسبه مانده حساب جاری بدهکار و بستانکار")
+
+        # 1.16 Depreciation / محاسبه استهلاک دارایی‌ها
+        if "استهلاک" in text_lower:
+            method = "declining_balance" if any(w in text_lower for w in ["نزولی", "مانده نزولی"]) else "straight_line"
+            return DepreciationAction(
+                method=method,
+                description_persian=f"محاسبه جدول استهلاک دارایی ({'نزولی' if method == 'declining_balance' else 'خط مستقیم'})"
+            )
+
+        # 1.17 Financial Statements / صورت سود و زیان و ترازنامه
+        if "صورت سود و زیان" in text_lower or "سود و زیان جامع" in text_lower:
+            return FinancialStatementAction(
+                statement_type="income_statement",
+                description_persian="تهیه صورت سود و زیان جامع استاندارد"
+            )
+        if "ترازنامه" in text_lower or "بیلان مالی" in text_lower:
+            return FinancialStatementAction(
+                statement_type="balance_sheet",
+                description_persian="تهیه ترازنامه مالی و وضعیت دارایی‌ها و بدهی‌ها"
+            )
+
+        # 1.18 Auto Chart / رسم نمودار گرافیکی
+        if any(w in text_lower for w in ["نمودار", "چارت"]) and any(w in text_lower for w in ["رسم", "بکش", "ایجاد", "نمایش", "تولید", "ساز"]):
+            return AutoChartAction(description_persian="تولید نمودار گرافیکی خودکار اکسل")
+
+        # 1.19 Percentage Price Adjustment / افزایش یا کاهش درصدی قیمت‌ها
+        # e.g.: قیمت‌های ستون C را ۱۵ درصد افزایش بده
+        # e.g.: ستون B را ۱۰ درصد کاهش بده
+        if ("درصد" in text or "%" in text) and any(w in text for w in ["افزایش", "کاهش", "گران", "ارزان"]):
+            pct_m = re.search(r'(\d+(?:\.\d+)?)\s*(?:درصد|%)', text)
+            pct_val = float(pct_m.group(1)) if pct_m else 10.0
+            is_decrease = any(w in text for w in ["کاهش", "ارزان", "کم کن"])
+            op = "decrease" if is_decrease else "increase"
+
+            col_m = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+            target_col = resolve_column(col_m.group(1), header_map) if col_m else None
+            if not target_col:
+                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
+                target_col = let_m.group(1).upper() if let_m else "C"
+
+            return PriceAdjustmentAction(
+                target_col=target_col,
+                percentage=pct_val,
+                operation=op,
+                description_persian=f"{'افزایش' if op == 'increase' else 'کاهش'} {pct_val:.0f} درصدی ستون {target_col}"
+            )
+
+        # 1.20 Row-by-Row Multi-Column Average / میانگین سطری بین ستون‌ها
+        # e.g.: از ستون B و C میانگین بگیر و نتیجه را در D بنویس
+        if "میانگین" in text and (" و " in text or "در " in text):
+            target_match = re.search(r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)\s*(?:قرار\s*بده|بنویس|درج\s*کن|بریز|بگذار|ثبت\s*کن)?\s*[.]*$', text)
+            target_c = resolve_column(target_match.group(1), header_map) if target_match else None
+
+            all_cols = []
+            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
+                res = resolve_column(c_str, header_map)
+                if res and res not in all_cols and res != target_c:
+                    all_cols.append(res)
+            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text):
+                c_up = c_let.upper()
+                if c_up not in all_cols and c_up != target_c:
+                    all_cols.append(c_up)
+
+            if len(all_cols) >= 2 and target_c:
+                return ColumnArithmeticAction(
+                    operation="average",
+                    col1=all_cols[0],
+                    col2=all_cols[1],
+                    columns=all_cols,
+                    target_col=target_c,
+                    as_formula=True,
+                    description_persian=f"میانگین سطری ستون‌های {' و '.join(all_cols)} و درج در ستون {target_c}"
+                )
 
         # 2. Analyze sheet command
         if any(w in text_lower for w in ["تحلیل", "بررسی ساختار", "بررسی فایل", "انالیز"]):

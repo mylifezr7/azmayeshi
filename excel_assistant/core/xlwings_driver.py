@@ -157,7 +157,9 @@ class XlwingsSheet(ISheet):
             raise ActionExecutionError(f"Failed to color range '{cell_or_range}': {e}")
 
     def set_font(self, cell_or_range: str, name: Optional[str] = None, size: Optional[float] = None,
-                 bold: Optional[bool] = None, italic: Optional[bool] = None, color_hex: Optional[str] = None) -> None:
+                 bold: Optional[bool] = None, italic: Optional[bool] = None, color_hex: Optional[str] = None,
+                 font_color: Optional[str] = None) -> None:
+        color_hex = color_hex or font_color
         try:
             rng = self._sheet.range(cell_or_range)
             if name:

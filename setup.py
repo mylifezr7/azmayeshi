@@ -15,6 +15,7 @@ setup(
         "PySide6>=6.5.0",
         "requests>=2.28.0",
         "pytest>=7.0.0",
+        "reportlab>=4.0.0",
     ],
     entry_points={
         "console_scripts": [

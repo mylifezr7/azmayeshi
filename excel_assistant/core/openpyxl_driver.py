@@ -64,11 +64,21 @@ class OpenpyxlSheet(ISheet):
         except Exception as e:
             raise ActionExecutionError(f"Failed to read value from {cell_or_range}: {e}")
 
+    def _safe_set_cell_val(self, r: int, c: int, val: Any) -> None:
+        cell = self._ws.cell(row=r, column=c)
+        if isinstance(cell, openpyxl.cell.cell.MergedCell):
+            for rng in self._ws.merged_cells.ranges:
+                if (r, c) in rng:
+                    self._ws.cell(row=rng.min_row, column=rng.min_col).value = val
+                    return
+        else:
+            cell.value = val
+
     def set_value(self, cell_or_range: str, value: Any) -> None:
         try:
             r1, c1, r2, c2 = parse_range_address(cell_or_range)
             if r1 == r2 and c1 == c2:
-                self._ws.cell(row=r1, column=c1).value = value
+                self._safe_set_cell_val(r1, c1, value)
             elif isinstance(value, (list, tuple)):
                 for r_offset, row_data in enumerate(value):
                     current_r = r1 + r_offset
@@ -79,14 +89,14 @@ class OpenpyxlSheet(ISheet):
                             current_c = c1 + c_offset
                             if current_c > c2:
                                 break
-                            self._ws.cell(row=current_r, column=current_c).value = val
+                            self._safe_set_cell_val(current_r, current_c, val)
                     else:
-                        self._ws.cell(row=current_r, column=c1).value = row_data
+                        self._safe_set_cell_val(current_r, c1, row_data)
             else:
                 # Set same scalar value across entire range
                 for r in range(r1, r2 + 1):
                     for c in range(c1, c2 + 1):
-                        self._ws.cell(row=r, column=c).value = value
+                        self._safe_set_cell_val(r, c, value)
         except Exception as e:
             raise ActionExecutionError(f"Failed to set value on {cell_or_range}: {e}")
 
@@ -124,12 +134,12 @@ class OpenpyxlSheet(ISheet):
                         f_val = str(f_str)
                         if not f_val.startswith('='):
                             f_val = '=' + f_val
-                        self._ws.cell(row=r, column=c).value = f_val
+                        self._safe_set_cell_val(r, c, f_val)
                 else:
                     f_val = str(row_f)
                     if not f_val.startswith('='):
                         f_val = '=' + f_val
-                    self._ws.cell(row=r, column=c1).value = f_val
+                    self._safe_set_cell_val(r, c1, f_val)
         else:
             formula_str = str(formula)
             if not formula_str.startswith('='):
@@ -139,7 +149,7 @@ class OpenpyxlSheet(ISheet):
                 if r > r1:
                     cur = re.sub(r'([A-Za-z]+)(\d+)', lambda m: f"{m.group(1)}{int(m.group(2)) + (r - r1)}", formula_str)
                 for c in range(c1, c2 + 1):
-                    self._ws.cell(row=r, column=c).value = cur
+                    self._safe_set_cell_val(r, c, cur)
 
     def get_matrix(self, min_row: int, min_col: int, max_row: int, max_col: int) -> List[List[Any]]:
         res = []
@@ -186,7 +196,9 @@ class OpenpyxlSheet(ISheet):
             raise ActionExecutionError(f"Failed to set cell color on {cell_or_range}: {e}")
 
     def set_font(self, cell_or_range: str, name: Optional[str] = None, size: Optional[float] = None,
-                 bold: Optional[bool] = None, italic: Optional[bool] = None, color_hex: Optional[str] = None) -> None:
+                 bold: Optional[bool] = None, italic: Optional[bool] = None, color_hex: Optional[str] = None,
+                 font_color: Optional[str] = None) -> None:
+        color_hex = color_hex or font_color
         try:
             r1, c1, r2, c2 = parse_range_address(cell_or_range)
             _, _, ub_r2, ub_c2 = self.get_used_range_bounds()

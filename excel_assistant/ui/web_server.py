@@ -820,34 +820,60 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="chips-bar">
                 <select class="chip-select" onchange="if(this.value){ sendCommand(this.value); this.selectedIndex=0; }">
                     <option value="">⚡ منوی کشویی دستورات آماده...</option>
-                    <option value="مرتب‌سازی صعودی ستون A">🔄 مرتب‌سازی صعودی داده‌ها</option>
-                    <option value="مرتب‌سازی نزولی ستون A">🔽 مرتب‌سازی نزولی داده‌ها</option>
-                    <option value="فیلتر هوشمند جدول">🔍 فیلتر هوشمند اطلاعات</option>
-                    <option value="حذف داده‌های تکراری">🗑️ حذف موارد تکراری</option>
-                    <option value="ردیف‌های خالی را حذف کن">🧹 حذف سطرهای خالی</option>
-                    <option value="جمع خودکار ستون A">➕ جمع خودکار (AutoSum)</option>
-                    <option value="میانگین ستون A">📊 محاسبه میانگین داده‌ها</option>
-                    <option value="بیشترین مقدار ستون A">🔺 بیشترین و کمترین (MAX / MIN)</option>
-                    <option value="شمارش سلول‌های پر ستون A">🔢 شمارش اطلاعات و سلول‌های پر</option>
-                    <option value="تبدیل متن به عدد در ستون A">🔢 تبدیل متن به عدد (اصلاح داده‌ها)</option>
-                    <option value="تفکیک نام و نام خانوادگی در ستون A">✂️ جدا کردن متن (تفکیک نام و نام خانوادگی)</option>
-                    <option value="سلول‌های A1:B1 را ادغام کن">🔗 ادغام سلول‌ها (Merge)</option>
-                    <option value="فرمت ستون B را به تومان تغییر بده">💲 تغییر فرمت به واحد پول (تومان)</option>
-                    <option value="فرمت ستون C را درصدی کن">📈 تغییر فرمت به درصد (%)</option>
-                    <option value="فرمت ستون A را به تاریخ تغییر بده">📅 تغییر فرمت به تاریخ</option>
-                    <option value="داده‌های متنی تکراری را رنگ کن">🎨 رنگ‌آمیزی متون تکراری</option>
-                    <option value="یک جدول بساز">📋 ساخت جدول یکدست و زیبا</option>
-                    <option value="عرض ستون‌ها را خودکار تنظیم کن">📐 تنظیم خودکار عرض ستون‌ها</option>
+                    <optgroup label="💼 قابلیت‌های حسابداری">
+                        <option value="مغایرت‌گیری ستون A و B">⚖️ مغایرت‌گیری دو ستون (Reconciliation)</option>
+                        <option value="تهیه تراز آزمایشی">📊 تهیه تراز آزمایشی چهار ستونه</option>
+                        <option value="محاسبه مانده حساب">💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)</option>
+                        <option value="محاسبه حقوق و دستمزد">💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات</option>
+                        <option value="محاسبه استهلاک">📉 محاسبه جدول استهلاک دارایی‌ها</option>
+                        <option value="صورت سود و زیان جامع">📈 صورت سود و زیان جامع دوره</option>
+                        <option value="ترازنامه">🏛️ ترازنامه مالی (بیلان)</option>
+                    </optgroup>
+                    <optgroup label="🛒 فروش و انبارداری">
+                        <option value="ثبت فاکتور فروش">🧾 صدور و ثبت فاکتور رسمی فروش</option>
+                        <option value="ثبت فاکتور خرید">🛒 صدور و ثبت فاکتور رسمی خرید</option>
+                        <option value="موجودی انبار و هشدار کمبود موجودی">📦 کنترل موجودی و هشدار کمبود انبار</option>
+                        <option value="محاسبه بدهی و طلب مشتریان">👥 محاسبه بدهی و طلب مشتریان</option>
+                        <option value="گزارش پرفروش‌ترین کالاها">🏆 گزارش پرفروش‌ترین کالاها</option>
+                        <option value="قیمت‌های ستون C را ۱۵ درصد افزایش بده">🏷️ افزایش ۱۵ درصدی قیمت‌های ستون C</option>
+                    </optgroup>
+                    <optgroup label="🩺 امکانات هوشمند و مدیریتی">
+                        <option value="سلامت فایل و بررسی خطاهای اکسل">🩺 چکاپ هوشمند سلامت فایل و خطاها</option>
+                        <option value="رسم نمودار ستونی">📊 گزارش‌ساز خودکار با نمودار گرافیکی</option>
+                        <option value="ذخیره نسخه پشتیبان">💾 ذخیره نسخه پشتیبان (Backup)</option>
+                        <option value="خروجی PDF از شیت">📄 تولید خروجی PDF استاندارد</option>
+                        <option value="فیلتر هوشمند جدول">🔍 فیلتر هوشمند اطلاعات</option>
+                        <option value="مرتب‌سازی صعودی ستون A">🔄 مرتب‌سازی صعودی داده‌ها</option>
+                        <option value="مرتب‌سازی نزولی ستون A">🔽 مرتب‌سازی نزولی داده‌ها</option>
+                        <option value="حذف داده‌های تکراری">🗑️ حذف موارد تکراری</option>
+                        <option value="ردیف‌های خالی را حذف کن">🧹 حذف سطرهای خالی</option>
+                        <option value="تبدیل متن به عدد در ستون A">🔢 تبدیل متن به عدد (اصلاح داده‌ها)</option>
+                        <option value="تفکیک نام و نام خانوادگی در ستون A">✂️ تفکیک نام و نام خانوادگی</option>
+                        <option value="سلول‌های A1:B1 را ادغام کن">🔗 ادغام سلول‌ها (Merge)</option>
+                        <option value="فرمت ستون B را به تومان تغییر بده">💲 تغییر فرمت به واحد پول (تومان)</option>
+                        <option value="فرمت ستون C را درصدی کن">📈 تغییر فرمت به درصد (%)</option>
+                        <option value="عرض ستون‌ها را خودکار تنظیم کن">📐 تنظیم خودکار عرض ستون‌ها</option>
+                    </optgroup>
                 </select>
+                <button class="chip" onclick="sendCommand('مغایرت‌گیری ستون A و B')">⚖️ مغایرت‌گیری</button>
+                <button class="chip" onclick="sendCommand('ثبت فاکتور فروش')">🧾 صدور فاکتور</button>
+                <button class="chip" onclick="sendCommand('محاسبه حقوق و دستمزد')">💼 حقوق و دستمزد</button>
+                <button class="chip" onclick="sendCommand('موجودی انبار و هشدار کمبود موجودی')">📦 کنترل موجودی</button>
+                <button class="chip" onclick="sendCommand('تهیه تراز آزمایشی')">📊 تراز آزمایشی</button>
+                <button class="chip" onclick="sendCommand('محاسبه مانده حساب')">💳 مانده حساب</button>
+                <button class="chip" onclick="sendCommand('محاسبه استهلاک')">📉 استهلاک</button>
+                <button class="chip" onclick="sendCommand('محاسبه بدهی و طلب مشتریان')">👥 بدهی مشتریان</button>
+                <button class="chip" onclick="sendCommand('گزارش پرفروش‌ترین کالاها')">🏆 پرفروش‌ترین‌ها</button>
+                <button class="chip" onclick="sendCommand('قیمت‌های ستون C را ۱۵ درصد افزایش بده')">🏷️ ۱۵٪ افزایش قیمت</button>
+                <button class="chip" onclick="sendCommand('سلامت فایل و بررسی خطاهای اکسل')">🩺 سلامت فایل</button>
+                <button class="chip" onclick="sendCommand('رسم نمودار ستونی')">📊 رسم نمودار</button>
+                <button class="chip" onclick="sendCommand('ذخیره نسخه پشتیبان')">💾 نسخه پشتیبان</button>
+                <button class="chip" onclick="sendCommand('خروجی PDF از شیت')">📄 خروجی PDF</button>
                 <button class="chip" onclick="sendCommand('فیلتر هوشمند جدول')">🔍 فیلتر هوشمند</button>
                 <button class="chip" onclick="sendCommand('مرتب‌سازی صعودی ستون A')">🔄 سورت صعودی</button>
                 <button class="chip" onclick="sendCommand('مرتب‌سازی نزولی ستون A')">🔽 سورت نزولی</button>
                 <button class="chip" onclick="sendCommand('حذف داده‌های تکراری')">🗑️ حذف تکراری‌ها</button>
                 <button class="chip" onclick="sendCommand('ردیف‌های خالی را حذف کن')">🧹 حذف سطرهای خالی</button>
-                <button class="chip" onclick="sendCommand('جمع خودکار ستون A')">➕ جمع خودکار</button>
-                <button class="chip" onclick="sendCommand('میانگین ستون A')">📊 میانگین‌گیری</button>
-                <button class="chip" onclick="sendCommand('بیشترین مقدار ستون A')">🔺 بیشترین/کمترین</button>
-                <button class="chip" onclick="sendCommand('شمارش سلول‌های پر ستون A')">🔢 شمارش داده‌ها</button>
                 <button class="chip" onclick="sendCommand('تبدیل متن به عدد در ستون A')">🔢 متن به عدد</button>
                 <button class="chip" onclick="sendCommand('تفکیک نام و نام خانوادگی در ستون A')">✂️ تفکیک متن</button>
                 <button class="chip" onclick="sendCommand('سلول‌های A1:B1 را ادغام کن')">🔗 ادغام سلول‌ها</button>
@@ -1518,4 +1544,4 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
 
 
 if __name__ == "__main__":
-    start_web_server(8080)
+    start_web_server("0.0.0.0", 8080)

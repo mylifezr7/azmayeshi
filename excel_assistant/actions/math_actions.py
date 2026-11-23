@@ -57,7 +57,7 @@ class MathActionHandler:
 
         op_symbols = {"multiply": "*", "add": "+", "subtract": "-", "divide": "/"}
         op_symbol = op_symbols.get(action.operation, "*")
-        op_fa_names = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}
+        op_fa_names = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم", "average": "میانگین"}
         op_fa = op_fa_names.get(action.operation, "محاسبه")
 
         def is_numeric_value(v):
@@ -129,6 +129,8 @@ class MathActionHandler:
                     res_val = row_nums[0]
                     for n in row_nums[1:]:
                         res_val = (res_val / n) if n != 0 else "#DIV/0!"
+                elif action.operation == "average":
+                    res_val = sum(row_nums) / len(row_nums) if row_nums else 0.0
                 else:
                     res_val = sum(row_nums)
 
@@ -136,11 +138,17 @@ class MathActionHandler:
             target_range = f"{target_col}{start_row}:{target_col}{end_row}"
             sheet.set_value(target_range, calc_matrix)
         else:
-            # Set exact formula matrix for each row e.g. =B2+D2+E2
-            formula_matrix = [
-                [f"={op_symbol.join(f'{c}{r}' for c in cols)}"]
-                for r in range(start_row, end_row + 1)
-            ]
+            # Set exact formula matrix for each row e.g. =B2+D2+E2 or =AVERAGE(B2, D2)
+            if action.operation == "average":
+                formula_matrix = [
+                    [f"=AVERAGE({', '.join(f'{c}{r}' for c in cols)})"]
+                    for r in range(start_row, end_row + 1)
+                ]
+            else:
+                formula_matrix = [
+                    [f"={op_symbol.join(f'{c}{r}' for c in cols)}"]
+                    for r in range(start_row, end_row + 1)
+                ]
             target_range = f"{target_col}{start_row}:{target_col}{end_row}"
             sheet.set_formula(target_range, formula_matrix)
 

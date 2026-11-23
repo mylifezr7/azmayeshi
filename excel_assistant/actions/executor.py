@@ -8,9 +8,12 @@ from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.actions.math_actions import MathActionHandler
 from excel_assistant.actions.format_actions import FormatActionHandler
 from excel_assistant.actions.data_actions import DataActionHandler
+from excel_assistant.actions.accounting_actions import AccountingActionHandler
+from excel_assistant.actions.business_actions import BusinessActionHandler
 from excel_assistant.actions.undo_manager import UndoManager
 from excel_assistant.analyzer.inspector import SheetInspector, WorkbookInspector
 from excel_assistant.analyzer.suggestions import generate_smart_suggestions
+from excel_assistant.analyzer.deep_auditor import DeepFileAuditor
 from excel_assistant.safety.security import SecurityPolicy
 from excel_assistant.nlp.intent_models import (
     ExcelAction,
@@ -35,6 +38,21 @@ from excel_assistant.nlp.intent_models import (
     SplitTextAction,
     MergeCellsAction,
     SetCellFormatAction,
+    PriceAdjustmentAction,
+    ReconciliationAction,
+    InvoiceAction,
+    InventoryAlertAction,
+    TopSellingAction,
+    CustomerLedgerAction,
+    TrialBalanceAction,
+    AccountBalanceAction,
+    PayrollAction,
+    DepreciationAction,
+    FinancialStatementAction,
+    DeepFileAuditAction,
+    AutoChartAction,
+    BackupAction,
+    PdfExportAction,
     UndoLastAction,
 )
 from excel_assistant.core.exceptions import (
@@ -148,6 +166,52 @@ class ActionExecutor:
 
             elif isinstance(action, SetCellFormatAction):
                 return DataActionHandler.execute_set_cell_format(action, ctx)
+
+            elif isinstance(action, PriceAdjustmentAction):
+                return BusinessActionHandler.execute_price_adjustment(action, ctx)
+
+            elif isinstance(action, ReconciliationAction):
+                return AccountingActionHandler.execute_reconciliation(action, ctx)
+
+            elif isinstance(action, InvoiceAction):
+                return BusinessActionHandler.execute_invoice(action, ctx)
+
+            elif isinstance(action, InventoryAlertAction):
+                return BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+            elif isinstance(action, TopSellingAction):
+                return BusinessActionHandler.execute_top_selling(action, ctx)
+
+            elif isinstance(action, CustomerLedgerAction):
+                return BusinessActionHandler.execute_customer_ledger(action, ctx)
+
+            elif isinstance(action, TrialBalanceAction):
+                return AccountingActionHandler.execute_trial_balance(action, ctx)
+
+            elif isinstance(action, AccountBalanceAction):
+                return AccountingActionHandler.execute_account_balance(action, ctx)
+
+            elif isinstance(action, PayrollAction):
+                return AccountingActionHandler.execute_payroll(action, ctx)
+
+            elif isinstance(action, DepreciationAction):
+                return AccountingActionHandler.execute_depreciation(action, ctx)
+
+            elif isinstance(action, FinancialStatementAction):
+                return AccountingActionHandler.execute_financial_statement(action, ctx)
+
+            elif isinstance(action, DeepFileAuditAction):
+                audit_res = DeepFileAuditor.audit_sheet(ctx.sheet)
+                return ActionResult(success=True, message_persian=audit_res.persian_summary, data=audit_res)
+
+            elif isinstance(action, AutoChartAction):
+                return BusinessActionHandler.execute_auto_chart(action, ctx)
+
+            elif isinstance(action, BackupAction):
+                return BusinessActionHandler.execute_backup(action, ctx)
+
+            elif isinstance(action, PdfExportAction):
+                return BusinessActionHandler.execute_pdf_export(action, ctx)
 
             else:
                 return ActionResult(
