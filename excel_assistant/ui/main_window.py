@@ -42,6 +42,23 @@ class HorizontalWheelFilter(QObject):
         return super().eventFilter(obj, event)
 
 
+class DropUpComboBox(QComboBox):
+    """QComboBox that ensures its popup list opens upwards (Drop-Up) above the control."""
+
+    def showPopup(self):
+        super().showPopup()
+        popup = self.findChild(QFrame)
+        if popup:
+            popup_h = popup.height()
+            if popup_h < 50:
+                popup_h = popup.sizeHint().height()
+            if popup_h < 50:
+                popup_h = min(420, max(80, self.count() * 40 + 16))
+            top_left = self.mapToGlobal(self.rect().topLeft())
+            new_y = top_left.y() - popup_h - 4
+            popup.move(top_left.x(), max(10, new_y))
+
+
 class MainWindow(QMainWindow):
     """Main Application Window."""
 
@@ -88,12 +105,13 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.history_panel, stretch=1)
         main_layout.addLayout(content_layout)
 
-        # 3. Quick Actions Bar (Cascading 5-Category Dropdown + Action Selector + Horizontal Scrollable Chips)
+        # 3. Cascading 5-Category Dropdown + Action Selector + Run Button (Bottom Action Bar)
         chips_frame = QFrame()
+        chips_frame.setObjectName("quickActionBar")
         chips_frame.setStyleSheet("background: transparent; border: none;")
         chips_frame_layout = QHBoxLayout(chips_frame)
-        chips_frame_layout.setContentsMargins(12, 0, 12, 4)
-        chips_frame_layout.setSpacing(8)
+        chips_frame_layout.setContentsMargins(12, 4, 12, 6)
+        chips_frame_layout.setSpacing(12)
 
         # 3.1. Structure of the 5 requested categories
         self.five_categories = {
@@ -162,94 +180,31 @@ class MainWindow(QMainWindow):
             }
         }
 
-        # Dropdown 1: انتخاب دسته‌بندی اصلی (۵ بخش)
-        self.category_combo = QComboBox()
+        # Dropdown 1: انتخاب دسته‌بندی اصلی (۵ بخش) - بازشونده به بالا
+        self.category_combo = DropUpComboBox()
         self.category_combo.setObjectName("quickCategoryCombo")
         self.category_combo.setToolTip("۱. ابتدا حوزه یا دسته‌بندی کار خود را انتخاب کنید")
-        self.category_combo.addItem("📁 ۱. انتخاب حوزه (۵ دسته‌بندی)...", None)
+        self.category_combo.addItem("📁 ۱. انتخاب حوزه (۵ دسته‌بندی اصلی)...", None)
         for cat_key, cat_data in self.five_categories.items():
             self.category_combo.addItem(cat_data["title"], cat_key)
         self.category_combo.currentIndexChanged.connect(self._on_category_selected)
-        chips_frame_layout.addWidget(self.category_combo)
+        chips_frame_layout.addWidget(self.category_combo, stretch=2)
 
-        # Dropdown 2: انتخاب عملیات زیرمجموعه
-        self.action_combo = QComboBox()
+        # Dropdown 2: انتخاب عملیات زیرمجموعه - بازشونده به بالا
+        self.action_combo = DropUpComboBox()
         self.action_combo.setObjectName("quickActionCombo")
         self.action_combo.setToolTip("۲. عملیات مورد نظر در این حوزه را انتخاب کنید")
-        self.action_combo.addItem("🎯 ۲. انتخاب عملیات...", None)
+        self.action_combo.addItem("🎯 ۲. ابتدا حوزه را انتخاب کنید...", None)
         self.action_combo.currentIndexChanged.connect(self._on_action_selected)
-        chips_frame_layout.addWidget(self.action_combo)
+        chips_frame_layout.addWidget(self.action_combo, stretch=3)
 
         # دکمه اجرای سریع عملیات انتخابی
         self.btn_run_action = QPushButton("اجرا 🚀")
         self.btn_run_action.setObjectName("runQuickActionButton")
         self.btn_run_action.setToolTip("اجرای عملیات انتخاب‌شده")
         self.btn_run_action.clicked.connect(self._on_run_action_clicked)
-        chips_frame_layout.addWidget(self.btn_run_action)
+        chips_frame_layout.addWidget(self.btn_run_action, stretch=0)
 
-        # 3.2. Horizontal Scrollable Chips (نوار کشویی افقی برای دسترسی سریع بدون اقلام تکراری پنل سمت چپ)
-        chips_scroll = QScrollArea()
-        chips_scroll.setObjectName("chipsScrollArea")
-        chips_scroll.setWidgetResizable(True)
-        chips_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        chips_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        chips_scroll.setFixedHeight(38)
-
-        chips_container = QWidget()
-        chips_container.setStyleSheet("background: transparent;")
-        chips_layout = QHBoxLayout(chips_container)
-        chips_layout.setContentsMargins(0, 0, 0, 0)
-        chips_layout.setSpacing(8)
-
-        # Clean list of quick chips including the new capabilities
-        quick_chips = [
-            ("⚖️ مغایرت‌گیری دو ستون", "مغایرت‌گیری ستون A و B"),
-            ("🧾 صدور فاکتور فروش", "ثبت فاکتور فروش"),
-            ("💼 حقوق و دستمزد", "محاسبه حقوق و دستمزد"),
-            ("📦 کنترل موجودی و هشدار", "موجودی انبار و هشدار کمبود موجودی"),
-            ("📊 تراز آزمایشی", "تهیه تراز آزمایشی"),
-            ("💳 مانده حساب", "محاسبه مانده حساب"),
-            ("📉 استهلاک دارایی", "محاسبه استهلاک"),
-            ("👥 بدهی و طلب مشتریان", "محاسبه بدهی و طلب مشتریان"),
-            ("🏆 پرفروش‌ترین‌ها", "گزارش پرفروش‌ترین کالاها"),
-            ("🏷️ ۱۵٪ افزایش قیمت", "قیمت‌های ستون C را ۱۵ درصد افزایش بده"),
-            ("📈 صورت سود و زیان", "صورت سود و زیان جامع"),
-            ("🏛️ ترازنامه مالی", "ترازنامه"),
-            ("🩺 سلامت فایل", "سلامت فایل و بررسی خطاهای اکسل"),
-            ("📊 رسم نمودار", "رسم نمودار ستونی"),
-            ("💾 نسخه پشتیبان", "ذخیره نسخه پشتیبان"),
-            ("📄 خروجی PDF", "خروجی PDF از شیت"),
-            ("🔍 فیلتر هوشمند", "فیلتر هوشمند جدول"),
-            ("🔄 سورت صعودی", "مرتب‌سازی صعودی ستون A"),
-            ("🔽 سورت نزولی", "مرتب‌سازی نزولی ستون A"),
-            ("🗑️ حذف تکراری‌ها", "حذف داده‌های تکراری"),
-            ("🧹 حذف سطرهای خالی", "ردیف‌های خالی را حذف کن"),
-            ("➕ جمع خودکار", "جمع خودکار ستون A"),
-            ("📊 میانگین‌گیری", "میانگین ستون A"),
-            ("🔺 بیشترین / کمترین", "بیشترین مقدار ستون A"),
-            ("🔢 متن به عدد", "تبدیل متن به عدد در ستون A"),
-            ("✂️ تفکیک نام و متن", "تفکیک نام و نام خانوادگی در ستون A"),
-            ("🔗 ادغام سلول‌ها", "سلول‌های A1:B1 را ادغام کن"),
-            ("💲 فرمت تومان", "فرمت ستون B را به تومان تغییر بده"),
-            ("📈 فرمت درصد", "فرمت ستون C را درصدی کن"),
-            ("📐 تنظیم عرض ستون‌ها", "عرض ستون‌ها را خودکار تنظیم کن"),
-            ("📋 ساخت جدول", "یک جدول بساز"),
-        ]
-
-        for label, clean_cmd in quick_chips:
-            btn = QPushButton(label)
-            btn.setProperty("class", "quickChip")
-            btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-            btn.clicked.connect(lambda _, c=clean_cmd: self._on_quick_chip_clicked(c))
-            chips_layout.addWidget(btn)
-
-        chips_layout.addStretch()
-        chips_scroll.setWidget(chips_container)
-
-        self._wheel_filter = HorizontalWheelFilter(chips_scroll)
-        chips_scroll.viewport().installEventFilter(self._wheel_filter)
-
-        chips_frame_layout.addWidget(chips_scroll, stretch=1)
         main_layout.addWidget(chips_frame)
 
         # 4. Input bar
@@ -405,11 +360,12 @@ class MainWindow(QMainWindow):
         cat_key = self.category_combo.itemData(index)
         self.action_combo.blockSignals(True)
         self.action_combo.clear()
-        self.action_combo.addItem("🎯 ۲. انتخاب عملیات...", None)
-
         if cat_key and cat_key in self.five_categories:
+            self.action_combo.addItem("🎯 ۲. انتخاب عملیات...", None)
             for label, cmd in self.five_categories[cat_key]["commands"]:
                 self.action_combo.addItem(label, cmd)
+        else:
+            self.action_combo.addItem("🎯 ۲. ابتدا حوزه را انتخاب کنید...", None)
         self.action_combo.setCurrentIndex(0)
         self.action_combo.blockSignals(False)
 
@@ -427,7 +383,7 @@ class MainWindow(QMainWindow):
             cmd = self.action_combo.itemData(curr_idx) or self.action_combo.itemText(curr_idx)
             if cmd:
                 self.input_edit.setText(cmd)
-                self._on_send_clicked()
+                self._on_quick_chip_clicked(cmd)
         elif self.input_edit.text().strip():
             self._on_send_clicked()
         else:
