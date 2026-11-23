@@ -1,0 +1,496 @@
+"""
+Deep Midnight Cosmic Glassmorphism RTL Persian Styling for Excel AI Assistant.
+Provides high-vibrancy shortcut buttons, glowing blue accents, and dark cosmic aesthetics.
+"""
+from pathlib import Path
+
+# Path to background wallpaper image
+RESOURCES_DIR = Path(__file__).parent / "resources"
+BACKGROUND_IMAGE_PATH = (RESOURCES_DIR / "background.jpg").as_posix()
+
+QSS_STYLE = f"""
+/* Main Window & Base Widgets */
+QMainWindow, QDialog, QWidget {{
+    background-color: #030712;
+    color: #F8FAFC;
+    font-family: 'Segoe UI', 'Vazirmatn', 'Tahoma', sans-serif;
+    font-size: 13px;
+}}
+
+/* Top Header Panel */
+QFrame#headerPanel {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #09132B, stop:1 #04091A);
+    border-bottom: 2px solid #1D4ED8;
+    padding: 8px 16px;
+}}
+
+QLabel#userBadge {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #08132B, stop:1 #0E224F);
+    color: #38BDF8;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 4px 14px;
+    border: 1.5px solid #2563EB;
+    border-radius: 14px;
+}}
+
+QLabel#excelStatusPill {{
+    background-color: #081024;
+    border: 1px solid #1E293B;
+    border-radius: 14px;
+    padding: 4px 12px;
+    color: #E2E8F0;
+    font-size: 12px;
+    font-weight: 500;
+}}
+
+QPushButton#openFileButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #3B82F6);
+    border: 1px solid #60A5FA;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    padding: 6px 14px;
+    font-size: 13px;
+}}
+
+QPushButton#openFileButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563EB, stop:1 #60A5FA);
+    border-color: #93C5FD;
+}}
+
+QPushButton#openFileButton:pressed {{
+    background: #1E40AF;
+}}
+
+/* Combo Boxes */
+QComboBox {{
+    background-color: #081024;
+    border: 1px solid #1E3A8A;
+    border-radius: 8px;
+    padding: 5px 10px;
+    color: #E2E8F0;
+    font-size: 12px;
+}}
+
+QComboBox:hover {{
+    border-color: #38BDF8;
+}}
+
+QComboBox::drop-down {{
+    border: none;
+    width: 20px;
+}}
+
+/* Reconnect Button */
+QPushButton#reconnectButton {{
+    background-color: #081024;
+    border: 1px solid #1E3A8A;
+    border-radius: 8px;
+    color: #93C5FD;
+    font-weight: bold;
+    padding: 6px 12px;
+}}
+
+QPushButton#reconnectButton:hover {{
+    background-color: #1E3A8A;
+    color: #FFFFFF;
+}}
+
+/* Sidebar Panel */
+QFrame#sidebarPanel {{
+    background-color: #04091A;
+    border: 1px solid #132247;
+    border-radius: 12px;
+    padding: 10px;
+}}
+
+/* Sidebar History List */
+QListWidget#historyList {{
+    background-color: #020617;
+    border: 1px solid #132247;
+    border-radius: 10px;
+    color: #CBD5E1;
+    padding: 6px;
+    font-size: 12px;
+}}
+
+QListWidget#historyList::item {{
+    padding: 8px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+}}
+
+QListWidget#historyList::item:hover {{
+    background-color: #0B193D;
+    color: #60A5FA;
+}}
+
+QListWidget#historyList::item:selected {{
+    background-color: #1D4ED8;
+    color: #FFFFFF;
+}}
+
+/* Sidebar Action Buttons with High Vibrancy Primary Colors */
+QPushButton.sidebarActionBtn {{
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+    text-align: center;
+}}
+
+/* 1. Undo: Warm Vibrant Amber/Orange */
+QPushButton#undoButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #EA580C, stop:1 #FB923C);
+    border: 1px solid #F97316;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#undoButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F97316, stop:1 #FDBA74);
+    border: 1px solid #FDBA74;
+}}
+
+QPushButton#undoButton:pressed {{
+    background: #C2410C;
+}}
+
+/* 2. Unique Column Lock: Vibrant Royal Purple */
+QPushButton#uniqueColButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6D28D9, stop:1 #8B5CF6);
+    border: 1px solid #8B5CF6;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#uniqueColButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #7C3AED, stop:1 #A78BFA);
+    border: 1px solid #A78BFA;
+}}
+
+QPushButton#uniqueColButton:pressed {{
+    background: #5B21B6;
+}}
+
+/* 3. 4 Arithmetic Operations: Rich Vibrant Emerald Green */
+QPushButton#arithmeticButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);
+    border: 1px solid #10B981;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#arithmeticButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #34D399);
+    border: 1px solid #34D399;
+}}
+
+QPushButton#arithmeticButton:pressed {{
+    background: #064E3B;
+}}
+
+/* 4. Product Discount: Warm Vibrant Mango/Amber */
+QPushButton#discountButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #B45309, stop:1 #F59E0B);
+    border: 1px solid #F59E0B;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#discountButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #D97706, stop:1 #FBBF24);
+    border: 1px solid #FBBF24;
+}}
+
+QPushButton#discountButton:pressed {{
+    background: #78350F;
+}}
+
+/* 5. Insert Date: Vibrant Sky Blue / Azure */
+QPushButton#dateButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0284C7, stop:1 #38BDF8);
+    border: 1px solid #38BDF8;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#dateButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0369A1, stop:1 #7DD3FC);
+    border: 1px solid #7DD3FC;
+}}
+
+QPushButton#dateButton:pressed {{
+    background: #075985;
+}}
+
+/* 6. Smart Analysis: Deep Sapphire / Royal Blue */
+QPushButton#analyzeButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #2563EB);
+    border: 1px solid #3B82F6;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#analyzeButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #60A5FA);
+    border: 1px solid #60A5FA;
+}}
+
+QPushButton#analyzeButton:pressed {{
+    background: #172554;
+}}
+
+/* 7. Sales Calculation: Radiant Ruby / Rose Coral */
+QPushButton#salesButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #BE123C, stop:1 #F43F5E);
+    border: 1px solid #F43F5E;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#salesButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #E11D48, stop:1 #FB7185);
+    border: 1px solid #FB7185;
+}}
+
+QPushButton#salesButton:pressed {{
+    background: #9F1239;
+}}
+
+/* 8. Profit Calculation: Vibrant Emerald Green */
+QPushButton#profitButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);
+    border: 1px solid #10B981;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#profitButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #34D399);
+    border: 1px solid #34D399;
+}}
+
+QPushButton#profitButton:pressed {{
+    background: #064E3B;
+}}
+
+/* Chat Scroll Area */
+QScrollArea#chatScrollArea {{
+    background-color: #020617;
+    background-image: url({BACKGROUND_IMAGE_PATH});
+    background-position: center;
+    background-repeat: no-repeat;
+    border: none;
+}}
+
+QScrollArea#chatScrollArea > QWidget > QWidget {{
+    background: transparent;
+}}
+
+/* Quick Action Chips */
+QComboBox#quickCommandsCombo {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0B1938, stop:1 #132247);
+    border: 1px solid #2563EB;
+    border-radius: 12px;
+    padding: 4px 12px;
+    color: #93C5FD;
+    font-size: 12px;
+    font-weight: bold;
+    min-height: 26px;
+    min-width: 220px;
+}}
+
+QComboBox#quickCommandsCombo:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1D4ED8);
+    border-color: #38BDF8;
+    color: #FFFFFF;
+}}
+
+QComboBox#quickCommandsCombo::drop-down {{
+    border: none;
+    width: 20px;
+}}
+
+QComboBox#quickCommandsCombo QAbstractItemView {{
+    background-color: #070F26;
+    border: 1px solid #1E3A8A;
+    border-radius: 8px;
+    color: #E2E8F0;
+    selection-background-color: #1D4ED8;
+    selection-color: #FFFFFF;
+    padding: 4px;
+}}
+
+QScrollArea#chipsScrollArea {{
+    background: transparent;
+    border: none;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar:horizontal {{
+    height: 4px;
+    background: rgba(8, 16, 38, 0.4);
+    border-radius: 2px;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar::handle:horizontal {{
+    background: #1E3A8A;
+    border-radius: 2px;
+    min-width: 20px;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar::handle:horizontal:hover {{
+    background: #38BDF8;
+}}
+
+QScrollArea#chipsScrollArea QScrollBar::add-line:horizontal,
+QScrollArea#chipsScrollArea QScrollBar::sub-line:horizontal {{
+    width: 0px;
+    height: 0px;
+}}
+
+QPushButton.quickChip {{
+    background-color: rgba(10, 20, 42, 0.85);
+    border: 1px solid #1E3A8A;
+    border-radius: 14px;
+    padding: 5px 14px;
+    font-size: 12px;
+    color: #93C5FD;
+    font-weight: 500;
+    white-space: nowrap;
+}}
+
+QPushButton.quickChip:hover {{
+    background-color: #1D4ED8;
+    color: #FFFFFF;
+    border-color: #38BDF8;
+}}
+
+QPushButton.quickChip:pressed {{
+    background-color: #1E3A8A;
+}}
+
+/* Chat Input Bar */
+QFrame#inputPanel {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #09132B, stop:1 #04091A);
+    border-top: 1px solid #132247;
+    padding: 10px 16px;
+}}
+
+QLineEdit#chatInput {{
+    background-color: rgba(6, 12, 28, 0.9);
+    border: 1px solid #1E3A8A;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #FFFFFF;
+    font-size: 13px;
+    selection-background-color: #1D4ED8;
+}}
+
+QLineEdit#chatInput:focus {{
+    border: 1px solid #38BDF8;
+}}
+
+/* Send Button */
+QPushButton#sendButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #3B82F6);
+    border: 1px solid #60A5FA;
+    color: #FFFFFF;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 13px;
+    font-weight: bold;
+}}
+
+QPushButton#sendButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563EB, stop:1 #60A5FA);
+    border-color: #93C5FD;
+}}
+
+QPushButton#sendButton:pressed {{
+    background: #1E40AF;
+}}
+
+/* Stop Button */
+QPushButton#stopButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #991B1B, stop:1 #DC2626);
+    border: 1px solid #EF4444;
+    color: #FFFFFF;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: bold;
+}}
+
+QPushButton#stopButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #B91C1C, stop:1 #EF4444);
+}}
+
+/* General Push Buttons */
+QPushButton {{
+    background-color: #0E1D40;
+    border: 1px solid #1E3A8A;
+    border-radius: 8px;
+    color: #E2E8F0;
+    padding: 8px 16px;
+    font-weight: bold;
+}}
+
+QPushButton:hover {{
+    background-color: #1D4ED8;
+    border-color: #38BDF8;
+    color: #FFFFFF;
+}}
+
+QPushButton:pressed {{
+    background-color: #0B193D;
+}}
+
+/* Scrollbars */
+QScrollBar:vertical {{
+    border: none;
+    background: #04091A;
+    width: 8px;
+    margin: 0px;
+}}
+
+QScrollBar::handle:vertical {{
+    background: #1E3A8A;
+    min-height: 20px;
+    border-radius: 4px;
+}}
+
+QScrollBar::handle:vertical:hover {{
+    background: #38BDF8;
+}}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0px;
+}}
+"""
