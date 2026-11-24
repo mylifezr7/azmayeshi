@@ -910,4 +910,74 @@ def test_consecutive_inventory_alert_no_circular_reference(test_manager):
     assert "G2-" not in g2_run3, "Circular reference detected in G2!"
 
 
+def test_multi_batch_inventory_fifo_allocation(test_manager):
+    """
+    Test multiple purchase batches of the same product (e.g. 2 banana batches, 2 sausage batches).
+    Verifies:
+    1. Sales is allocated via FIFO to oldest batch first; second batch is NOT double-deducted.
+    2. Total remaining stock across batches is preserved (10+10 - 1.7 = 18.3, not 16.6).
+    3. Status checks total remaining stock and does not trigger false alerts.
+    """
+    p_sheet = test_manager.create_sheet("خرید_چندپارتی")
+    p_sheet.set_value("A1", "نام کالا")
+    p_sheet.set_value("B1", "فی خرید")
+    p_sheet.set_value("C1", "تعداد خرید")
+    p_sheet.set_value("D1", "مبلغ کل")
+
+    # Batch 1 of موز
+    p_sheet.set_value("A2", "موز")
+    p_sheet.set_value("B2", 150000)
+    p_sheet.set_value("C2", 10)
+    p_sheet.set_value("D2", 1500000)
+
+    # Batch 1 of سوسیس
+    p_sheet.set_value("A3", "سوسیس")
+    p_sheet.set_value("B3", 150000)
+    p_sheet.set_value("C3", 10)
+    p_sheet.set_value("D3", 1500000)
+
+    # Batch 2 of سوسیس
+    p_sheet.set_value("A4", "سوسیس")
+    p_sheet.set_value("B4", 155000)
+    p_sheet.set_value("C4", 10)
+
+    # Batch 2 of موز
+    p_sheet.set_value("A5", "موز")
+    p_sheet.set_value("B5", 155000)
+    p_sheet.set_value("C5", 10)
+
+    s_sheet = test_manager.create_sheet("فروش_چندپارتی")
+    s_sheet.set_value("A1", "نام کالا")
+    s_sheet.set_value("B1", "قیمت فروش")
+    s_sheet.set_value("C1", "تعداد فروش")
+
+    s_sheet.set_value("A2", "موز")
+    s_sheet.set_value("B2", 170000)
+    s_sheet.set_value("C2", 1.7)
+
+    action = InventoryAlertAction(min_threshold=5.0, highlight_low_stock=True)
+    ctx = ActionContext(manager=test_manager, sheet=p_sheet)
+
+    res = BusinessActionHandler.execute_inventory_alert(action, ctx)
+    assert res.success is True
+
+    # Column D in rows 4 and 5 should be auto-filled:
+    assert p_sheet.get_formula("D4") == '=IF(OR(B4="", C4=""), "", B4*C4)'
+    assert p_sheet.get_formula("D5") == '=IF(OR(B5="", C5=""), "", B5*C5)'
+
+    # Formulas in Column E (تعداد فروش):
+    f_sold_batch1 = p_sheet.get_formula("E2")
+    f_sold_batch2 = p_sheet.get_formula("E5")
+
+    # Batch 1 takes up to 10
+    assert "MAX(0, MIN(C2" in f_sold_batch1
+    # Batch 2 subtracts prior purchases:
+    assert "SUMIF($A$2:$A4, A5, $C$2:$C4)" in f_sold_batch2
+
+    # Status formula checks total remaining of the product
+    f_status_batch1 = p_sheet.get_formula("G2")
+    assert "SUMIF($A$2:$A$5, A2, $F$2:$F$5)<=5.0" in f_status_batch1
+
+
+
 

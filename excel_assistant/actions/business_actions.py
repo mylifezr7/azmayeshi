@@ -660,10 +660,52 @@ class BusinessActionHandler:
         sheet.set_font(f"{target_cols[0]}{header_row}:{target_cols[-1]}{header_row}", bold=True)
         sheet.set_cell_color(f"{target_cols[0]}{header_row}:{target_cols[-1]}{header_row}", "#E0E7FF")
 
+        # 5. آماده‌سازی و پردازش سطرهای جدول
+        # تشخیص ستون احتمالی «مبلغ کل» (تعداد * قیمت واحد) در شیت خرید برای پر کردن خودکار سطرهای خالی
+        total_amount_col = None
+        for c in range(min_c, last_data_c + 1):
+            c_let = col_index_to_letter(c)
+            if c_let in [prod_col, stock_col, price_col, same_sheet_sold_col] + known_added_cols:
+                continue
+            h_amt = str(sheet.get_value(f"{c_let}{header_row}") or "").strip().lower()
+            if any(kw in h_amt for kw in ["مبلغ کل", "مبلغ", "جمع کل", "بهای کل", "قیمت کل", "total amount"]):
+                total_amount_col = c_let
+                break
+
+        # پیش‌محاسبه آخرین سطر واقعی و مجموع خریدهای هر کالا برای مدیریت چندپارتی (FIFO)
+        actual_last_row = start_row
+        total_purch_by_prod: Dict[str, float] = {}
+        prod_rows_map: Dict[str, List[int]] = {}
+        for r_check in range(start_row, max_r + 1):
+            row_txt = " ".join(
+                str(sheet.get_value(f"{col_index_to_letter(c)}{r_check}") or "")
+                for c in range(min_c, last_data_c + 1)
+            ).strip().lower()
+            if any(kw in row_txt for kw in SUMMARY_KEYWORDS):
+                continue
+            p_val = sheet.get_value(f"{prod_col}{r_check}")
+            s_val = sheet.get_value(f"{stock_col}{r_check}")
+            if (p_val is not None and str(p_val).strip() != "") or (s_val is not None and str(s_val).strip() != ""):
+                actual_last_row = max(actual_last_row, r_check)
+                if p_val and str(p_val).strip():
+                    p_k = norm_key(str(p_val).strip())
+                    try:
+                        sq = float(str(s_val).replace(",", "").strip()) if s_val is not None else 0.0
+                    except ValueError:
+                        sq = 0.0
+                    total_purch_by_prod[p_k] = total_purch_by_prod.get(p_k, 0.0) + sq
+                    prod_rows_map.setdefault(p_k, []).append(r_check)
+
+        total_rem_by_prod: Dict[str, float] = {}
+        for p_k, tot_p in total_purch_by_prod.items():
+            tot_s = sales_by_prod.get(p_k, 0.0)
+            total_rem_by_prod[p_k] = max(0.0, tot_p - tot_s)
+
         threshold = action.min_threshold
         low_stock_items = []
         total_items_count = 0
         total_valuation = 0.0
+        allocated_sales_by_prod: Dict[str, float] = {}
 
         existing_sum_row = None
         last_data_row = start_row - 1
@@ -710,34 +752,76 @@ class BusinessActionHandler:
             except ValueError:
                 u_price = 0.0
 
+            # پر کردن خودکار ستون خالی مبلغ کل (تعداد * قیمت واحد)
+            if total_amount_col:
+                cur_amt = sheet.get_value(f"{total_amount_col}{r}")
+                if cur_amt is None or str(cur_amt).strip() == "":
+                    sheet.set_formula(
+                        f"{total_amount_col}{r}",
+                        f'=IF(OR({price_col}{r}="", {stock_col}{r}=""), "", {price_col}{r}*{stock_col}{r})'
+                    )
+
             total_items_count += 1
             last_data_row = r
 
+            p_k = norm_key(prod_name)
+
             if sales_sheet:
-                sold_qty = sales_by_prod.get(norm_key(prod_name), 0.0)
-                rem_stock = max(0.0, s_qty - sold_qty)
+                # تخصیص هوشمند فروش به روش فایفو (FIFO) میان پارت‌های خرید یک کالا
+                tot_p_sales = sales_by_prod.get(p_k, 0.0)
+                already_alloc = allocated_sales_by_prod.get(p_k, 0.0)
+                unallocated = max(0.0, tot_p_sales - already_alloc)
+                this_row_sold = min(s_qty, unallocated)
+                allocated_sales_by_prod[p_k] = already_alloc + this_row_sold
+
+                rem_stock = max(0.0, s_qty - this_row_sold)
                 item_val = rem_stock * u_price
                 total_valuation += item_val
 
-                sheet.set_formula(
-                    f"{sold_col}{r}",
-                    f'=IF({prod_col}{r}="", "", SUMIF(\'{sales_sheet.name}\'!${s_prod_col}${s_start_r}:${s_prod_col}${s_max_r}, {prod_col}{r}, \'{sales_sheet.name}\'!${s_qty_col}${s_start_r}:${s_qty_col}${s_max_r}))'
-                )
+                is_multi = len(prod_rows_map.get(p_k, [])) > 1
+                tot_sales_expr = f"SUMIF('{sales_sheet.name}'!${s_prod_col}${s_start_r}:${s_prod_col}${s_max_r}, {prod_col}{r}, '{sales_sheet.name}'!${s_qty_col}${s_start_r}:${s_qty_col}${s_max_r})"
+
+                if not is_multi:
+                    sold_formula = f'=IF({prod_col}{r}="", "", {tot_sales_expr})'
+                    status_formula = f'=IF(OR({prod_col}{r}="", {rem_col}{r}=""), "", IF({rem_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
+                else:
+                    # فرمول اکسل فروش فایفو: کسر خریدهای ماقبل در پارت‌های بالاتر
+                    if r == prod_rows_map[p_k][0]:
+                        sold_formula = f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", MAX(0, MIN({stock_col}{r}, {tot_sales_expr})))'
+                    else:
+                        prior_purch_expr = f"SUMIF(${prod_col}${start_row}:${prod_col}{r-1}, {prod_col}{r}, ${stock_col}${start_row}:${stock_col}{r-1})"
+                        sold_formula = f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", MAX(0, MIN({stock_col}{r}, {tot_sales_expr} - {prior_purch_expr})))'
+
+                    # وضعیت موجودی: مقایسه مجموع مانده کل این کالا با حد آستانه (جلوگیری از هشدار کاذب برای پارت‌های مصرف‌شده)
+                    tot_rem_expr = f"SUMIF(${prod_col}${start_row}:${prod_col}${actual_last_row}, {prod_col}{r}, ${rem_col}${start_row}:${rem_col}${actual_last_row})"
+                    status_formula = (
+                        f'=IF(OR({prod_col}{r}="", {rem_col}{r}=""), "", '
+                        f'IF({tot_rem_expr}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", '
+                        f'IF({rem_col}{r}=0, "تکمیل پارت ✔️", "موجودی کافی ✅")))'
+                    )
+
+                sheet.set_formula(f"{sold_col}{r}", sold_formula)
                 sheet.set_formula(
                     f"{rem_col}{r}",
                     f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", {stock_col}{r}-{sold_col}{r})'
                 )
-                sheet.set_formula(
-                    f"{status_col}{r}",
-                    f'=IF(OR({prod_col}{r}="", {rem_col}{r}=""), "", IF({rem_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
-                )
+                sheet.set_formula(f"{status_col}{r}", status_formula)
+
                 sheet.set_formula(
                     f"{val_col}{r}",
                     f'=IF(OR({rem_col}{r}="", {price_col}{r}=""), "", {rem_col}{r}*{price_col}{r})'
                 )
 
-                if rem_stock <= threshold:
-                    low_stock_items.append({"name": prod_name, "purchase": s_qty, "sold": sold_qty, "stock": rem_stock, "row": r})
+                prod_tot_rem = total_rem_by_prod.get(p_k, rem_stock)
+                if prod_tot_rem <= threshold:
+                    if not any(it["name"] == prod_name for it in low_stock_items):
+                        low_stock_items.append({
+                            "name": prod_name,
+                            "purchase": total_purch_by_prod.get(p_k, s_qty),
+                            "sold": tot_p_sales,
+                            "stock": prod_tot_rem,
+                            "row": r,
+                        })
                     if action.highlight_low_stock:
                         sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", "#FEE2E2")
                 else:
@@ -792,7 +876,7 @@ class BusinessActionHandler:
                 else:
                     sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
 
-        # 5. سطر جمع کل
+        # 6. سطر جمع کل و اعمال فرمت مناسب اعداد
         if existing_sum_row:
             sum_row = existing_sum_row
             if sales_sheet and sold_col and rem_col:
@@ -802,7 +886,11 @@ class BusinessActionHandler:
                 sheet.set_formula(f"{rem_col}{sum_row}", f"=SUM({rem_col}{start_row}:{rem_col}{last_data_row})")
             sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{last_data_row})")
             sheet.set_font(f"{target_cols[0]}{sum_row}:{target_cols[-1]}{sum_row}", bold=True)
-            sheet.set_number_format(f"{target_cols[0]}{sum_row}:{target_cols[-1]}{sum_row}", "#,##0")
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_number_format(f"{sold_col}{sum_row}:{rem_col}{sum_row}", "#,##0.##")
+            elif rem_col:
+                sheet.set_number_format(f"{rem_col}{sum_row}", "#,##0.##")
+            sheet.set_number_format(f"{val_col}{sum_row}", "#,##0")
         elif last_data_row >= start_row:
             sum_row = last_data_row + 1
             sheet.set_value(f"{prod_col}{sum_row}", "مجموع کل ارزش موجودی انبار:")
@@ -814,10 +902,20 @@ class BusinessActionHandler:
             sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{last_data_row})")
             sheet.set_font(f"{prod_col}{sum_row}:{target_cols[-1]}{sum_row}", bold=True)
             sheet.set_cell_color(f"{prod_col}{sum_row}:{target_cols[-1]}{sum_row}", "#DCFCE7")
-            sheet.set_number_format(f"{target_cols[0]}{sum_row}:{target_cols[-1]}{sum_row}", "#,##0")
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_number_format(f"{sold_col}{sum_row}:{rem_col}{sum_row}", "#,##0.##")
+            elif rem_col:
+                sheet.set_number_format(f"{rem_col}{sum_row}", "#,##0.##")
+            sheet.set_number_format(f"{val_col}{sum_row}", "#,##0")
 
         if last_data_row >= start_row:
-            sheet.set_number_format(f"{target_cols[0]}{start_row}:{target_cols[-1]}{last_data_row}", "#,##0")
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_number_format(f"{sold_col}{start_row}:{rem_col}{last_data_row}", "#,##0.##")
+            elif rem_col:
+                sheet.set_number_format(f"{rem_col}{start_row}:{rem_col}{last_data_row}", "#,##0.##")
+            sheet.set_number_format(f"{val_col}{start_row}:{val_col}{last_data_row}", "#,##0")
+            if total_amount_col:
+                sheet.set_number_format(f"{total_amount_col}{start_row}:{total_amount_col}{last_data_row}", "#,##0")
         sheet.auto_fit_columns(target_cols)
 
         alert_text = ""
