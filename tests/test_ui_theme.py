@@ -117,24 +117,31 @@ def test_dropup_and_enlarged_controls():
 
 
 def test_sidebar_and_categories_reorganization():
-    """Verify that uniqueness lock, date, analysis, profit, and sales were moved to categories and accounting."""
+    """Verify that uniqueness lock, date, analysis, profit, sales, and discount were moved to categories and accounting,
+    and action menu opens automatically on category selection."""
     main_window_src = (Path(__file__).parent.parent / "excel_assistant" / "ui" / "main_window.py").read_text(encoding="utf-8")
     history_panel_src = (Path(__file__).parent.parent / "excel_assistant" / "ui" / "history_panel.py").read_text(encoding="utf-8")
 
-    # In HistoryPanel, the 5 action buttons are no longer added to sidebar layout
+    # In HistoryPanel, the action buttons are no longer added to sidebar layout
     assert "layout.addWidget(self.btn_unique)" not in history_panel_src
     assert "layout.addWidget(self.btn_date)" not in history_panel_src
     assert "layout.addWidget(self.btn_analyze)" not in history_panel_src
     assert "layout.addWidget(self.btn_sales)" not in history_panel_src
     assert "layout.addWidget(self.btn_profit)" not in history_panel_src
+    assert "layout.addWidget(self.btn_discount)" not in history_panel_src
 
-    # Accounting category contains profit and sales calculation
+    # Accounting category contains profit, sales, and discount calculation
     assert "محاسبه سود" in main_window_src
     assert "محاسبه فروش" in main_window_src
+    assert "محاسبه تخفیف" in main_window_src
 
-    # Web UI template also includes profit and sales in accounting
+    # Category selection automatically opens action menu popup
+    assert "self.action_combo.showPopup" in main_window_src
+
+    # Web UI template also includes profit, sales, and discount in accounting
     assert 'label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"' in HTML_TEMPLATE
     assert 'label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"' in HTML_TEMPLATE
+    assert 'label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"' in HTML_TEMPLATE
 
 
 

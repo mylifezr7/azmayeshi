@@ -136,6 +136,7 @@ class MainWindow(QMainWindow):
                 "commands": [
                     ("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", "محاسبه سود"),
                     ("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", "محاسبه فروش"),
+                    ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
                     ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
                     ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
                     ("💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", "محاسبه مانده حساب"),
@@ -148,6 +149,7 @@ class MainWindow(QMainWindow):
             "sales_inventory": {
                 "title": "🛒 ۳. قابلیت‌های فروش و انبارداری",
                 "commands": [
+                    ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
                     ("🧾 صدور و ثبت فاکتور رسمی فروش", "ثبت فاکتور فروش"),
                     ("🛒 صدور و ثبت فاکتور رسمی خرید", "ثبت فاکتور خرید"),
                     ("📦 کنترل موجودی و هشدار کمبود انبار", "موجودی انبار و هشدار کمبود موجودی"),
@@ -384,6 +386,11 @@ class MainWindow(QMainWindow):
         self.action_combo.setCurrentIndex(0)
         self.action_combo.blockSignals(False)
 
+        # باز شدن خودکار منوی عملیات پس از انتخاب حوزه/قابلیت
+        if cat_key and cat_key in self.five_categories:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self.action_combo.showPopup)
+
     def _on_action_selected(self, index: int):
         if index <= 0:
             return
@@ -544,6 +551,10 @@ class MainWindow(QMainWindow):
 
         if "فروش" in lower and any(k in lower for k in ["روزانه", "ماهانه", "سالانه", "کل", "محاسبه", "گزارش"]) and len(lower.split()) <= 4:
             self._open_sales_dialog()
+            return
+
+        if "تخفیف" in lower and len(lower.split()) <= 4:
+            self._open_discount_dialog()
             return
 
         if "تاریخ" in lower and any(k in lower for k in ["درج", "ثبت", "شیت"]) and len(lower.split()) <= 4:

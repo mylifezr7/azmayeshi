@@ -850,7 +850,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="btn-shortcut btn-save" onclick="saveWorkbook()">💾 ذخیره فایل (Save)... <span class="hotkey-badge">Ctrl+S</span></button>
             <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
             <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
-            <button class="btn-shortcut btn-discount" onclick="promptDiscount()">🏷️ محاسبه تخفیف کالاها...</button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
@@ -1313,6 +1312,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 "commands": [
                     {label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"},
                     {label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"},
+                    {label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"},
                     {label: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B"},
                     {label: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی"},
                     {label: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب"},
@@ -1325,6 +1325,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "sales_inventory": {
                 "title": "🛒 ۳. قابلیت‌های فروش و انبارداری",
                 "commands": [
+                    {label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"},
                     {label: "🧾 صدور و ثبت فاکتور رسمی فروش", cmd: "ثبت فاکتور فروش"},
                     {label: "🛒 صدور و ثبت فاکتور رسمی خرید", cmd: "ثبت فاکتور خرید"},
                     {label: "📦 کنترل موجودی و هشدار کمبود انبار", cmd: "موجودی انبار و هشدار کمبود موجودی"},
@@ -1378,6 +1379,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     opt.innerText = item.label;
                     actSelect.appendChild(opt);
                 });
+                setTimeout(() => {
+                    try {
+                        if (actSelect.showPicker) actSelect.showPicker();
+                        else actSelect.focus();
+                    } catch (e) {
+                        actSelect.focus();
+                    }
+                }, 100);
             } else {
                 actSelect.innerHTML = '<option value="">🎯 ۲. ابتدا حوزه را انتخاب کنید...</option>';
             }
@@ -1405,6 +1414,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 openProfitModal();
             } else if (cmd === 'محاسبه فروش') {
                 openSalesModal();
+            } else if (cmd.includes('تخفیف')) {
+                promptDiscount();
             } else if (cmd === 'درج تاریخ در شیت') {
                 promptInsertDate();
             } else {
