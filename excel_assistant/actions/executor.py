@@ -52,6 +52,7 @@ from excel_assistant.nlp.intent_models import (
     DeepFileAuditAction,
     AutoChartAction,
     BackupAction,
+    SaveWorkbookAction,
     PdfExportAction,
     UndoLastAction,
 )
@@ -103,124 +104,146 @@ class ActionExecutor:
             )
 
         # 4. Save state snapshot for undo before mutating
-        self.undo_manager.save_state(ctx.sheet)
+        is_mutating = not isinstance(action, (
+            AnalyzeSheetAction, DeepFileAuditAction, SaveWorkbookAction, BackupAction, PdfExportAction
+        ))
+        if is_mutating:
+            self.undo_manager.begin_action(ctx.sheet)
 
         # 5. Dispatch action
         try:
-            if isinstance(action, ColumnArithmeticAction):
-                return MathActionHandler.execute_arithmetic(action, ctx)
-
-            elif isinstance(action, ApplyDiscountAction):
-                return MathActionHandler.execute_discount(action, ctx)
-
-            elif isinstance(action, SalesSummaryAction):
-                return MathActionHandler.execute_sales_summary(action, ctx)
-
-            elif isinstance(action, ProfitCalculationAction):
-                return MathActionHandler.execute_profit_calculation(action, ctx)
-
-            elif isinstance(action, ColumnStatsAction):
-                return MathActionHandler.execute_stats(action, ctx)
-
-            elif isinstance(action, HighlightConditionAction):
-                return FormatActionHandler.execute_highlight_condition(action, ctx)
-
-            elif isinstance(action, HighlightDuplicatesAction):
-                return FormatActionHandler.execute_highlight_duplicates(action, ctx)
-
-            elif isinstance(action, DeleteEmptyRowsAction):
-                return DataActionHandler.execute_delete_empty_rows(action, ctx)
-
-            elif isinstance(action, DeleteDuplicatesAction):
-                return DataActionHandler.execute_delete_duplicates(action, ctx)
-
-            elif isinstance(action, SortDataAction):
-                return DataActionHandler.execute_sort(action, ctx)
-
-            elif isinstance(action, InsertDateAction):
-                return DataActionHandler.execute_insert_date(action, ctx)
-
-            elif isinstance(action, PreventDuplicatesAction):
-                return DataActionHandler.execute_prevent_duplicates(action, ctx)
-
-            elif isinstance(action, AutoFitColumnsAction):
-                return FormatActionHandler.execute_autofit(action, ctx)
-
-            elif isinstance(action, CreateTableAction):
-                return FormatActionHandler.execute_create_table(action, ctx)
-
-            elif isinstance(action, FormatCellsAction):
-                return FormatActionHandler.execute_format_cells(action, ctx)
-
-            elif isinstance(action, FilterDataAction):
-                return DataActionHandler.execute_filter(action, ctx)
-
-            elif isinstance(action, ConvertTextToNumberAction):
-                return DataActionHandler.execute_convert_text_to_number(action, ctx)
-
-            elif isinstance(action, SplitTextAction):
-                return DataActionHandler.execute_split_text(action, ctx)
-
-            elif isinstance(action, MergeCellsAction):
-                return DataActionHandler.execute_merge_cells(action, ctx)
-
-            elif isinstance(action, SetCellFormatAction):
-                return DataActionHandler.execute_set_cell_format(action, ctx)
-
-            elif isinstance(action, PriceAdjustmentAction):
-                return BusinessActionHandler.execute_price_adjustment(action, ctx)
-
-            elif isinstance(action, ReconciliationAction):
-                return AccountingActionHandler.execute_reconciliation(action, ctx)
-
-            elif isinstance(action, InvoiceAction):
-                return BusinessActionHandler.execute_invoice(action, ctx)
-
-            elif isinstance(action, InventoryAlertAction):
-                return BusinessActionHandler.execute_inventory_alert(action, ctx)
-
-            elif isinstance(action, TopSellingAction):
-                return BusinessActionHandler.execute_top_selling(action, ctx)
-
-            elif isinstance(action, CustomerLedgerAction):
-                return BusinessActionHandler.execute_customer_ledger(action, ctx)
-
-            elif isinstance(action, TrialBalanceAction):
-                return AccountingActionHandler.execute_trial_balance(action, ctx)
-
-            elif isinstance(action, AccountBalanceAction):
-                return AccountingActionHandler.execute_account_balance(action, ctx)
-
-            elif isinstance(action, PayrollAction):
-                return AccountingActionHandler.execute_payroll(action, ctx)
-
-            elif isinstance(action, DepreciationAction):
-                return AccountingActionHandler.execute_depreciation(action, ctx)
-
-            elif isinstance(action, FinancialStatementAction):
-                return AccountingActionHandler.execute_financial_statement(action, ctx)
-
-            elif isinstance(action, DeepFileAuditAction):
-                audit_res = DeepFileAuditor.audit_sheet(ctx.sheet)
-                return ActionResult(success=True, message_persian=audit_res.persian_summary, data=audit_res)
-
-            elif isinstance(action, AutoChartAction):
-                return BusinessActionHandler.execute_auto_chart(action, ctx)
-
-            elif isinstance(action, BackupAction):
-                return BusinessActionHandler.execute_backup(action, ctx)
-
-            elif isinstance(action, PdfExportAction):
-                return BusinessActionHandler.execute_pdf_export(action, ctx)
-
-            else:
-                return ActionResult(
-                    success=False,
-                    message_persian=f"عملیات ناشناخته: {action.action_type}"
-                )
-
+            res = self._dispatch(action, ctx)
+            if is_mutating:
+                if res.success:
+                    self.undo_manager.commit_action(ctx.sheet)
+                else:
+                    self.undo_manager.discard_pending()
+            return res
         except Exception as e:
+            if is_mutating:
+                self.undo_manager.discard_pending()
             return ActionResult(
                 success=False,
                 message_persian=f"❌ خطا در اجرای عملیات روی اکسل: {e}"
+            )
+
+    def _dispatch(self, action: ExcelAction, ctx: ActionContext) -> ActionResult:
+        if isinstance(action, ColumnArithmeticAction):
+            return MathActionHandler.execute_arithmetic(action, ctx)
+
+        elif isinstance(action, ApplyDiscountAction):
+            return MathActionHandler.execute_discount(action, ctx)
+
+        elif isinstance(action, SalesSummaryAction):
+            return MathActionHandler.execute_sales_summary(action, ctx)
+
+        elif isinstance(action, ProfitCalculationAction):
+            return MathActionHandler.execute_profit_calculation(action, ctx)
+
+        elif isinstance(action, ColumnStatsAction):
+            return MathActionHandler.execute_stats(action, ctx)
+
+        elif isinstance(action, HighlightConditionAction):
+            return FormatActionHandler.execute_highlight_condition(action, ctx)
+
+        elif isinstance(action, HighlightDuplicatesAction):
+            return FormatActionHandler.execute_highlight_duplicates(action, ctx)
+
+        elif isinstance(action, DeleteEmptyRowsAction):
+            return DataActionHandler.execute_delete_empty_rows(action, ctx)
+
+        elif isinstance(action, DeleteDuplicatesAction):
+            return DataActionHandler.execute_delete_duplicates(action, ctx)
+
+        elif isinstance(action, SortDataAction):
+            return DataActionHandler.execute_sort(action, ctx)
+
+        elif isinstance(action, InsertDateAction):
+            return DataActionHandler.execute_insert_date(action, ctx)
+
+        elif isinstance(action, PreventDuplicatesAction):
+            return DataActionHandler.execute_prevent_duplicates(action, ctx)
+
+        elif isinstance(action, AutoFitColumnsAction):
+            return FormatActionHandler.execute_autofit(action, ctx)
+
+        elif isinstance(action, CreateTableAction):
+            return FormatActionHandler.execute_create_table(action, ctx)
+
+        elif isinstance(action, FormatCellsAction):
+            return FormatActionHandler.execute_format_cells(action, ctx)
+
+        elif isinstance(action, FilterDataAction):
+            return DataActionHandler.execute_filter(action, ctx)
+
+        elif isinstance(action, ConvertTextToNumberAction):
+            return DataActionHandler.execute_convert_text_to_number(action, ctx)
+
+        elif isinstance(action, SplitTextAction):
+            return DataActionHandler.execute_split_text(action, ctx)
+
+        elif isinstance(action, MergeCellsAction):
+            return DataActionHandler.execute_merge_cells(action, ctx)
+
+        elif isinstance(action, SetCellFormatAction):
+            return DataActionHandler.execute_set_cell_format(action, ctx)
+
+        elif isinstance(action, PriceAdjustmentAction):
+            return BusinessActionHandler.execute_price_adjustment(action, ctx)
+
+        elif isinstance(action, ReconciliationAction):
+            return AccountingActionHandler.execute_reconciliation(action, ctx)
+
+        elif isinstance(action, InvoiceAction):
+            return BusinessActionHandler.execute_invoice(action, ctx)
+
+        elif isinstance(action, InventoryAlertAction):
+            return BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+        elif isinstance(action, TopSellingAction):
+            return BusinessActionHandler.execute_top_selling(action, ctx)
+
+        elif isinstance(action, CustomerLedgerAction):
+            return BusinessActionHandler.execute_customer_ledger(action, ctx)
+
+        elif isinstance(action, TrialBalanceAction):
+            return AccountingActionHandler.execute_trial_balance(action, ctx)
+
+        elif isinstance(action, AccountBalanceAction):
+            return AccountingActionHandler.execute_account_balance(action, ctx)
+
+        elif isinstance(action, PayrollAction):
+            return AccountingActionHandler.execute_payroll(action, ctx)
+
+        elif isinstance(action, DepreciationAction):
+            return AccountingActionHandler.execute_depreciation(action, ctx)
+
+        elif isinstance(action, FinancialStatementAction):
+            return AccountingActionHandler.execute_financial_statement(action, ctx)
+
+        elif isinstance(action, DeepFileAuditAction):
+            audit_res = DeepFileAuditor.audit_sheet(ctx.sheet)
+            return ActionResult(success=True, message_persian=audit_res.persian_summary, data=audit_res)
+
+        elif isinstance(action, AutoChartAction):
+            return BusinessActionHandler.execute_auto_chart(action, ctx)
+
+        elif isinstance(action, BackupAction):
+            return BusinessActionHandler.execute_backup(action, ctx)
+
+        elif isinstance(action, SaveWorkbookAction):
+            saved_path = ctx.manager.save(action.file_path)
+            return ActionResult(
+                success=True,
+                message_persian=f"💾 فایل اکسل با موفقیت ذخیره شد:\n**`{saved_path}`**",
+                data=saved_path
+            )
+
+        elif isinstance(action, PdfExportAction):
+            return BusinessActionHandler.execute_pdf_export(action, ctx)
+
+        else:
+            return ActionResult(
+                success=False,
+                message_persian=f"عملیات ناشناخته: {action.action_type}"
             )

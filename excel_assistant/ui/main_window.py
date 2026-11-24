@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
             "management": {
                 "title": "⚙️ ۵. امکانات مدیریتی خود برنامه",
                 "commands": [
+                    ("💾 ذخیره تغییرات فایل اکسل (Ctrl+S)", "ذخیره فایل"),
                     ("💾 ذخیره نسخه پشتیبان (Backup)", "ذخیره نسخه پشتیبان"),
                     ("📄 تولید خروجی PDF استاندارد", "خروجی PDF از شیت"),
                     ("↩️ لغو آخرین عملیات (Undo چندمرحله‌ای)", "لغو آخرین عملیات"),
@@ -239,6 +240,7 @@ class MainWindow(QMainWindow):
         self.status_bar_widget.workbook_switched.connect(self._on_workbook_switched)
         self.status_bar_widget.open_file_requested.connect(self._on_open_file_clicked)
         self.history_panel.command_selected.connect(self._on_history_item_selected)
+        self.history_panel.save_requested.connect(self._on_save_clicked)
         self.history_panel.undo_requested.connect(self._on_undo_clicked)
         self.history_panel.analyze_requested.connect(self._on_analyze_clicked)
         self.history_panel.arithmetic_requested.connect(lambda: self._open_arithmetic_dialog("add"))
@@ -249,6 +251,9 @@ class MainWindow(QMainWindow):
         self.history_panel.profit_requested.connect(self._open_profit_dialog)
 
         # Keyboard shortcuts (میانبرهای کیبورد)
+        self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.shortcut_save.activated.connect(self._on_save_clicked)
+
         self.shortcut_profit = QShortcut(QKeySequence("Ctrl+P"), self)
         self.shortcut_profit.activated.connect(self._open_profit_dialog)
         self.shortcut_profit_shift = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
@@ -485,6 +490,17 @@ class MainWindow(QMainWindow):
 
     def _on_history_item_selected(self, command: str):
         self.input_edit.setText(command)
+
+    def _on_save_clicked(self):
+        try:
+            if not self.manager.is_connected():
+                self.chat_widget.add_assistant_message("⚠️ هیچ فایل اکسلی در حال حاضر متصل نیست.")
+                return
+            saved_path = self.manager.save()
+            self.chat_widget.add_assistant_message(f"💾 تغییرات فایل اکسل با موفقیت ذخیره شد:\n**`{saved_path}`**")
+            self.history_panel.add_command("ذخیره فایل اکسل")
+        except Exception as e:
+            self.chat_widget.add_assistant_message(f"❌ خطا در ذخیره‌سازی فایل اکسل: {e}")
 
     def _on_undo_clicked(self):
         self.process_command("لغو آخرین عملیات")

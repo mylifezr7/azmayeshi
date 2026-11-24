@@ -23,19 +23,28 @@ class SheetSnapshot:
         self.matrix = sheet.get_matrix(min_r, min_c, max_r, max_c)
         self.formula_matrix = sheet.get_formula_matrix(min_r, min_c, max_r, max_c)
 
+    def get_cell(self, r: int, c: int) -> tuple[Any, Optional[str]]:
+        """Returns (value, formula) for cell at 1-based (r, c)."""
+        min_r, min_c, max_r, max_c = self.bounds
+        if min_r <= r <= max_r and min_c <= c <= max_c:
+            r_idx = r - min_r
+            c_idx = c - min_c
+            val = None
+            if r_idx < len(self.matrix):
+                row = self.matrix[r_idx]
+                val = row[c_idx] if c_idx < len(row) else None
+            formula = None
+            if r_idx < len(self.formula_matrix):
+                f_row = self.formula_matrix[r_idx]
+                formula = f_row[c_idx] if c_idx < len(f_row) else None
+            return val, formula
+        return None, None
+
     def restore_to(self, sheet: ISheet) -> None:
-        """Restores values and formulas into the sheet."""
-        curr_bounds = sheet.get_used_range_bounds()
-        min_r, min_c, max_r, max_c = curr_bounds
+        """Restores values and formulas into the sheet without wiping unrelated manual cells."""
         from excel_assistant.core.utils import col_index_to_letter
 
-        # Clear currently used range values
-        for r in range(min_r, max_r + 1):
-            for c in range(min_c, max_c + 1):
-                addr = f"{col_index_to_letter(c)}{r}"
-                sheet.set_value(addr, None)
-
-        # Restore from snapshotted matrix
+        # Restore from snapshotted matrix without clearing unrelated external user cells
         orig_min_r, orig_min_c, orig_max_r, orig_max_c = self.bounds
         for r_offset, row in enumerate(self.matrix):
             r = orig_min_r + r_offset
@@ -46,7 +55,7 @@ class SheetSnapshot:
                 formula = f_row[c_offset] if c_offset < len(f_row) else None
                 if formula:
                     sheet.set_formula(addr, formula)
-                elif val is not None:
+                else:
                     sheet.set_value(addr, val)
 
 

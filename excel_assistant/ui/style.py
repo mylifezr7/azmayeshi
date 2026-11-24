@@ -141,6 +141,26 @@ QPushButton.sidebarActionBtn {{
     text-align: center;
 }}
 
+/* 0. Save: Vibrant Teal / Emerald */
+QPushButton#saveButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0F766E, stop:1 #14B8A6);
+    border: 1px solid #2DD4BF;
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 10px 14px;
+}}
+
+QPushButton#saveButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #115E59, stop:1 #2DD4BF);
+    border: 1px solid #5EEAD4;
+}}
+
+QPushButton#saveButton:pressed {{
+    background: #134E4A;
+}}
+
 /* 1. Undo: Warm Vibrant Amber/Orange */
 QPushButton#undoButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #EA580C, stop:1 #FB923C);
