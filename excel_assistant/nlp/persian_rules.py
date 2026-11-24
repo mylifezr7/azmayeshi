@@ -35,6 +35,7 @@ from excel_assistant.nlp.intent_models import (
     ReconciliationAction,
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     TrialBalanceAction,
@@ -154,12 +155,23 @@ class PersianRuleParser:
         ]):
             return PayrollAction(description_persian="محاسبه لیست حقوق، اضافه‌کاری، بیمه و مالیات")
 
-        # 1.11 Inventory Alert & Valuation / موجودی انبار و هشدار کمبود موجودی
+        # 1.109 Inventory Valuation (FIFO, LIFO, Weighted Average) / ارزش‌گذاری انبار به روش‌های فایفو، لایفو و میانگین
         if any(w in text_lower for w in [
-            "کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار",
-            "کنترل انبار", "کنترل موجودی", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی",
-            "مانده موجودی", "موجودی باقی مانده", "موجودی باقیمانده", "مانده انبار", "موجودی کالا", "موجودی"
+            "فایفو", "fifo", "لایفو", "lifo", "میانگین موزون", "ارزش‌گذاری انبار", "ارزش گذاری انبار",
+            "ارزش‌گذاری موجودی", "ارزش گذاری موجودی", "کاردکس", "کاردکس کالا"
         ]):
+            v_method = "fifo"
+            if any(w in text_lower for w in ["مقایسه", "هر سه", "هر ۳", "کاردکس"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
+                v_method = "compare"
+            elif any(w in text_lower for w in ["لایفو", "lifo", "آخرین وارده"]):
+                v_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین موزون", "میانگین متحرک", "میانگین", "average", "موزون"]):
+                v_method = "average"
+            elif any(w in text_lower for w in ["فایفو", "fifo", "اولین وارده"]):
+                v_method = "fifo"
+            elif "ارزش‌گذاری" in text_lower or "ارزش گذاری" in text_lower:
+                v_method = "compare"
+
             thresh = 5.0
             th_m = re.search(r'(?:زیر|کمتر از|آستانه|حداقل)\s*([0-9]+)', text)
             if th_m:
@@ -190,10 +202,64 @@ class PersianRuleParser:
                 elif "خرید" in text or "انبار" in text:
                     purchase_s = sheets_found[0]
 
+            method_fa = {"fifo": "فایفو (FIFO)", "lifo": "لایفو (LIFO)", "average": "میانگین موزون", "compare": "فایفو، لایفو و میانگین موزون"}.get(v_method, "فایفو")
+            return InventoryValuationAction(
+                method=v_method,
+                min_threshold=thresh,
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                description_persian=f"ارزش‌گذاری موجودی انبار به روش {method_fa}"
+            )
+
+        # 1.11 Inventory Alert & Valuation / موجودی انبار و هشدار کمبود موجودی
+        if any(w in text_lower for w in [
+            "کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار",
+            "کنترل انبار", "کنترل موجودی", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی",
+            "مانده موجودی", "موجودی باقی مانده", "موجودی باقیمانده", "مانده انبار", "موجودی کالا", "موجودی"
+        ]):
+            thresh = 5.0
+            th_m = re.search(r'(?:زیر|کمتر از|آستانه|حداقل)\s*([0-9]+)', text)
+            if th_m:
+                try:
+                    thresh = float(th_m.group(1))
+                except ValueError:
+                    thresh = 5.0
+
+            v_method = "fifo"
+            if any(w in text_lower for w in ["لایفو", "lifo"]):
+                v_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین موزون", "میانگین", "average"]):
+                v_method = "average"
+            elif any(w in text_lower for w in ["فایفو", "fifo"]):
+                v_method = "fifo"
+
+            sales_s = None
+            purchase_s = None
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_\u0600-\u06FF]+)', text, flags=re.IGNORECASE)
+            if len(sheets_found) >= 2:
+                if "فروش" in text and "خرید" in text:
+                    f_pos = text.find("فروش")
+                    k_pos = text.find("خرید")
+                    if f_pos < k_pos:
+                        sales_s = sheets_found[0]
+                        purchase_s = sheets_found[1]
+                    else:
+                        purchase_s = sheets_found[0]
+                        sales_s = sheets_found[1]
+                else:
+                    sales_s = sheets_found[0]
+                    purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                if "فروش" in text:
+                    sales_s = sheets_found[0]
+                elif "خرید" in text or "انبار" in text:
+                    purchase_s = sheets_found[0]
+
             return InventoryAlertAction(
                 min_threshold=thresh,
                 sales_sheet=sales_s,
                 purchase_sheet=purchase_s,
+                valuation_method=v_method,
                 description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی"
             )
 

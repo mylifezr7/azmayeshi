@@ -22,6 +22,7 @@ from excel_assistant.core.utils import (
 from excel_assistant.nlp.intent_models import (
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     PriceAdjustmentAction,
@@ -29,6 +30,109 @@ from excel_assistant.nlp.intent_models import (
     BackupAction,
     PdfExportAction,
 )
+
+
+class InventoryValuationCalculator:
+    """
+    محاسبه ارزش موجودی انبار و بهای تمام شده کالای فروش‌رفته (COGS) به روش‌های استاندارد حسابداری:
+    - فایفو (FIFO): اولین وارده اولین صادره (First In, First Out)
+    - لایفو (LIFO): آخرین وارده اولین صادره (Last In, First Out)
+    - میانگین موزون (Weighted Average Cost)
+    """
+
+    @staticmethod
+    def calculate_valuation(
+        purchase_batches: List[Tuple[float, float]],  # List of (quantity, unit_price) in chronological order
+        total_sold: float,
+        method: str = "fifo"
+    ) -> Dict[str, float]:
+        """
+        محاسبه مانده موجودی، ارزش دفتری موجودی و بهای تمام شده کالای فروش‌رفته.
+        """
+        total_purchased = sum(qty for qty, _ in purchase_batches)
+        total_purchase_cost = sum(qty * price for qty, price in purchase_batches)
+        remaining_qty = max(0.0, total_purchased - total_sold)
+
+        if remaining_qty <= 0:
+            avg_p = total_purchase_cost / total_purchased if total_purchased > 0 else 0.0
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": 0.0,
+                "remaining_value": 0.0,
+                "cogs": total_purchase_cost,
+                "effective_unit_price": avg_p,
+            }
+
+        if method == "average":
+            weighted_avg_price = total_purchase_cost / total_purchased if total_purchased > 0 else 0.0
+            remaining_value = remaining_qty * weighted_avg_price
+            cogs = total_purchase_cost - remaining_value
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": weighted_avg_price,
+            }
+
+        elif method == "fifo":
+            # در فایفو، اقلام فروخته‌شده از قدیمی‌ترین خریدها برداشته می‌شوند؛
+            # بنابراین موجودی باقیمانده، از جدیدترین خریدها (انتهای لیست به ابتدا) محاسبه می‌گردد.
+            remaining_value = 0.0
+            needed_qty = remaining_qty
+            for qty, price in reversed(purchase_batches):
+                take = min(needed_qty, qty)
+                remaining_value += take * price
+                needed_qty -= take
+                if needed_qty <= 0:
+                    break
+            cogs = total_purchase_cost - remaining_value
+            effective_price = remaining_value / remaining_qty if remaining_qty > 0 else 0.0
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": effective_price,
+            }
+
+        elif method == "lifo":
+            # در لایفو، اقلام فروخته‌شده از جدیدترین خریدها برداشته می‌شوند؛
+            # بنابراین موجودی باقیمانده، از قدیمی‌ترین خریدها (ابتدای لیست به انتها) محاسبه می‌گردد.
+            remaining_value = 0.0
+            needed_qty = remaining_qty
+            for qty, price in purchase_batches:
+                take = min(needed_qty, qty)
+                remaining_value += take * price
+                needed_qty -= take
+                if needed_qty <= 0:
+                    break
+            cogs = total_purchase_cost - remaining_value
+            effective_price = remaining_value / remaining_qty if remaining_qty > 0 else 0.0
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": effective_price,
+            }
+
+        else:
+            latest_price = purchase_batches[-1][1] if purchase_batches else 0.0
+            remaining_value = remaining_qty * latest_price
+            cogs = total_purchase_cost - remaining_value
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": latest_price,
+            }
 
 
 class BusinessActionHandler:
@@ -714,6 +818,406 @@ class BusinessActionHandler:
                 f"• ارزش ریالی کل موجودی باقی‌مانده انبار: **{total_valuation:,.0f}** تومان\n"
                 f"• ستون‌های تحلیلی و فرمول‌های محاسبه مانده به جدول اضافه شدند.{alert_text}"
             )
+        )
+
+    @classmethod
+    def execute_inventory_valuation(cls, action: InventoryValuationAction, ctx: ActionContext) -> ActionResult:
+        """
+        محاسبه ارزش موجودی انبار به روش‌های استاندارد حسابداری:
+        - فایفو (FIFO): اولین وارده اولین صادره
+        - لایفو (LIFO): آخرین وارده اولین صادره
+        - میانگین موزون (Weighted Average Cost)
+        امکان مقایسه جامع سه روش و بهای تمام شده کالای فروش‌رفته (COGS) و ایجاد شیت تحلیلی اختصاصی.
+        """
+        driver = ctx.manager.active_driver if ctx.manager else None
+        if not driver:
+            return ActionResult(success=False, message_persian="ارتباط با اکسل برقرار نیست.")
+
+        all_sheets = driver.get_sheet_names()
+        sheet = ctx.sheet
+
+        # 1. شناسایی شیت‌های خرید (انبار) و فروش
+        purchase_sheet = None
+        sales_sheet = None
+
+        if action.purchase_sheet:
+            try:
+                purchase_sheet = driver.get_sheet(action.purchase_sheet)
+            except Exception:
+                purchase_sheet = None
+
+        if action.sales_sheet:
+            try:
+                sales_sheet = driver.get_sheet(action.sales_sheet)
+            except Exception:
+                sales_sheet = None
+
+        # اگر تعیین نشده بود، شناسایی هوشمند شیت‌ها
+        if not purchase_sheet:
+            for sh_n in all_sheets:
+                if any(k in sh_n.lower() for k in ["خرید", "انبار", "purchase", "موجودی"]):
+                    purchase_sheet = driver.get_sheet(sh_n)
+                    break
+
+        if not sales_sheet:
+            for sh_n in all_sheets:
+                if (not purchase_sheet or sh_n != purchase_sheet.name) and any(k in sh_n.lower() for k in ["فروش", "sales", "خروج"]):
+                    sales_sheet = driver.get_sheet(sh_n)
+                    break
+
+        if not purchase_sheet:
+            purchase_sheet = sheet
+
+        SUMMARY_KEYWORDS = ["مجموع", "جمع", "کل", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
+
+        def norm_key(s: Any) -> str:
+            if s is None:
+                return ""
+            txt = str(s).strip().lower()
+            char_map = {'ي': 'ی', 'ك': 'ک', 'ة': 'ه', 'ؤ': 'و', 'إ': 'ا', 'أ': 'ا', '\u200c': ' ', '\xa0': ' '}
+            for k, v in char_map.items():
+                txt = txt.replace(k, v)
+            return " ".join(txt.split())
+
+        # 2. استخراج فروش هر کالا از شیت فروش
+        sales_by_prod: Dict[str, float] = {}
+        if sales_sheet:
+            s_min_r, s_min_c, s_max_r, s_max_c = sales_sheet.get_used_range_bounds()
+            s_hdr_r = s_min_r
+            for sr in range(s_min_r, min(s_min_r + 15, s_max_r + 1)):
+                row_t = " ".join(str(sales_sheet.get_value(f"{col_index_to_letter(c)}{sr}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+                if any(k in row_t for k in ["کالا", "محصول", "شرح", "تعداد", "فروش"]):
+                    s_hdr_r = sr
+                    break
+            s_prod_c, s_qty_c = None, None
+            for c in range(s_min_c, s_max_c + 1):
+                c_let = col_index_to_letter(c)
+                h = str(sales_sheet.get_value(f"{c_let}{s_hdr_r}") or "").strip().lower()
+                if not s_prod_c and any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "کالا", "محصول"]) and not any(ck in h for ck in ["کد", "شناسه"]):
+                    s_prod_c = c_let
+                elif not s_qty_c and any(k in h for k in ["تعداد فروش", "تعداد", "مقدار", "خروج", "qty"]):
+                    s_qty_c = c_let
+            if not s_prod_c: s_prod_c = "A"
+            if not s_qty_c: s_qty_c = "C" if s_prod_c != "C" else "B"
+
+            for sr in range(s_hdr_r + 1, s_max_r + 1):
+                p_raw = sales_sheet.get_value(f"{s_prod_c}{sr}")
+                if not p_raw or str(p_raw).strip() == "":
+                    continue
+                p_str = str(p_raw).strip()
+                if any(kw in p_str.lower() for kw in SUMMARY_KEYWORDS):
+                    continue
+                q_raw = sales_sheet.get_value(f"{s_qty_c}{sr}")
+                try:
+                    q_val = float(str(q_raw).replace(",", "").strip()) if q_raw is not None else 0.0
+                except ValueError:
+                    q_val = 0.0
+                nk = norm_key(p_str)
+                sales_by_prod[nk] = sales_by_prod.get(nk, 0.0) + q_val
+
+        # 3. استخراج پارت‌های خرید از شیت خرید
+        p_min_r, p_min_c, p_max_r, p_max_c = purchase_sheet.get_used_range_bounds()
+        p_hdr_r = p_min_r
+        for pr in range(p_min_r, min(p_min_r + 15, p_max_r + 1)):
+            row_t = " ".join(str(purchase_sheet.get_value(f"{col_index_to_letter(c)}{pr}") or "") for c in range(p_min_c, p_max_c + 1)).lower()
+            if any(k in row_t for k in ["کالا", "محصول", "شرح", "تعداد", "خرید", "قیمت"]):
+                p_hdr_r = pr
+                break
+
+        p_prod_c, p_qty_c, p_price_c, same_sheet_sold_c = None, None, None, None
+        for c in range(p_min_c, p_max_c + 1):
+            c_let = col_index_to_letter(c)
+            h = str(purchase_sheet.get_value(f"{c_let}{p_hdr_r}") or "").strip().lower()
+            if not p_prod_c and any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "کالا", "محصول"]) and not any(ck in h for ck in ["کد", "شناسه"]):
+                p_prod_c = c_let
+            elif not p_qty_c and any(k in h for k in ["تعداد خرید", "موجودی انبار", "تعداد", "مقدار"]) and "فروش" not in h:
+                p_qty_c = c_let
+            elif not p_price_c and any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "قیمت واحد", "فی", "قیمت"]) and "فروش" not in h:
+                p_price_c = c_let
+            elif not sales_sheet and not same_sheet_sold_c and any(k in h for k in ["تعداد فروش", "مقدار فروش", "فروش"]):
+                same_sheet_sold_c = c_let
+
+        if not p_prod_c: p_prod_c = "A"
+        if not p_qty_c: p_qty_c = "C" if p_prod_c != "C" else "B"
+        if not p_price_c: p_price_c = "B" if p_prod_c != "B" else "D"
+
+        # دسته‌بندی پارت‌های خرید به ترتیب وقوع (ردیف یا تاریخ)
+        batches_by_prod: Dict[str, List[Tuple[float, float]]] = {}
+        prod_names_ordered: List[str] = []
+        prod_display_map: Dict[str, str] = {}
+
+        for pr in range(p_hdr_r + 1, p_max_r + 1):
+            p_raw = purchase_sheet.get_value(f"{p_prod_c}{pr}")
+            if not p_raw or str(p_raw).strip() == "":
+                continue
+            p_str = str(p_raw).strip()
+            if any(kw in p_str.lower() for kw in SUMMARY_KEYWORDS):
+                continue
+
+            q_raw = purchase_sheet.get_value(f"{p_qty_c}{pr}")
+            try:
+                q_val = float(str(q_raw).replace(",", "").strip()) if q_raw is not None else 0.0
+            except ValueError:
+                q_val = 0.0
+
+            prc_raw = purchase_sheet.get_value(f"{p_price_c}{pr}")
+            try:
+                prc_val = float(str(prc_raw).replace(",", "").strip()) if prc_raw is not None else 0.0
+            except ValueError:
+                prc_val = 0.0
+
+            if same_sheet_sold_c:
+                s_sold_raw = purchase_sheet.get_value(f"{same_sheet_sold_c}{pr}")
+                try:
+                    s_sold_val = float(str(s_sold_raw).replace(",", "").strip()) if s_sold_raw is not None else 0.0
+                except ValueError:
+                    s_sold_val = 0.0
+                sales_by_prod[norm_key(p_str)] = sales_by_prod.get(norm_key(p_str), 0.0) + s_sold_val
+
+            nk = norm_key(p_str)
+            if nk not in batches_by_prod:
+                batches_by_prod[nk] = []
+                prod_names_ordered.append(nk)
+                prod_display_map[nk] = p_str
+            batches_by_prod[nk].append((q_val, prc_val))
+
+        if not prod_names_ordered:
+            return ActionResult(success=False, message_persian="کالایی برای ارزش‌گذاری انبار یافت نشد.")
+
+        # 4. محاسبه مقادیر فایفو، لایفو و میانگین موزون برای هر کالا
+        prod_evals = []
+        total_fifo_val = 0.0
+        total_lifo_val = 0.0
+        total_avg_val = 0.0
+        total_fifo_cogs = 0.0
+        total_lifo_cogs = 0.0
+        total_avg_cogs = 0.0
+        total_all_purchased_qty = 0.0
+        total_all_purchased_cost = 0.0
+        total_all_sold_qty = 0.0
+        total_all_remaining_qty = 0.0
+
+        for nk in prod_names_ordered:
+            p_name = prod_display_map[nk]
+            batches = batches_by_prod[nk]
+            sold_qty = sales_by_prod.get(nk, 0.0)
+
+            fifo_res = InventoryValuationCalculator.calculate_valuation(batches, sold_qty, "fifo")
+            lifo_res = InventoryValuationCalculator.calculate_valuation(batches, sold_qty, "lifo")
+            avg_res = InventoryValuationCalculator.calculate_valuation(batches, sold_qty, "average")
+
+            rem_q = fifo_res["remaining_qty"]
+            is_low = rem_q <= action.min_threshold
+
+            total_fifo_val += fifo_res["remaining_value"]
+            total_lifo_val += lifo_res["remaining_value"]
+            total_avg_val += avg_res["remaining_value"]
+            total_fifo_cogs += fifo_res["cogs"]
+            total_lifo_cogs += lifo_res["cogs"]
+            total_avg_cogs += avg_res["cogs"]
+
+            total_all_purchased_qty += fifo_res["total_purchased"]
+            total_all_purchased_cost += fifo_res["total_purchase_cost"]
+            total_all_sold_qty += sold_qty
+            total_all_remaining_qty += rem_q
+
+            prod_evals.append({
+                "name": p_name,
+                "purchased_qty": fifo_res["total_purchased"],
+                "purchased_cost": fifo_res["total_purchase_cost"],
+                "sold_qty": sold_qty,
+                "remaining_qty": rem_q,
+                "fifo_price": fifo_res["effective_unit_price"],
+                "fifo_val": fifo_res["remaining_value"],
+                "fifo_cogs": fifo_res["cogs"],
+                "lifo_price": lifo_res["effective_unit_price"],
+                "lifo_val": lifo_res["remaining_value"],
+                "lifo_cogs": lifo_res["cogs"],
+                "avg_price": avg_res["effective_unit_price"],
+                "avg_val": avg_res["remaining_value"],
+                "avg_cogs": avg_res["cogs"],
+                "is_low": is_low
+            })
+
+        # 5. ایجاد شیت گزارش ارزش‌گذاری موجودی انبار
+        report_sheet_name = "ارزش‌گذاری_موجودی"
+        if action.create_report_sheet:
+            if report_sheet_name in all_sheets:
+                rep_sheet = driver.get_sheet(report_sheet_name)
+            else:
+                rep_sheet = driver.create_sheet(report_sheet_name)
+
+            if hasattr(rep_sheet, "_ws"):
+                try:
+                    rep_sheet._ws.views.sheetView[0].rightToLeft = True
+                except Exception:
+                    pass
+
+            # پاک‌سازی محتویات قبلی
+            r_min_r, r_min_c, r_max_r, r_max_c = rep_sheet.get_used_range_bounds()
+            if r_max_r >= r_min_r and r_max_c >= r_min_c:
+                for cr in range(r_min_r, r_max_r + 5):
+                    for cc in range(r_min_c, r_max_c + 5):
+                        rep_sheet.set_value(f"{col_index_to_letter(cc)}{cr}", None)
+                        rep_sheet.set_cell_color(f"{col_index_to_letter(cc)}{cr}", None)
+
+            # Header Banner
+            rep_sheet.set_value("A1", "📦 گزارش جامع ارزش‌گذاری موجودی انبار و بهای تمام شده (فایفو، لایفو و میانگین)")
+            rep_sheet.set_font("A1", bold=True, size=14, color_hex="#1E3A8A")
+            rep_sheet.set_cell_color("A1:N1", "#DBEAFE")
+            rep_sheet.merge_cells("A1:N1")
+
+            now_str = datetime.datetime.now().strftime("%Y/%m/%d %H:%M")
+            src_str = f"شیت خرید: {purchase_sheet.name}" + (f" | شیت فروش: {sales_sheet.name}" if sales_sheet else "")
+            rep_sheet.set_value("A2", f"📅 تاریخ گزارش: {now_str} | {src_str} | واحد: ریال/تومان")
+            rep_sheet.set_font("A2", size=10, color_hex="#475569")
+            rep_sheet.merge_cells("A2:N2")
+
+            # KPI Cards (Row 4-5)
+            rep_sheet.set_value("A4", "ارزش موجودی - فایفو (FIFO)")
+            rep_sheet.set_value("A5", round(total_fifo_val, 0))
+            rep_sheet.set_font("A4", bold=True, size=10, color_hex="#1E40AF")
+            rep_sheet.set_font("A5", bold=True, size=13, color_hex="#1E3A8A")
+            rep_sheet.set_cell_color("A4:C5", "#EFF6FF")
+            rep_sheet.merge_cells("A4:C4")
+            rep_sheet.merge_cells("A5:C5")
+
+            rep_sheet.set_value("E4", "ارزش موجودی - لایفو (LIFO)")
+            rep_sheet.set_value("E5", round(total_lifo_val, 0))
+            rep_sheet.set_font("E4", bold=True, size=10, color_hex="#9A3412")
+            rep_sheet.set_font("E5", bold=True, size=13, color_hex="#7C2D12")
+            rep_sheet.set_cell_color("E4:G5", "#FFF7ED")
+            rep_sheet.merge_cells("E4:G4")
+            rep_sheet.merge_cells("E5:G5")
+
+            rep_sheet.set_value("I4", "ارزش موجودی - میانگین موزون")
+            rep_sheet.set_value("I5", round(total_avg_val, 0))
+            rep_sheet.set_font("I4", bold=True, size=10, color_hex="#166534")
+            rep_sheet.set_font("I5", bold=True, size=13, color_hex="#14532D")
+            rep_sheet.set_cell_color("I4:K5", "#F0FDF4")
+            rep_sheet.merge_cells("I4:K4")
+            rep_sheet.merge_cells("I5:K5")
+
+            # Table Headers (Row 7)
+            table_hdr_r = 7
+            headers = [
+                ("A", "ردیف"),
+                ("B", "نام کالا"),
+                ("C", "کل خرید (تعداد)"),
+                ("D", "کل بهای خرید"),
+                ("E", "کل فروش (تعداد)"),
+                ("F", "مانده انبار"),
+                ("G", "نرخ فایفو"),
+                ("H", "ارزش فایفو (FIFO)"),
+                ("I", "نرخ لایفو"),
+                ("J", "ارزش لایفو (LIFO)"),
+                ("K", "نرخ میانگین"),
+                ("L", "ارزش میانگین موزون"),
+                ("M", "بهای تمام شده فروش (فایفو)"),
+                ("N", "وضعیت انبار"),
+            ]
+            for col_l, title in headers:
+                rep_sheet.set_value(f"{col_l}{table_hdr_r}", title)
+            rep_sheet.set_font(f"A{table_hdr_r}:N{table_hdr_r}", bold=True)
+            rep_sheet.set_cell_color(f"A{table_hdr_r}:N{table_hdr_r}", "#E0E7FF")
+
+            # Populate Table Rows
+            start_data_r = 8
+            for idx, item in enumerate(prod_evals, start=1):
+                cur_r = start_data_r + idx - 1
+                rep_sheet.set_value(f"A{cur_r}", idx)
+                rep_sheet.set_value(f"B{cur_r}", item["name"])
+                rep_sheet.set_value(f"C{cur_r}", item["purchased_qty"])
+                rep_sheet.set_value(f"D{cur_r}", item["purchased_cost"])
+                rep_sheet.set_value(f"E{cur_r}", item["sold_qty"])
+                rep_sheet.set_formula(f"F{cur_r}", f'=IF(OR(C{cur_r}="", E{cur_r}=""), "", C{cur_r}-E{cur_r})')
+                rep_sheet.set_value(f"G{cur_r}", round(item["fifo_price"], 0))
+                rep_sheet.set_value(f"H{cur_r}", round(item["fifo_val"], 0))
+                rep_sheet.set_value(f"I{cur_r}", round(item["lifo_price"], 0))
+                rep_sheet.set_value(f"J{cur_r}", round(item["lifo_val"], 0))
+                rep_sheet.set_value(f"K{cur_r}", round(item["avg_price"], 0))
+                rep_sheet.set_value(f"L{cur_r}", round(item["avg_val"], 0))
+                rep_sheet.set_value(f"M{cur_r}", round(item["fifo_cogs"], 0))
+                rep_sheet.set_formula(f"N{cur_r}", f'=IF(F{cur_r}<={action.min_threshold}, "⚠️ کسری موجودی", "موجودی کافی ✅")')
+
+                if item["is_low"] and action.highlight_low_stock:
+                    rep_sheet.set_cell_color(f"A{cur_r}:N{cur_r}", "#FEE2E2")
+
+            last_data_r = start_data_r + len(prod_evals) - 1
+            sum_r = last_data_r + 1
+
+            # Summary Row
+            rep_sheet.set_value(f"B{sum_r}", "مجموع کل انبار:")
+            rep_sheet.set_formula(f"C{sum_r}", f"=SUM(C{start_data_r}:C{last_data_r})")
+            rep_sheet.set_formula(f"D{sum_r}", f"=SUM(D{start_data_r}:D{last_data_r})")
+            rep_sheet.set_formula(f"E{sum_r}", f"=SUM(E{start_data_r}:E{last_data_r})")
+            rep_sheet.set_formula(f"F{sum_r}", f"=SUM(F{start_data_r}:F{last_data_r})")
+            rep_sheet.set_formula(f"H{sum_r}", f"=SUM(H{start_data_r}:H{last_data_r})")
+            rep_sheet.set_formula(f"J{sum_r}", f"=SUM(J{start_data_r}:J{last_data_r})")
+            rep_sheet.set_formula(f"L{sum_r}", f"=SUM(L{start_data_r}:L{last_data_r})")
+            rep_sheet.set_formula(f"M{sum_r}", f"=SUM(M{start_data_r}:M{last_data_r})")
+
+            rep_sheet.set_font(f"A{sum_r}:N{sum_r}", bold=True)
+            rep_sheet.set_cell_color(f"A{sum_r}:N{sum_r}", "#DCFCE7")
+
+            # Formats
+            rep_sheet.set_number_format(f"C{start_data_r}:M{sum_r}", "#,##0")
+            rep_sheet.set_number_format("A5", "#,##0")
+            rep_sheet.set_number_format("E5", "#,##0")
+            rep_sheet.set_number_format("I5", "#,##0")
+
+            rep_sheet.auto_fit_columns(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"])
+
+        # 6. ساخت پیام گزارش تفصیلی فارسی
+        method_title = {
+            "fifo": "روش فایفو (FIFO - اولین وارده اولین صادره)",
+            "lifo": "روش لایفو (LIFO - آخرین وارده اولین صادره)",
+            "average": "روش میانگین موزون (Weighted Average)",
+            "compare": "مقایسه جامع سه روش (فایفو، لایفو و میانگین موزون)"
+        }.get(action.method, "روش فایفو و مقایسه جامع")
+
+        low_items = [it for it in prod_evals if it["is_low"]]
+        alert_str = ""
+        if low_items:
+            alert_str = "\n⚠️ **اقلام نیازمند سفارش و شارژ مجدد (زیر ۵ عدد):**\n" + "\n".join(
+                f"• {it['name']}: خرید: **{it['purchased_qty']:.0f}** | فروش: **{it['sold_qty']:.0f}** | مانده: فقط **{it['remaining_qty']:.0f}** عدد"
+                for it in low_items[:10]
+            )
+
+        report_sheet_info = f"\n📑 شیت اختصاصی و مستقل **«{report_sheet_name}»** با کاردکس کامل و فرمول‌های اکسل ایجاد گردید." if action.create_report_sheet else ""
+
+        msg = (
+            f"📦 **گزارش تخصصی ارزش‌گذاری موجودی انبار ({method_title}):**\n\n"
+            f"• تعداد کل ردیف‌های کالا: **{len(prod_evals)}** قلم\n"
+            f"• کل پارت‌های خرید: **{total_all_purchased_qty:,.0f}** عدد به ارزش **{total_all_purchased_cost:,.0f}** تومان\n"
+            f"• کل اقلام فروخته‌شده: **{total_all_sold_qty:,.0f}** عدد\n"
+            f"• کل مانده موجودی فیزیکی انبار: **{total_all_remaining_qty:,.0f}** عدد\n\n"
+            f"📊 **نتایج ارزش‌گذاری موجودی انبار بر اساس روش‌های حسابداری:**\n"
+            f"۱. **روش فایفو (FIFO):**\n"
+            f"   - ارزش کل مانده موجودی: **`{total_fifo_val:,.0f}`** تومان\n"
+            f"   - بهای تمام شده کالای فروش‌رفته (COGS): **`{total_fifo_cogs:,.0f}`** تومان\n\n"
+            f"۲. **روش لایفو (LIFO):**\n"
+            f"   - ارزش کل مانده موجودی: **`{total_lifo_val:,.0f}`** تومان\n"
+            f"   - بهای تمام شده کالای فروش‌رفته (COGS): **`{total_lifo_cogs:,.0f}`** تومان\n\n"
+            f"۳. **روش میانگین موزون (Weighted Average):**\n"
+            f"   - ارزش کل مانده موجودی: **`{total_avg_val:,.0f}`** تومان\n"
+            f"   - بهای تمام شده کالای فروش‌رفته (COGS): **`{total_avg_cogs:,.0f}`** تومان\n\n"
+            f"💡 **تحلیل مالی مدیریتی:**\n"
+            f"در خریدهای بعدی با نرخ‌های متغیر یا افزایشی (تورمی)، روش **فایفو** ارزش بالاتری را برای دارایی انبار ثبت می‌کند و روش **لایفو** بهای تمام شده را افزایش می‌دهد؛ روش **میانگین موزون** تعادل دقیق بین پارت‌های خرید مختلف ایجاد می‌کند.{report_sheet_info}{alert_str}"
+        )
+
+        return ActionResult(
+            success=True,
+            message_persian=msg,
+            data={
+                "fifo_val": total_fifo_val,
+                "lifo_val": total_lifo_val,
+                "avg_val": total_avg_val,
+                "fifo_cogs": total_fifo_cogs,
+                "lifo_cogs": total_lifo_cogs,
+                "avg_cogs": total_avg_cogs,
+                "remaining_qty": total_all_remaining_qty,
+            }
         )
 
     @classmethod

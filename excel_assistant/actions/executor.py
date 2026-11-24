@@ -43,6 +43,7 @@ from excel_assistant.nlp.intent_models import (
     ReconciliationAction,
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     TrialBalanceAction,
@@ -203,6 +204,9 @@ class ActionExecutor:
 
         elif isinstance(action, InventoryAlertAction):
             return BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+        elif isinstance(action, InventoryValuationAction):
+            return BusinessActionHandler.execute_inventory_valuation(action, ctx)
 
         elif isinstance(action, TopSellingAction):
             return BusinessActionHandler.execute_top_selling(action, ctx)

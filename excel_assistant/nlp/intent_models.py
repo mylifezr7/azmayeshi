@@ -247,8 +247,23 @@ class InventoryAlertAction(BaseActionModel):
     purchase_price_col: Optional[str] = None
     sales_sheet: Optional[str] = None
     purchase_sheet: Optional[str] = None
+    valuation_method: Literal["fifo", "lifo", "average", "latest", "compare"] = "fifo"
     highlight_low_stock: bool = True
     description_persian: str = "کنترل موجودی انبار و هشدار کمبود موجودی"
+
+
+class InventoryValuationAction(BaseActionModel):
+    action_type: Literal["inventory_valuation"] = "inventory_valuation"
+    method: Literal["fifo", "lifo", "average", "compare"] = "compare"
+    product_col: Optional[str] = None
+    stock_col: Optional[str] = None
+    purchase_price_col: Optional[str] = None
+    sales_sheet: Optional[str] = None
+    purchase_sheet: Optional[str] = None
+    min_threshold: float = 5.0
+    create_report_sheet: bool = True
+    highlight_low_stock: bool = True
+    description_persian: str = "ارزش‌گذاری موجودی انبار به روش‌های فایفو، لایفو و میانگین موزون"
 
 
 class TopSellingAction(BaseActionModel):
@@ -379,6 +394,7 @@ ExcelAction = Union[
     ReconciliationAction,
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     TrialBalanceAction,

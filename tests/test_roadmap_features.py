@@ -712,3 +712,140 @@ def test_nlp_parsing_inventory_sales_deduction_prompts():
         action = parser.parse(p)
         assert isinstance(action, InventoryAlertAction), f"Failed to parse '{p}' as InventoryAlertAction, got {type(action).__name__}"
 
+
+# 20. FIFO, LIFO & Weighted Average Inventory Valuation Tests
+def test_inventory_valuation_calculator_fifo_lifo_average():
+    """Verify core math for FIFO, LIFO, and Weighted Average under rising purchase prices."""
+    from excel_assistant.actions.business_actions import InventoryValuationCalculator
+
+    # 3 batches of purchases:
+    # 1. 10 units @ 20,000,000 = 200,000,000
+    # 2. 5 units @ 22,000,000 = 110,000,000
+    # 3. 8 units @ 25,000,000 = 200,000,000
+    # Total purchases = 23 units, total cost = 510,000,000
+    batches = [(10, 20000000), (5, 22000000), (8, 25000000)]
+    total_sold = 14  # Remaining = 23 - 14 = 9 units
+
+    # FIFO: Sales consume earliest batches (10 @ 20M + 4 @ 22M = 288M COGS)
+    # Remaining comes from latest batches (8 @ 25M + 1 @ 22M = 222M remaining value)
+    fifo = InventoryValuationCalculator.calculate_valuation(batches, total_sold, "fifo")
+    assert fifo["remaining_qty"] == 9
+    assert fifo["remaining_value"] == 222000000
+    assert fifo["cogs"] == 288000000
+    assert abs(fifo["effective_unit_price"] - (222000000 / 9)) < 1.0
+
+    # LIFO: Sales consume latest batches (8 @ 25M + 5 @ 22M + 1 @ 20M = 330M COGS)
+    # Remaining comes from earliest batch (9 @ 20M = 180M remaining value)
+    lifo = InventoryValuationCalculator.calculate_valuation(batches, total_sold, "lifo")
+    assert lifo["remaining_qty"] == 9
+    assert lifo["remaining_value"] == 180000000
+    assert lifo["cogs"] == 330000000
+    assert lifo["effective_unit_price"] == 20000000
+
+    # Weighted Average: Unit price = 510,000,000 / 23 = 22,173,913.04
+    avg = InventoryValuationCalculator.calculate_valuation(batches, total_sold, "average")
+    assert avg["remaining_qty"] == 9
+    expected_avg_p = 510000000 / 23
+    assert abs(avg["effective_unit_price"] - expected_avg_p) < 0.01
+    assert abs(avg["remaining_value"] - (9 * expected_avg_p)) < 0.01
+    assert abs(avg["cogs"] - (14 * expected_avg_p)) < 0.01
+
+
+def test_inventory_valuation_action_multi_batch_excel_sheet(test_manager):
+    """Test full execution of Inventory Valuation comparing FIFO, LIFO, and Average in Excel."""
+    from excel_assistant.nlp.intent_models import InventoryValuationAction
+
+    p_sheet = test_manager.create_sheet("خرید")
+    s_sheet = test_manager.create_sheet("فروش")
+
+    p_sheet.set_value("A1", "نام کالا")
+    p_sheet.set_value("B1", "قیمت خرید")
+    p_sheet.set_value("C1", "تعداد خرید")
+
+    # Laptop with 3 purchase batches at increasing prices
+    p_sheet.set_value("A2", "لپ‌تاپ")
+    p_sheet.set_value("B2", 20000000)
+    p_sheet.set_value("C2", 10)
+
+    p_sheet.set_value("A3", "لپ‌تاپ")
+    p_sheet.set_value("B3", 22000000)
+    p_sheet.set_value("C3", 5)
+
+    p_sheet.set_value("A4", "لپ‌تاپ")
+    p_sheet.set_value("B4", 25000000)
+    p_sheet.set_value("C4", 8)
+
+    # Keyboard with 1 purchase batch
+    p_sheet.set_value("A5", "کیبورد")
+    p_sheet.set_value("B5", 500000)
+    p_sheet.set_value("C5", 8)
+
+    # Mouse with 1 purchase batch
+    p_sheet.set_value("A6", "ماوس")
+    p_sheet.set_value("B6", 200000)
+    p_sheet.set_value("C6", 50)
+
+    # Sales sheet
+    s_sheet.set_value("A1", "نام کالا")
+    s_sheet.set_value("B1", "تعداد فروش")
+    s_sheet.set_value("A2", "لپ‌تاپ")
+    s_sheet.set_value("B2", 14)  # Remaining Laptop = 23 - 14 = 9
+
+    s_sheet.set_value("A3", "کیبورد")
+    s_sheet.set_value("B3", 5)   # Remaining Keyboard = 8 - 5 = 3
+
+    s_sheet.set_value("A4", "ماوس")
+    s_sheet.set_value("B4", 15)  # Remaining Mouse = 50 - 15 = 35
+
+    action = InventoryValuationAction(method="compare", create_report_sheet=True)
+    ctx = ActionContext(manager=test_manager, sheet=p_sheet)
+    res = BusinessActionHandler.execute_inventory_valuation(action, ctx)
+
+    assert res.success is True
+    assert "گزارش تخصصی ارزش‌گذاری موجودی انبار" in res.message_persian
+    assert "فایفو" in res.message_persian
+    assert "لایفو" in res.message_persian
+    assert "میانگین موزون" in res.message_persian
+
+    # Total remaining valuation:
+    # FIFO = 222M (laptop) + 1.5M (keyboard) + 7M (mouse) = 230,500,000
+    # LIFO = 180M (laptop) + 1.5M (keyboard) + 7M (mouse) = 188,500,000
+    assert "230,500,000" in res.message_persian
+    assert "188,500,000" in res.message_persian
+
+    # Check generated report sheet
+    assert "ارزش‌گذاری_موجودی" in test_manager.get_sheet_names()
+    rep_sheet = test_manager.get_sheet("ارزش‌گذاری_موجودی")
+
+    assert "ارزش‌گذاری موجودی انبار" in str(rep_sheet.get_value("A1"))
+    assert rep_sheet.get_value("A5") == 230500000  # Card: FIFO
+    assert rep_sheet.get_value("E5") == 188500000  # Card: LIFO
+
+    # Row 8 is Laptop
+    assert rep_sheet.get_value("B8") == "لپ‌تاپ"
+    assert rep_sheet.get_value("C8") == 23
+    assert rep_sheet.get_value("E8") == 14
+    assert rep_sheet.get_value("H8") == 222000000  # FIFO value
+    assert rep_sheet.get_value("J8") == 180000000  # LIFO value
+
+
+def test_nlp_parsing_fifo_lifo_average_prompts():
+    """Verify Persian intent parser for FIFO, LIFO, and Weighted Average inventory valuation."""
+    from excel_assistant.nlp.parser import PersianIntentParser
+    from excel_assistant.nlp.intent_models import InventoryValuationAction
+    parser = PersianIntentParser()
+
+    prompts_and_methods = [
+        ("ارزش‌گذاری انبار به روش فایفو", "fifo"),
+        ("ارزش موجودی به روش لایفو", "lifo"),
+        ("ارزش انبار با میانگین موزون", "average"),
+        ("مقایسه روش‌های فایفو و لایفو و میانگین در انبار", "compare"),
+        ("ارزش‌گذاری موجودی انبار", "compare"),
+    ]
+
+    for prompt, expected_method in prompts_and_methods:
+        action = parser.parse(prompt)
+        assert isinstance(action, InventoryValuationAction), f"Failed for '{prompt}', got {type(action).__name__}"
+        assert action.method == expected_method, f"Expected {expected_method} for '{prompt}', got {action.method}"
+
+

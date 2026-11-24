@@ -82,10 +82,31 @@ def main():
     print(f"• جمع کل ارزش انبار (ردیف ۵): {p_sheet.get_formula('G5')}")
     print("-" * 65)
 
+    # 6. تست ارزش‌گذاری پارت‌های مختلف خرید (فایفو، لایفو و میانگین موزون)
+    print("\n" + "=" * 65)
+    print("📈 تست ارزش‌گذاری خریدهای بعدی با نرخ‌های متغیر (FIFO / LIFO / Average)...")
+    print("=" * 65)
+
+    # اضافه کردن پارت‌های خرید جدید لپ‌تاپ با قیمت‌های بالاتر
+    p_sheet.set_value("A5", "لپ‌تاپ")
+    p_sheet.set_value("B5", 22000000)
+    p_sheet.set_value("C5", 5)
+
+    p_sheet.set_value("A6", "لپ‌تاپ")
+    p_sheet.set_value("B6", 25000000)
+    p_sheet.set_value("C6", 8)
+
+    from excel_assistant.nlp.intent_models import InventoryValuationAction
+    v_action = InventoryValuationAction(method="compare", create_report_sheet=True)
+    v_ctx = ActionContext(manager=manager, sheet=p_sheet)
+    v_result = BusinessActionHandler.execute_inventory_valuation(v_action, v_ctx)
+
+    print("\n" + v_result.message_persian)
+
     # ذخیره در فایل اکسل تستی
     out_file = "test_inventory_output.xlsx"
     driver.save(out_file)
-    print(f"✅ فایل اکسل خروجی با موفقیت ذخیره شد: {out_file}\n")
+    print(f"\n✅ فایل اکسل خروجی حاوی شیت‌های خرید، فروش و «ارزش‌گذاری_موجودی» ذخیره شد: {out_file}\n")
 
 
 if __name__ == "__main__":
