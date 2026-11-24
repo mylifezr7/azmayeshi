@@ -325,6 +325,12 @@ class BackupAction(BaseActionModel):
     description_persian: str = "ذخیره نسخه پشتیبان از فایل اکسل"
 
 
+class SaveWorkbookAction(BaseActionModel):
+    action_type: Literal["save_workbook"] = "save_workbook"
+    file_path: Optional[str] = None
+    description_persian: str = "ذخیره تغییرات فایل اکسل"
+
+
 class PdfExportAction(BaseActionModel):
     action_type: Literal["export_pdf"] = "export_pdf"
     output_filename: Optional[str] = None
@@ -374,6 +380,7 @@ ExcelAction = Union[
     DeepFileAuditAction,
     AutoChartAction,
     BackupAction,
+    SaveWorkbookAction,
     PdfExportAction,
     UndoLastAction,
 ]

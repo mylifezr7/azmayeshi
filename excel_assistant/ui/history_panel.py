@@ -13,6 +13,7 @@ class HistoryPanel(QFrame):
     """Sidebar for command history and quick actions."""
 
     command_selected = Signal(str)
+    save_requested = Signal()
     undo_requested = Signal()
     analyze_requested = Signal()
     arithmetic_requested = Signal()
@@ -43,6 +44,26 @@ class HistoryPanel(QFrame):
         self.list_widget.setObjectName("historyList")
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.list_widget)
+
+        # 0. Save button: Vibrant Teal / Cyan-Emerald
+        self.btn_save = QPushButton("💾 ذخیره فایل (Save)  [Ctrl+S]")
+        self.btn_save.setObjectName("saveButton")
+        self.btn_save.setProperty("class", "sidebarActionBtn")
+        self.btn_save.setToolTip("ذخیره تغییرات در فایل اکسل: Ctrl+S")
+        self.btn_save.setStyleSheet(
+            "QPushButton#saveButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0F766E, stop:1 #14B8A6);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
+            "  border: 1px solid #2DD4BF; border-radius: 10px;"
+            "}"
+            "QPushButton#saveButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #115E59, stop:1 #2DD4BF);"
+            "  border: 1px solid #5EEAD4;"
+            "}"
+            "QPushButton#saveButton:pressed { background: #134E4A; }"
+        )
+        self.btn_save.clicked.connect(self.save_requested.emit)
+        layout.addWidget(self.btn_save)
 
         # 1. Undo button: Warm Vibrant Orange / Amber
         self.btn_undo = QPushButton("↩️ لغو آخرین تغییر (Undo)")

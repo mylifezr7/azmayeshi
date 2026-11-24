@@ -43,6 +43,7 @@ from excel_assistant.nlp.intent_models import (
     DeepFileAuditAction,
     AutoChartAction,
     BackupAction,
+    SaveWorkbookAction,
     PdfExportAction,
     UndoLastAction,
 )
@@ -92,6 +93,10 @@ class PersianRuleParser:
         # 1.6 Backup / نسخه پشتیبان
         if any(w in text_lower for w in ["پشتیبان", "بکاپ", "backup"]):
             return BackupAction(description_persian="ذخیره نسخه پشتیبان از فایل اکسل")
+
+        # 1.65 Save Workbook / ذخیره فایل اکسل
+        if any(w in text_lower for w in ["ذخیره فایل", "سیو فایل", "سیو کن", "ذخیره کن", "تغییرات را ذخیره کن", "ذخیره تغییرات", "فایل را ذخیره کن"]) or text_lower.strip() in ["ذخیره", "سیو", "save"]:
+            return SaveWorkbookAction(description_persian="ذخیره تغییرات فایل اکسل")
 
         # 1.7 PDF Export / خروجی PDF
         if any(w in text_lower for w in ["pdf", "پی دی اف", "پرینت"]) and any(w in text_lower for w in ["خروجی", "دانلود", "تبدیل", "صادر", "گرفتن", "بگیر"]):

@@ -234,6 +234,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             gap: 6px;
         }
 
+        .btn-save {
+            background: linear-gradient(90deg, #0F766E, #14B8A6);
+            border: 1px solid #2DD4BF;
+        }
+        .btn-save:hover {
+            background: linear-gradient(90deg, #115E59, #2DD4BF);
+            box-shadow: 0 0 12px rgba(45, 212, 191, 0.6);
+        }
+
         .btn-undo {
             background: linear-gradient(90deg, #EA580C, #FB923C);
             border: 1px solid #F97316;
@@ -829,6 +838,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="sidebar-title">📜 تاریخچه دستورات</div>
             <div class="history-box" id="historyBox"></div>
 
+            <button class="btn-shortcut btn-save" onclick="saveWorkbook()">💾 ذخیره فایل (Save)... <span class="hotkey-badge">Ctrl+S</span></button>
             <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
             <button class="btn-shortcut btn-unique" onclick="promptPreventDuplicates()">🔒 قفل یکتایی ستون اکسل...</button>
             <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
@@ -1318,6 +1328,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "management": {
                 "title": "⚙️ ۵. امکانات مدیریتی خود برنامه",
                 "commands": [
+                    {label: "💾 ذخیره تغییرات فایل اکسل (Ctrl+S)", cmd: "ذخیره فایل"},
                     {label: "💾 ذخیره نسخه پشتیبان (Backup)", cmd: "ذخیره نسخه پشتیبان"},
                     {label: "📄 تولید خروجی PDF استاندارد", cmd: "خروجی PDF از شیت"},
                     {label: "↩️ لغو آخرین عملیات (Undo چندمرحله‌ای)", cmd: "لغو آخرین عملیات"},
@@ -1408,6 +1419,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             });
             fetchStatus();
         }
+
+        async function saveWorkbook() {
+            appendMessage('user', '💾 ذخیره فایل اکسل');
+            addHistoryItem('ذخیره فایل اکسل');
+            try {
+                const res = await fetch('/api/save', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    appendMessage('ai', '💾 ' + data.message);
+                } else {
+                    appendMessage('ai', '❌ خطا در ذخیره‌سازی: ' + (data.error || 'خطای نامشخص'));
+                }
+            } catch(e) {
+                appendMessage('ai', '❌ خطا در ارتباط با سرور جهت ذخیره: ' + e);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && !e.shiftKey) {
+                e.preventDefault();
+                saveWorkbook();
+            }
+        });
 
         window.onload = async () => {
             await fetchStatus();
@@ -1542,6 +1576,24 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"message": msg}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path == "/api/save":
+            try:
+                saved_path = self.controller.manager.save()
+                resp = {
+                    "success": True,
+                    "message": f"فایل اکسل با موفقیت ذخیره شد: {saved_path}"
+                }
+            except Exception as e:
+                resp = {
+                    "success": False,
+                    "error": str(e)
+                }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
             return
 
         self.send_response(404)
