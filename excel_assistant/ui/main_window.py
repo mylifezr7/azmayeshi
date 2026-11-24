@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
                     ("🔺 بیشترین و کمترین (MAX / MIN)", "بیشترین مقدار ستون A"),
                     ("🔢 شمارش اطلاعات و سلول‌های پر", "شمارش سلول‌های پر ستون A"),
                     ("🔢 تبدیل متن به عدد (اصلاح داده‌ها)", "تبدیل متن به عدد در ستون A"),
+                    ("🧮 ۴ عمل اصلی ستون‌ها...", "۴ عمل اصلی"),
                     ("📅 درج تاریخ در شیت...", "درج تاریخ در شیت"),
                 ]
             },
@@ -438,6 +439,8 @@ class MainWindow(QMainWindow):
             self._on_analyze_clicked()
         elif "تخفیف" in command:
             self._open_discount_dialog()
+        elif "۴ عمل" in command or "4 عمل" in command or "عمل اصلی" in command:
+            self._open_arithmetic_dialog("add")
         elif "جمع" in command:
             self._open_arithmetic_dialog("add")
         elif "تفریق" in command or "منها" in command:

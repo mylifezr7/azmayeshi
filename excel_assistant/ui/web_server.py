@@ -1304,6 +1304,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     {label: "🔺 بیشترین و کمترین (MAX / MIN)", cmd: "بیشترین مقدار ستون A"},
                     {label: "🔢 شمارش اطلاعات و سلول‌های پر", cmd: "شمارش سلول‌های پر ستون A"},
                     {label: "🔢 تبدیل متن به عدد (اصلاح داده‌ها)", cmd: "تبدیل متن به عدد در ستون A"},
+                    {label: "🧮 ۴ عمل اصلی ستون‌ها...", cmd: "۴ عمل اصلی"},
                     {label: "📅 درج تاریخ در شیت...", cmd: "درج تاریخ در شیت"}
                 ]
             },
@@ -1416,6 +1417,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 openSalesModal();
             } else if (cmd.includes('تخفیف')) {
                 promptDiscount();
+            } else if (cmd.includes('۴ عمل') || cmd.includes('4 عمل')) {
+                promptArithmetic('add');
             } else if (cmd === 'درج تاریخ در شیت') {
                 promptInsertDate();
             } else {
