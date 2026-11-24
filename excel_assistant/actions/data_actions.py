@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Set, Union
 from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.nlp.intent_models import (
     DeleteEmptyRowsAction, DeleteDuplicatesAction, SortDataAction, InsertDateAction, PreventDuplicatesAction,
-    FilterDataAction, ConvertTextToNumberAction, SplitTextAction, MergeCellsAction, SetCellFormatAction
+    RemoveUniqueValidationAction, FilterDataAction, ConvertTextToNumberAction, SplitTextAction,
+    MergeCellsAction, SetCellFormatAction
 )
 from excel_assistant.core.utils import (
     col_letter_to_index, col_index_to_letter, bounds_to_range_str, parse_range_address
@@ -207,6 +208,43 @@ class DataActionHandler:
             )
 
         return ActionResult(success=True, message_persian=msg, data={"column": col_let, "existing_duplicates": existing_dups})
+
+    @classmethod
+    def execute_remove_unique_validation(cls, action: RemoveUniqueValidationAction, ctx: ActionContext) -> ActionResult:
+        sheet = ctx.sheet
+
+        # Normalize target column (e.g. '12' -> 'L', 'L' -> 'L')
+        raw_c = str(action.target_col).strip().upper()
+        col_let = col_index_to_letter(int(raw_c)) if raw_c.isdigit() else raw_c
+
+        # 1. Remove Excel Data Validation rule
+        sheet.remove_unique_validation(col=col_let)
+
+        # 2. Clear duplicate warning highlights if requested
+        cleared_count = 0
+        if action.clear_highlight:
+            min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+            if max_r > 1:
+                for idx in range(2, max_r + 1):
+                    cell_addr = f"{col_let}{idx}"
+                    curr_color = sheet.get_cell_color(cell_addr)
+                    if curr_color and curr_color.upper() in ["#FECDD3", "FECDD3"]:
+                        sheet.set_cell_color(cell_addr, None)
+                        cleared_count += 1
+
+        header_val = sheet.get_value(f"{col_let}1")
+        col_desc = f"`{col_let}`" + (f" («{header_val}»)" if header_val else "")
+
+        msg = (
+            f"🔓 **قفل یکتاسازی ستون {col_desc} با موفقیت برداشته شد.**\n"
+            f"✅ محدودیت اعتبارسنجی داده (Data Validation) از ستون `{col_let}` حذف گردید.\n"
+            f"📝 اکنون کاربران می‌توانند مقادیر آزاد (حتی تکراری) را در این ستون بدون دریافت خطای مانع‌شونده ثبت نمایند."
+        )
+        return ActionResult(
+            success=True,
+            message_persian=msg,
+            data={"column": col_let, "cleared_highlight_cells": cleared_count}
+        )
 
     @classmethod
     def execute_filter(cls, action: FilterDataAction, ctx: ActionContext) -> ActionResult:

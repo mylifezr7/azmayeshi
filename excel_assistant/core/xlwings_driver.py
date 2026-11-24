@@ -149,12 +149,24 @@ class XlwingsSheet(ISheet):
             return [vals] if vals is not None else []
         return vals
 
-    def set_cell_color(self, cell_or_range: str, color_hex: str) -> None:
+    def set_cell_color(self, cell_or_range: str, color_hex: Optional[str]) -> None:
         try:
-            rgb = hex_to_rgb(color_hex)
-            self._sheet.range(cell_or_range).color = rgb
+            if color_hex is None:
+                self._sheet.range(cell_or_range).color = None
+            else:
+                rgb = hex_to_rgb(color_hex)
+                self._sheet.range(cell_or_range).color = rgb
         except Exception as e:
             raise ActionExecutionError(f"Failed to color range '{cell_or_range}': {e}")
+
+    def get_cell_color(self, cell_addr: str) -> Optional[str]:
+        try:
+            c = self._sheet.range(cell_addr).color
+            if c is not None:
+                return f"#{c[0]:02X}{c[1]:02X}{c[2]:02X}"
+            return None
+        except Exception:
+            return None
 
     def set_font(self, cell_or_range: str, name: Optional[str] = None, size: Optional[float] = None,
                  bold: Optional[bool] = None, italic: Optional[bool] = None, color_hex: Optional[str] = None,
@@ -279,6 +291,26 @@ class XlwingsSheet(ISheet):
                 val.ShowError = True
         except Exception:
             pass
+
+    def remove_unique_validation(self, col: str) -> None:
+        col_let = col.upper()
+        try:
+            rng = self._sheet.range(f"{col_let}1:{col_let}10000")
+            if hasattr(rng, "api") and hasattr(rng.api, "Validation"):
+                rng.api.Validation.Delete()
+        except Exception:
+            pass
+
+    def has_unique_validation(self, col: str) -> bool:
+        col_let = col.upper()
+        try:
+            rng = self._sheet.range(f"{col_let}1")
+            if hasattr(rng, "api") and hasattr(rng.api, "Validation"):
+                _ = rng.api.Validation.Type
+                return True
+        except Exception:
+            return False
+        return False
 
     def merge_cells(self, range_str: str) -> None:
         try:

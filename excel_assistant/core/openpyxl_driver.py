@@ -181,10 +181,13 @@ class OpenpyxlSheet(ISheet):
             values.append(self._ws.cell(row=r, column=col_idx).value)
         return values
 
-    def set_cell_color(self, cell_or_range: str, color_hex: str) -> None:
+    def set_cell_color(self, cell_or_range: str, color_hex: Optional[str]) -> None:
         try:
-            hex_clean = normalize_hex_color(color_hex)
-            fill = PatternFill(start_color=f"FF{hex_clean}", end_color=f"FF{hex_clean}", fill_type="solid")
+            if color_hex is None:
+                fill = PatternFill(fill_type=None)
+            else:
+                hex_clean = normalize_hex_color(color_hex)
+                fill = PatternFill(start_color=f"FF{hex_clean}", end_color=f"FF{hex_clean}", fill_type="solid")
             r1, c1, r2, c2 = parse_range_address(cell_or_range)
             _, _, ub_r2, ub_c2 = self.get_used_range_bounds()
             r2 = min(r2, max(ub_r2, r1))
@@ -194,6 +197,20 @@ class OpenpyxlSheet(ISheet):
                     self._ws.cell(row=r, column=c).fill = fill
         except Exception as e:
             raise ActionExecutionError(f"Failed to set cell color on {cell_or_range}: {e}")
+
+    def get_cell_color(self, cell_addr: str) -> Optional[str]:
+        try:
+            r1, c1, _, _ = parse_range_address(cell_addr)
+            cell = self._ws.cell(row=r1, column=c1)
+            if cell.fill and cell.fill.fill_type is not None and cell.fill.start_color and cell.fill.start_color.rgb:
+                rgb = str(cell.fill.start_color.rgb)
+                if len(rgb) == 8:
+                    return f"#{rgb[2:]}"
+                elif len(rgb) == 6:
+                    return f"#{rgb}"
+            return None
+        except Exception:
+            return None
 
     def set_font(self, cell_or_range: str, name: Optional[str] = None, size: Optional[float] = None,
                  bold: Optional[bool] = None, italic: Optional[bool] = None, color_hex: Optional[str] = None,
@@ -309,6 +326,28 @@ class OpenpyxlSheet(ISheet):
         )
         self._ws.add_data_validation(dv)
         dv.add(f"{col_let}1:{col_let}10000")
+
+    def remove_unique_validation(self, col: str) -> None:
+        col_let = col.upper()
+        if hasattr(self._ws, "data_validations"):
+            validations_to_remove = []
+            for dv in list(self._ws.data_validations.dataValidation):
+                formula = str(getattr(dv, "formula1", "") or "")
+                ranges_str = str(getattr(dv, "sqref", "") or "")
+                if f"{col_let}:{col_let}" in formula or f"{col_let}1:" in ranges_str or f"{col_let}:" in ranges_str:
+                    validations_to_remove.append(dv)
+            for dv in validations_to_remove:
+                self._ws.data_validations.dataValidation.remove(dv)
+
+    def has_unique_validation(self, col: str) -> bool:
+        col_let = col.upper()
+        if hasattr(self._ws, "data_validations"):
+            for dv in self._ws.data_validations.dataValidation:
+                formula = str(getattr(dv, "formula1", "") or "")
+                ranges_str = str(getattr(dv, "sqref", "") or "")
+                if f"{col_let}:{col_let}" in formula or f"{col_let}1:" in ranges_str or f"{col_let}:" in ranges_str:
+                    return True
+        return False
 
     def merge_cells(self, range_str: str) -> None:
         self._ws.merge_cells(range_str)
