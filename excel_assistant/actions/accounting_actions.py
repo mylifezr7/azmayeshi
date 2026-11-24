@@ -362,9 +362,12 @@ class AccountingActionHandler:
         )
 
     @classmethod
+    @classmethod
     def execute_payroll(cls, action: PayrollAction, ctx: ActionContext) -> ActionResult:
         """
         محاسبه حقوق و دستمزد، اضافه‌کاری، بیمه (۷٪ کارگر، ۲۳٪ کارفرما) و مالیات حقوق.
+        در صورت وجود داده‌های پرسنل در فایل (مانند شیت اطلاعات حقوق یا شیت جاری)،
+        اطلاعات واقعی پرسنل خوانده شده و فیش حقوق و محاسبات دقیق برای آنان ایجاد می‌گردد.
         """
         sheet = ctx.sheet
         target_sheet_name = "فیش_حقوق_و_دستمزد"
@@ -375,56 +378,252 @@ class AccountingActionHandler:
             name = f"{target_sheet_name}_{counter}"
             counter += 1
 
+        # 1. جستجوی هوشمند برای شیت حاوی اطلاعات حقوق و پرسنل
+        source_sheet = None
+        # بررسی شیت جاری کاربر
+        if sheet and sheet.name != target_sheet_name and not sheet.name.startswith(target_sheet_name):
+            try:
+                min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                for r in range(min_r, min(min_r + 5, max_r + 1)):
+                    row_t = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1)).lower()
+                    if any(k in row_t for k in ["حقوق", "پایه", "کارکرد", "دستمزد", "اضافه کاری"]):
+                        source_sheet = sheet
+                        break
+            except Exception:
+                pass
+
+        # اگر در شیت جاری نبود، بررسی سایر شیت‌ها (مانند 'اطلاعات حقوق' یا 'حقوق')
+        if not source_sheet and ctx.manager:
+            for sh_n in ctx.manager.get_sheet_names():
+                if sh_n != target_sheet_name and not sh_n.startswith(target_sheet_name):
+                    if any(k in sh_n.lower() for k in ["اطلاعات حقوق", "حقوق", "دستمزد", "پرسنل", "کارمندان", "payroll", "salary"]):
+                        try:
+                            cand = ctx.manager.get_sheet(sh_n)
+                            min_r, min_c, max_r, max_c = cand.get_used_range_bounds()
+                            if max_r > min_r:
+                                source_sheet = cand
+                                break
+                        except Exception:
+                            pass
+
+        real_employees = []
+        has_deductions_col = False
+        ot_rate_mult = 1.4
+
+        if source_sheet:
+            s_min_r, s_min_c, s_max_r, s_max_c = source_sheet.get_used_range_bounds()
+            hdr_r = s_min_r
+            for r in range(s_min_r, min(s_min_r + 10, s_max_r + 1)):
+                row_t = " ".join(str(source_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+                if any(k in row_t for k in ["نام", "حقوق", "پایه", "کارکرد"]):
+                    hdr_r = r
+                    break
+
+            name_c = None
+            role_c = None
+            days_c = None
+            base_c = None
+            ot_hours_c = None
+            ot_rate_c = None
+            allowance_cols = []
+            deduction_cols = []
+
+            for c in range(s_min_c, s_max_c + 1):
+                c_let = col_index_to_letter(c)
+                h = str(source_sheet.get_value(f"{c_let}{hdr_r}") or "").strip().lower()
+                if not h:
+                    continue
+                if not name_c and any(k in h for k in ["نام و نام خانوادگی", "نام خانوادگی", "نام پرسنل", "نام کارمند", "نام"]):
+                    name_c = c_let
+                elif not role_c and any(k in h for k in ["سمت", "شغل", "پست", "عنوان"]):
+                    role_c = c_let
+                elif not days_c and any(k in h for k in ["روز کارکرد", "کارکرد", "روزهای کارکرد"]):
+                    days_c = c_let
+                elif not base_c and any(k in h for k in ["حقوق پایه ماهانه", "حقوق پایه", "پایه حقوق", "حقوق ماهانه", "حقوق", "پایه"]):
+                    base_c = c_let
+                elif not ot_hours_c and any(k in h for k in ["ساعت اضافه کاری", "ساعت اضافه", "اضافه کاری"]):
+                    ot_hours_c = c_let
+                elif not ot_rate_c and any(k in h for k in ["ضریب اضافه کاری", "ضریب اضافه", "ضریب"]):
+                    ot_rate_c = c_let
+                elif any(k in h for k in ["مسکن", "جذب", "پاداش", "اولاد", "مزایا", "بن", "خواروبار", "ایاب و ذهاب"]):
+                    allowance_cols.append(c_let)
+                elif any(k in h for k in ["کسورات", "سایر کسورات", "کسر", "مساعده", "وام"]):
+                    deduction_cols.append(c_let)
+
+            if not base_c:
+                for c in range(s_min_c, s_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    if c_let == name_c:
+                        continue
+                    v = source_sheet.get_value(f"{c_let}{hdr_r+1}")
+                    try:
+                        num = float(str(v).replace(",", "").strip())
+                        if num >= 10000000:
+                            base_c = c_let
+                            break
+                    except Exception:
+                        pass
+
+            if name_c and base_c:
+                ot_rates = []
+                for r in range(hdr_r + 1, s_max_r + 1):
+                    emp_n = source_sheet.get_value(f"{name_c}{r}")
+                    if emp_n is None or str(emp_n).strip() == "":
+                        continue
+                    emp_name = str(emp_n).strip()
+                    if any(kw in emp_name.lower() for kw in ["مجموع", "جمع", "کل", "تراز", "میانگین", "total"]):
+                        continue
+
+                    raw_b = source_sheet.get_value(f"{base_c}{r}")
+                    try:
+                        base_val = float(str(raw_b).replace(",", "").strip()) if raw_b is not None else 0.0
+                    except ValueError:
+                        base_val = 0.0
+
+                    if base_val <= 0:
+                        continue
+
+                    days_val = 30.0
+                    if days_c:
+                        raw_d = source_sheet.get_value(f"{days_c}{r}")
+                        try:
+                            days_val = float(str(raw_d).replace(",", "").strip()) if raw_d is not None else 30.0
+                        except ValueError:
+                            days_val = 30.0
+
+                    if days_val < 30.0 and days_val > 0:
+                        adjusted_base = round(base_val * days_val / 30.0)
+                    else:
+                        adjusted_base = round(base_val)
+
+                    ot_hrs = 0.0
+                    if ot_hours_c:
+                        raw_ot = source_sheet.get_value(f"{ot_hours_c}{r}")
+                        try:
+                            ot_hrs = float(str(raw_ot).replace(",", "").strip()) if raw_ot is not None else 0.0
+                        except ValueError:
+                            ot_hrs = 0.0
+
+                    ot_r = 1.4
+                    if ot_rate_c:
+                        raw_rate = source_sheet.get_value(f"{ot_rate_c}{r}")
+                        try:
+                            ot_r = float(str(raw_rate).replace(",", "").strip()) if raw_rate is not None else 1.4
+                        except ValueError:
+                            ot_r = 1.4
+                    ot_rates.append(ot_r)
+
+                    tot_allow = 0.0
+                    for ac in allowance_cols:
+                        raw_a = source_sheet.get_value(f"{ac}{r}")
+                        try:
+                            a_num = float(str(raw_a).replace(",", "").strip()) if raw_a is not None and str(raw_a).strip() != "-" else 0.0
+                            tot_allow += a_num
+                        except ValueError:
+                            pass
+
+                    tot_deduct = 0.0
+                    for dc in deduction_cols:
+                        raw_dc = source_sheet.get_value(f"{dc}{r}")
+                        try:
+                            d_num = float(str(raw_dc).replace(",", "").strip()) if raw_dc is not None and str(raw_dc).strip() != "-" else 0.0
+                            tot_deduct += d_num
+                        except ValueError:
+                            pass
+
+                    emp_id = str(100 + len(real_employees) + 1)
+                    real_employees.append({
+                        "id": emp_id,
+                        "name": emp_name,
+                        "base": adjusted_base,
+                        "allow": tot_allow,
+                        "ot_hrs": ot_hrs,
+                        "ot_rate": ot_r,
+                        "deduct": tot_deduct,
+                    })
+
+                if ot_rates:
+                    ot_rate_mult = sum(ot_rates) / len(ot_rates)
+                has_deductions_col = any(e["deduct"] > 0 for e in real_employees)
+
         ps = ctx.manager.create_sheet(name)
         if hasattr(ps, "_ws"):
             ps._ws.views.sheetView[0].rightToLeft = True
 
+        ot_lbl = f"{ot_rate_mult:g}" if ot_rate_mult else "1.4"
+
+        if has_deductions_col:
+            last_col = "L"
+            headers = [
+                ("A3", "کد"),
+                ("B3", "نام و نام خانوادگی"),
+                ("C3", "پایه حقوق"),
+                ("D3", "مزایا و بن"),
+                ("E3", "ساعت اضافه‌کاری"),
+                ("F3", f"مبلغ اضافه‌کاری ({ot_lbl}x)"),
+                ("G3", "ناخالص دریافتی"),
+                ("H3", "بیمه کارگر (۷٪)"),
+                ("I3", "بیمه کارفرما (۲۳٪)"),
+                ("J3", "مالیات حقوق (۱۰٪)"),
+                ("K3", "سایر کسورات"),
+                ("L3", "خالص پرداختی")
+            ]
+        else:
+            last_col = "K"
+            headers = [
+                ("A3", "کد"),
+                ("B3", "نام و نام خانوادگی"),
+                ("C3", "پایه حقوق"),
+                ("D3", "مزایا و بن"),
+                ("E3", "ساعت اضافه‌کاری"),
+                ("F3", f"مبلغ اضافه‌کاری ({ot_lbl}x)"),
+                ("G3", "ناخالص دریافتی"),
+                ("H3", "بیمه کارگر (۷٪)"),
+                ("I3", "بیمه کارفرما (۲۳٪)"),
+                ("J3", "مالیات حقوق (۱۰٪)"),
+                ("K3", "خالص پرداختی")
+            ]
+
         # Header Title
         ps.set_value("A1", "لیست و محاسبات جامع حقوق و دستمزد و بیمه و مالیات")
         ps.set_font("A1", bold=True, size=14)
-        ps.merge_cells("A1:K1")
+        ps.merge_cells(f"A1:{last_col}1")
 
-        headers = [
-            ("A3", "کد"),
-            ("B3", "نام و نام خانوادگی"),
-            ("C3", "پایه حقوق"),
-            ("D3", "مزایا و بن"),
-            ("E3", "ساعت اضافه‌کاری"),
-            ("F3", "مبلغ اضافه‌کاری (۱.۴x)"),
-            ("G3", "ناخالص دریافتی"),
-            ("H3", "بیمه کارگر (۷٪)"),
-            ("I3", "بیمه کارفرما (۲۳٪)"),
-            ("J3", "مالیات حقوق (۱۰٪)"),
-            ("K3", "خالص پرداختی")
-        ]
         for cell_ref, text in headers:
             ps.set_value(cell_ref, text)
-        ps.set_font("A3:K3", bold=True)
-        ps.set_cell_color("A3:K3", "#1E293B")
-        ps.set_font("A3:K3", font_color="#FFFFFF")
+        ps.set_font(f"A3:{last_col}3", bold=True)
+        ps.set_cell_color(f"A3:{last_col}3", "#1E293B")
+        ps.set_font(f"A3:{last_col}3", font_color="#FFFFFF")
 
-        # Sample Iranian payroll employees
-        employees = [
-            ("101", "علی رضایی", 150000000, 35000000, 24),
-            ("102", "سارا احمدی", 185000000, 40000000, 18),
-            ("103", "محمد محمدی", 120000000, 30000000, 35),
-            ("104", "مریم کاظمی", 210000000, 50000000, 12),
-            ("105", "حسین صادقی", 140000000, 35000000, 0),
-        ]
+        # اگر کارمندان واقعی پیدا شدند استفاده کن، در غیر این صورت از کارمندان نمونه استفاده کن
+        if real_employees:
+            employees_data = [
+                (e["id"], e["name"], e["base"], e["allow"], e["ot_hrs"], e["ot_rate"], e["deduct"])
+                for e in real_employees
+            ]
+        else:
+            employees_data = [
+                ("101", "علی رضایی", 150000000, 35000000, 24, 1.4, 0),
+                ("102", "سارا احمدی", 185000000, 40000000, 18, 1.4, 0),
+                ("103", "محمد محمدی", 120000000, 30000000, 35, 1.4, 0),
+                ("104", "مریم کاظمی", 210000000, 50000000, 12, 1.4, 0),
+                ("105", "حسین صادقی", 140000000, 35000000, 0, 1.4, 0),
+            ]
 
         exempt = action.tax_exempt_ceiling
         tax_pct = action.tax_bracket / 100.0
 
         cur_r = 4
-        for emp_id, emp_name, base, allow, ot_hrs in employees:
+        for emp_id, emp_name, base, allow, ot_hrs, ot_r, deduct in employees_data:
             ps.set_value(f"A{cur_r}", emp_id)
             ps.set_value(f"B{cur_r}", emp_name)
             ps.set_value(f"C{cur_r}", base)
             ps.set_value(f"D{cur_r}", allow)
             ps.set_value(f"E{cur_r}", ot_hrs)
 
-            # Overtime Amount = (Base / 220) * 1.4 * OT_Hours
-            ps.set_formula(f"F{cur_r}", f"=ROUND((C{cur_r}/220)*1.4*E{cur_r}, 0)")
+            # Overtime Amount = (Base / 220) * ot_r * OT_Hours
+            ot_factor_str = f"{ot_r:g}" if ot_r else "1.4"
+            ps.set_formula(f"F{cur_r}", f"=ROUND((C{cur_r}/220)*{ot_factor_str}*E{cur_r}, 0)")
 
             # Gross Pay = Base + Allowance + Overtime
             ps.set_formula(f"G{cur_r}", f"=C{cur_r}+D{cur_r}+F{cur_r}")
@@ -438,8 +637,13 @@ class AccountingActionHandler:
             # Tax: 10% on amount exceeding exemption ceiling
             ps.set_formula(f"J{cur_r}", f'=ROUND(IF(G{cur_r}>{exempt:.0f}, (G{cur_r}-{exempt:.0f})*{tax_pct}, 0), 0)')
 
-            # Net Pay = Gross - Employee Insurance - Tax
-            ps.set_formula(f"K{cur_r}", f"=G{cur_r}-H{cur_r}-J{cur_r}")
+            if has_deductions_col:
+                ps.set_value(f"K{cur_r}", deduct)
+                # Net Pay = Gross - Employee Insurance - Tax - Deductions
+                ps.set_formula(f"L{cur_r}", f"=G{cur_r}-H{cur_r}-J{cur_r}-K{cur_r}")
+            else:
+                # Net Pay = Gross - Employee Insurance - Tax
+                ps.set_formula(f"K{cur_r}", f"=G{cur_r}-H{cur_r}-J{cur_r}")
 
             cur_r += 1
 
@@ -447,20 +651,23 @@ class AccountingActionHandler:
         tot_r = cur_r
         ps.set_value(f"A{tot_r}", "جمع کل لیست حقوق:")
         ps.merge_cells(f"A{tot_r}:B{tot_r}")
-        for col_letter in ["C", "D", "E", "F", "G", "H", "I", "J", "K"]:
+        col_list = ["C", "D", "E", "F", "G", "H", "I", "J", "K", "L"] if has_deductions_col else ["C", "D", "E", "F", "G", "H", "I", "J", "K"]
+        for col_letter in col_list:
             ps.set_formula(f"{col_letter}{tot_r}", f"=SUM({col_letter}4:{col_letter}{tot_r-1})")
 
-        ps.set_font(f"A{tot_r}:K{tot_r}", bold=True)
-        ps.set_cell_color(f"A{tot_r}:K{tot_r}", "#E0F2FE")
+        ps.set_font(f"A{tot_r}:{last_col}{tot_r}", bold=True)
+        ps.set_cell_color(f"A{tot_r}:{last_col}{tot_r}", "#E0F2FE")
         ps.set_number_format(f"C4:D{tot_r}", "#,##0")
-        ps.set_number_format(f"F4:K{tot_r}", "#,##0")
-        ps.auto_fit_columns(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"])
+        ps.set_number_format(f"F4:{last_col}{tot_r}", "#,##0")
+        ps.auto_fit_columns(["A", "B"] + col_list)
 
+        src_info = f" از شیت «{source_sheet.name}»" if source_sheet else ""
+        emp_count = len(employees_data)
         return ActionResult(
             success=True,
             message_persian=(
-                f"💼 **لیست محاسبات حقوق و دستمزد با موفقیت در شیت «{name}» ایجاد شد:**\n\n"
-                f"• محاسبه اضافه‌کاری با ضریب قانونی ۴۰٪ (۱.۴ برابر نرخ ساعت)\n"
+                f"💼 **لیست محاسبات حقوق و دستمزد ({emp_count} نفر پرسنل{src_info}) با موفقیت در شیت «{name}» ایجاد شد:**\n\n"
+                f"• محاسبه اضافه‌کاری با ضریب {ot_lbl} برابر نرخ ساعت\n"
                 f"• محاسبه بیمه تأمین اجتماعی سهم کارگر (۷٪)\n"
                 f"• محاسبه بیمه تأمین اجتماعی سهم کارفرما (۲۳٪)\n"
                 f"• محاسبه مالیات حقوق پله‌ای با اعمال سقف معافیت قانونی ({exempt:,.0f} ریال)\n"

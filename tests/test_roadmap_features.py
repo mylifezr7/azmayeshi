@@ -153,6 +153,60 @@ def test_payroll_action(test_manager):
     assert "=G4-H4-J4" == str(ps.get_formula("K4"))
 
 
+def test_payroll_from_existing_sheet_with_deductions_and_rate(test_manager):
+    """Verify that execute_payroll dynamically reads existing 'اطلاعات حقوق' sheet."""
+    info_sheet = test_manager.create_sheet("اطلاعات حقوق")
+    info_sheet.set_value("A1", "نام و نام خانوادگی")
+    info_sheet.set_value("B1", "روز کارکرد")
+    info_sheet.set_value("C1", "حقوق پایه ماهانه (ریال)")
+    info_sheet.set_value("D1", "ساعت اضافه کاری")
+    info_sheet.set_value("E1", "ضریب اضافه کاری")
+    info_sheet.set_value("F1", "حق مسکن/مزایا (ریال)")
+    info_sheet.set_value("G1", "سایر کسورات")
+
+    # Employee 1: 30 days
+    info_sheet.set_value("A2", "علی رضایی")
+    info_sheet.set_value("B2", 30)
+    info_sheet.set_value("C2", 250000000)
+    info_sheet.set_value("D2", 12)
+    info_sheet.set_value("E2", 2)
+    info_sheet.set_value("F2", 35000000)
+    info_sheet.set_value("G2", 3000000)
+
+    # Employee 2: 28 days (prorated base)
+    info_sheet.set_value("A3", "مهدی کریمی")
+    info_sheet.set_value("B3", 28)
+    info_sheet.set_value("C3", 165000000)
+    info_sheet.set_value("D3", 15)
+    info_sheet.set_value("E3", 2)
+    info_sheet.set_value("F3", 45000000)
+    info_sheet.set_value("G3", 2000000)
+
+    action = PayrollAction()
+    ctx = ActionContext(manager=test_manager, sheet=info_sheet)
+    res = AccountingActionHandler.execute_payroll(action, ctx)
+
+    assert res.success is True
+    assert "2 نفر پرسنل" in res.message_persian
+    ps = test_manager.get_sheet([s for s in test_manager.get_sheet_names() if s.startswith("فیش_حقوق_و_دستمزد")][-1])
+
+    # Check Ali Rezaei
+    assert ps.get_value("B4") == "علی رضایی"
+    assert ps.get_value("C4") == 250000000
+    assert ps.get_value("D4") == 35000000.0
+    assert ps.get_value("E4") == 12.0
+    assert "C4/220)*2*E4" in str(ps.get_formula("F4"))
+    assert ps.get_value("K4") == 3000000.0
+    assert "=G4-H4-J4-K4" == str(ps.get_formula("L4"))
+
+    # Check Mehdi Karimi (28 days prorated: 165M * 28/30 = 154M)
+    assert ps.get_value("B5") == "مهدی کریمی"
+    assert ps.get_value("C5") == 154000000
+    assert ps.get_value("D5") == 45000000.0
+    assert ps.get_value("E5") == 15.0
+    assert ps.get_value("K5") == 2000000.0
+
+
 # 5. Depreciation Test (محاسبه استهلاک دارایی‌ها)
 def test_depreciation_action(test_manager):
     sheet = test_manager.get_active_sheet()
