@@ -1159,14 +1159,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptPreventDuplicates() {
-            const col = prompt("ستون مورد نظر برای قفل یکتایی و جلوگیری از تکرار (مثلاً: 12 یا L):", "12");
-            if (!col || !col.trim()) return;
-            const cmd = `ستون ${col.trim()} نباید داده تکراری داشته باشه`;
-            sendCommand(cmd);
+            const mode = confirm("مدیریت یکتاسازی ستون اکسل:\n\nبرای [اعمال قفل یکتایی] روی OK کلیک کنید.\nبرای [لغو قفل یکتایی] روی Cancel کلیک کنید.");
+            if (mode) {
+                const col = prompt("📌 ستون مورد نظر برای اعمال قفل یکتایی (مثلاً: L یا 12):", "L");
+                if (!col || !col.trim()) return;
+                sendCommand(`ستون ${col.trim()} نباید داده تکراری داشته باشه`);
+            } else {
+                const col = prompt("📌 ستون مورد نظر برای لغو و برداشتن قفل یکتایی (مثلاً: L یا 12):", "L");
+                if (!col || !col.trim()) return;
+                sendCommand(`قفل یکتایی ستون ${col.trim()} را بردار`);
+            }
         }
 
         function promptRemoveUniqueValidation() {
-            const col = prompt("ستون مورد نظر برای برداشتن قفل یکتایی (مثلاً: 12 یا L):", "12");
+            const col = prompt("📌 ستون مورد نظر برای لغو و برداشتن قفل یکتایی (مثلاً: L یا 12):", "L");
             if (!col || !col.trim()) return;
             const cmd = `قفل یکتایی ستون ${col.trim()} را بردار`;
             sendCommand(cmd);

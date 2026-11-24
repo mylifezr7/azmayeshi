@@ -118,14 +118,16 @@ def test_unique_column_dialog_lock_and_unlock_actions():
         dialog = UniqueColumnWizardDialog()
         dialog.input_col.setText("B")
 
-        # Lock mode
-        dialog.mode = "lock"
+        # Lock mode via radio button
+        dialog.rb_lock.setChecked(True)
+        assert dialog.mode == "lock"
         act_lock = dialog.get_action()
         assert isinstance(act_lock, PreventDuplicatesAction)
         assert act_lock.target_col == "B"
 
-        # Unlock mode
-        dialog.mode = "unlock"
+        # Unlock mode via radio button
+        dialog.rb_unlock.setChecked(True)
+        assert dialog.mode == "unlock"
         act_unlock = dialog.get_action()
         assert isinstance(act_unlock, RemoveUniqueValidationAction)
         assert act_unlock.target_col == "B"
