@@ -261,6 +261,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
         }
 
+        .btn-unlock {
+            background: linear-gradient(90deg, #991B1B, #DC2626);
+            border: 1px solid #DC2626;
+        }
+        .btn-unlock:hover {
+            background: linear-gradient(90deg, #B91C1C, #EF4444);
+            box-shadow: 0 0 12px rgba(220, 38, 38, 0.6);
+        }
+
         .btn-arithmetic {
             background: linear-gradient(90deg, #047857, #10B981);
             border: 1px solid #10B981;
@@ -841,6 +850,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button class="btn-shortcut btn-save" onclick="saveWorkbook()">💾 ذخیره فایل (Save)... <span class="hotkey-badge">Ctrl+S</span></button>
             <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
             <button class="btn-shortcut btn-unique" onclick="promptPreventDuplicates()">🔒 قفل یکتایی ستون اکسل...</button>
+            <button class="btn-shortcut btn-unlock" onclick="promptRemoveUniqueValidation()">🔓 برداشتن قفل یکتایی ستون...</button>
             <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
             <button class="btn-shortcut btn-discount" onclick="promptDiscount()">🏷️ محاسبه تخفیف کالاها...</button>
             <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
@@ -1155,6 +1165,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             sendCommand(cmd);
         }
 
+        function promptRemoveUniqueValidation() {
+            const col = prompt("ستون مورد نظر برای برداشتن قفل یکتایی (مثلاً: 12 یا L):", "12");
+            if (!col || !col.trim()) return;
+            const cmd = `قفل یکتایی ستون ${col.trim()} را بردار`;
+            sendCommand(cmd);
+        }
+
         function promptSalesSummary() {
             openSalesModal();
         }
@@ -1317,6 +1334,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "smart": {
                 "title": "🤖 ۴. قابلیت‌های هوشمند و کاربردی",
                 "commands": [
+                    {label: "🔒 قفل یکتاسازی ستون اکسل...", cmd: "قفل یکتایی ستون A"},
+                    {label: "🔓 برداشتن قفل یکتایی ستون", cmd: "قفل یکتایی ستون A را بردار"},
                     {label: "🩺 چکاپ عمیق سلامت و خطاهای فایل", cmd: "سلامت فایل و بررسی خطاهای اکسل"},
                     {label: "🧮 میانگین سطری بین ستون‌ها (B و C در D)", cmd: "از ستون B و C میانگین بگیر و نتیجه را در D بنویس"},
                     {label: "📊 گزارش‌ساز خودکار با نمودار گرافیکی", cmd: "رسم نمودار ستونی"},

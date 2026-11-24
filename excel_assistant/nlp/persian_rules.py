@@ -13,6 +13,7 @@ from excel_assistant.nlp.intent_models import (
     ApplyDiscountAction,
     InsertDateAction,
     PreventDuplicatesAction,
+    RemoveUniqueValidationAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,
@@ -65,6 +66,7 @@ from excel_assistant.nlp.synonyms import (
     EMPTY_ROW_EMPTY_WORDS,
     DELETE_VERBS,
     DUPLICATE_WORDS,
+    UNLOCK_UNIQUE_WORDS,
     PREVENT_WORDS,
     SORT_WORDS,
     SORT_DESCENDING_WORDS,
@@ -265,7 +267,23 @@ class PersianRuleParser:
                 is_destructive=True
             )
 
-        # 4. Prevent duplicates / Delete duplicates / Highlight duplicates
+        # 4. Prevent duplicates / Remove unique lock / Delete duplicates / Highlight duplicates
+        is_unlock_unique = (
+            any(w in text_lower for w in UNLOCK_UNIQUE_WORDS) and
+            any(w in text_lower for w in ["یکتا", "یکتایی", "یکتاسازی", "قفل", "محدودیت", "ستون"]) and
+            not any(w in text_lower for w in ["ردیف", "سطر", "سطرهای"])
+        )
+        if is_unlock_unique:
+            col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+            target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not target_col:
+                cols = extract_source_columns(text, header_map)
+                target_col = cols[0] if cols else "A"
+            return RemoveUniqueValidationAction(
+                target_col=target_col,
+                description_persian=f"برداشتن قفل یکتایی ستون {target_col}"
+            )
+
         if any(w in text_lower for w in DUPLICATE_WORDS) or any(w in text_lower for w in ["یکتا کن", "یکتاسازی"]):
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             target_col = resolve_column(col_match.group(1), header_map) if col_match else None

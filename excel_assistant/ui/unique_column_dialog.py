@@ -1,9 +1,10 @@
 """
 Interactive Unique Column Wizard Dialog for Persian Excel Assistant.
 Allows users to select a column (e.g. column 12 / L for product code or national ID),
-and apply Excel Data Validation to strictly prevent duplicate entries with custom Persian error alert.
+apply Excel Data Validation to strictly prevent duplicate entries with custom Persian error alert,
+or remove / unlock existing uniqueness constraints.
 """
-from typing import List, Optional
+from typing import List, Optional, Union
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -11,18 +12,19 @@ from PySide6.QtWidgets import (
 )
 
 from excel_assistant.core.utils import col_index_to_letter, col_letter_to_index
-from excel_assistant.nlp.intent_models import PreventDuplicatesAction
+from excel_assistant.nlp.intent_models import PreventDuplicatesAction, RemoveUniqueValidationAction
 from excel_assistant.core.connection import ExcelConnectionManager
 
 
 class UniqueColumnWizardDialog(QDialog):
-    """Modern RTL dialog for locking a column to prevent duplicate values (e.g. National ID / Product Code)."""
+    """Modern RTL dialog for locking or unlocking a column's uniqueness (e.g. National ID / Product Code)."""
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.manager = manager
-        self.setWindowTitle("🔒 قفل یکتاسازی ستون و جلوگیری از ورود داده تکراری")
-        self.resize(520, 540)
+        self.mode = "lock"  # "lock" or "unlock"
+        self.setWindowTitle("🔒 مدیریت قفل یکتاسازی ستون و جلوگیری از ورود داده تکراری")
+        self.resize(540, 580)
         self.setLayoutDirection(Qt.RightToLeft)
 
         self._init_ui()
@@ -35,19 +37,19 @@ class UniqueColumnWizardDialog(QDialog):
         main_layout.setSpacing(14)
 
         # 1. Header
-        header_lbl = QLabel("🔒 جلوگیری از ورود دادهٔ تکراری در ستون (کد محصول / کد ملی)")
+        header_lbl = QLabel("🔒 مدیریت قفل یکتاسازی ستون (کد محصول / کد ملی)")
         header_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #38BDF8;")
         main_layout.addWidget(header_lbl)
 
         desc_lbl = QLabel(
-            "با فعال‌سازی این قابلیت، اکسل به طور خودکار ورود هرگونه مقدار تکراری در ستون انتخابی\n"
-            "را مسدود کرده و با نمایش پیام اخطار فارسی، مانع از ثبت کد تکراری می‌شود."
+            "از طریق این پنجره می‌توانید ورود مقادیر تکراری در ستون مورد نظر را مسدود کنید\n"
+            "یا در صورت نیاز، قفل و محدودیت یکتایی قبلی را از ستون بردارید."
         )
         desc_lbl.setStyleSheet("font-size: 12px; color: #94A3B8; line-height: 1.5;")
         main_layout.addWidget(desc_lbl)
 
         # 2. Section 1: Target Column
-        col_lbl = QLabel("📌 ستون مورد نظر برای یکتاسازی:")
+        col_lbl = QLabel("📌 ستون مورد نظر:")
         col_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 13px;")
         main_layout.addWidget(col_lbl)
 
@@ -66,8 +68,24 @@ class UniqueColumnWizardDialog(QDialog):
         col_box.addWidget(self.input_col)
         main_layout.addLayout(col_box)
 
-        # 3. Section 2: Error Alert Configuration
-        alert_lbl = QLabel("🛑 تنظیمات پیام خطای اکسل در صورت ورود تکراری:")
+        # 2.5 Lock Status Indicator Card
+        self.status_frame = QFrame()
+        self.status_frame.setStyleSheet("background-color: #1E293B; border-radius: 8px; padding: 8px 12px;")
+        status_layout = QHBoxLayout(self.status_frame)
+        status_layout.setContentsMargins(8, 6, 8, 6)
+        status_layout.setSpacing(8)
+
+        self.lbl_status_icon = QLabel("ℹ️")
+        self.lbl_status_icon.setStyleSheet("font-size: 16px;")
+        self.lbl_status_text = QLabel("وضعیت: در حال بررسی...")
+        self.lbl_status_text.setStyleSheet("font-size: 12px; font-weight: bold; color: #E2E8F0;")
+
+        status_layout.addWidget(self.lbl_status_icon)
+        status_layout.addWidget(self.lbl_status_text, stretch=1)
+        main_layout.addWidget(self.status_frame)
+
+        # 3. Section 2: Error Alert Configuration (for locking)
+        alert_lbl = QLabel("🛑 تنظیمات پیام اخطار اکسل هنگام ورود مقدار تکراری:")
         alert_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 13px;")
         main_layout.addWidget(alert_lbl)
 
@@ -93,7 +111,7 @@ class UniqueColumnWizardDialog(QDialog):
         main_layout.addWidget(alert_frame)
 
         # 4. Section 3: Highlight existing duplicates checkbox
-        self.cb_highlight = QCheckBox("بررسی و هایلایت داده‌های تکراری فعلی در صورت وجود")
+        self.cb_highlight = QCheckBox("بررسی و مدیریت هایلایت رنگی داده‌های تکراری فعلی")
         self.cb_highlight.setChecked(True)
         self.cb_highlight.setStyleSheet("color: #E2E8F0; font-size: 12px; font-weight: 500;")
         main_layout.addWidget(self.cb_highlight)
@@ -117,19 +135,25 @@ class UniqueColumnWizardDialog(QDialog):
         preview_layout.addWidget(self.lbl_preview_desc)
         main_layout.addWidget(self.preview_frame)
 
-        # 6. Action Buttons
+        # 6. Action Buttons: Lock, Unlock, Cancel
         btn_box = QHBoxLayout()
-        btn_box.setSpacing(12)
+        btn_box.setSpacing(10)
 
-        self.btn_execute = QPushButton("🚀 فعال‌سازی قفل یکتاسازی در اکسل")
-        self.btn_execute.setStyleSheet("background-color: #107C41; color: white; font-weight: bold; padding: 10px 18px; border-radius: 8px; font-size: 13px;")
+        self.btn_execute = QPushButton("🔒 فعال‌سازی قفل یکتایی")
+        self.btn_execute.setStyleSheet("background-color: #107C41; color: white; font-weight: bold; padding: 10px 16px; border-radius: 8px; font-size: 13px;")
         self.btn_execute.clicked.connect(self._on_execute_clicked)
 
-        self.btn_cancel = QPushButton("❌ انصراف")
-        self.btn_cancel.setStyleSheet("background-color: #334155; color: #E2E8F0; padding: 10px 18px; border-radius: 8px; font-size: 13px;")
+        self.btn_unlock = QPushButton("🔓 برداشتن قفل یکتایی")
+        self.btn_unlock.setStyleSheet("background-color: #DC2626; color: white; font-weight: bold; padding: 10px 16px; border-radius: 8px; font-size: 13px;")
+        self.btn_unlock.setToolTip("حذف محدودیت یکتایی از ستون انتخابی و اجازه ورود مقادیر آزاد")
+        self.btn_unlock.clicked.connect(self._on_unlock_clicked)
+
+        self.btn_cancel = QPushButton("❌ بستن")
+        self.btn_cancel.setStyleSheet("background-color: #334155; color: #E2E8F0; padding: 10px 16px; border-radius: 8px; font-size: 13px;")
         self.btn_cancel.clicked.connect(self.reject)
 
         btn_box.addWidget(self.btn_execute)
+        btn_box.addWidget(self.btn_unlock)
         btn_box.addWidget(self.btn_cancel)
         main_layout.addLayout(btn_box)
 
@@ -186,21 +210,68 @@ class UniqueColumnWizardDialog(QDialog):
         col = self.get_target_column()
         formula = f"=COUNTIF({col}:{col}, {col}1)<=1"
         self.lbl_preview_formula.setText(formula)
-        self.lbl_preview_desc.setText(f"قفل ستون {col}: اکسل اجازه ورود هیچ مقدار تکراری را نخواهد داد.")
+
+        is_locked = False
+        if self.manager and self.manager.is_connected():
+            try:
+                sheet = self.manager.get_active_sheet()
+                is_locked = sheet.has_unique_validation(col)
+            except Exception:
+                is_locked = False
+
+        if is_locked:
+            self.lbl_status_icon.setText("🔒")
+            self.lbl_status_text.setText(f"وضعیت ستون {col}: قفل یکتایی روی این ستون فعال است.")
+            self.lbl_status_text.setStyleSheet("font-size: 12px; font-weight: bold; color: #FCA5A5;")
+            self.status_frame.setStyleSheet("background-color: #450A0A; border: 1px solid #DC2626; border-radius: 8px; padding: 8px 12px;")
+            self.lbl_preview_desc.setText(f"قفل فعال است: اکسل مانع ورود هرگونه مقدار تکراری در ستون {col} می‌شود.")
+            self.btn_unlock.setText("🔓 برداشتن قفل یکتایی (حذف محدودیت)")
+            self.btn_unlock.setStyleSheet("background-color: #DC2626; color: white; font-weight: bold; padding: 10px 16px; border-radius: 8px; font-size: 13px;")
+        else:
+            self.lbl_status_icon.setText("🔓")
+            self.lbl_status_text.setText(f"وضعیت ستون {col}: این ستون آزاد است (بدون قفل یکتایی).")
+            self.lbl_status_text.setStyleSheet("font-size: 12px; font-weight: bold; color: #86EFAC;")
+            self.status_frame.setStyleSheet("background-color: #0F291E; border: 1px solid #16A34A; border-radius: 8px; padding: 8px 12px;")
+            self.lbl_preview_desc.setText(f"با فعال‌سازی، اکسل اجازه ورود هیچ مقدار تکراری را در ستون {col} نخواهد داد.")
+            self.btn_unlock.setText("🔓 برداشتن قفل یکتایی")
+            self.btn_unlock.setStyleSheet("background-color: #7F1D1D; color: #FCA5A5; font-weight: bold; padding: 10px 16px; border-radius: 8px; font-size: 13px;")
 
     def _on_execute_clicked(self):
+        self.mode = "lock"
         self.accept()
 
-    def get_action(self) -> PreventDuplicatesAction:
+    def _on_unlock_clicked(self):
         col = self.get_target_column()
-        title = self.input_title.text().strip() or "خطای ورود داده تکراری"
-        msg = self.input_msg.text().strip() or "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد."
-        hl = self.cb_highlight.isChecked()
-
-        return PreventDuplicatesAction(
-            target_col=col,
-            error_title=title,
-            error_message=msg,
-            highlight_existing=hl,
-            description_persian=f"قفل یکتاسازی ستون {col} و جلوگیری از ورود دادهٔ تکراری در اکسل"
+        confirm = QMessageBox.question(
+            self,
+            "تأیید برداشتن قفل یکتایی",
+            f"آیا مطمئن هستید که می‌خواهید قفل یکتایی را از ستون {col} بردارید؟\n\n"
+            f"با برداشتن قفل، محدودیت اعتبارسنجی داده (Data Validation) از اکسل حذف شده و "
+            f"امکان ورود مقادیر تکراری در ستون {col} برقرار خواهد شد.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
         )
+        if confirm == QMessageBox.Yes:
+            self.mode = "unlock"
+            self.accept()
+
+    def get_action(self) -> Union[PreventDuplicatesAction, RemoveUniqueValidationAction]:
+        col = self.get_target_column()
+        if self.mode == "unlock":
+            return RemoveUniqueValidationAction(
+                target_col=col,
+                clear_highlight=self.cb_highlight.isChecked(),
+                description_persian=f"برداشتن قفل یکتایی ستون {col}"
+            )
+        else:
+            title = self.input_title.text().strip() or "خطای ورود داده تکراری"
+            msg = self.input_msg.text().strip() or "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد."
+            hl = self.cb_highlight.isChecked()
+
+            return PreventDuplicatesAction(
+                target_col=col,
+                error_title=title,
+                error_message=msg,
+                highlight_existing=hl,
+                description_persian=f"قفل یکتاسازی ستون {col} و جلوگیری از ورود دادهٔ تکراری در اکسل"
+            )

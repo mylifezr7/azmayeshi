@@ -72,8 +72,13 @@ class ISheet(ABC):
         pass
 
     @abstractmethod
-    def set_cell_color(self, cell_or_range: str, color_hex: str) -> None:
-        """Set background color using hex color code like '#FFFF00' or '#28A745'."""
+    def set_cell_color(self, cell_or_range: str, color_hex: Optional[str]) -> None:
+        """Set background color using hex color code like '#FFFF00' or reset if None."""
+        pass
+
+    @abstractmethod
+    def get_cell_color(self, cell_addr: str) -> Optional[str]:
+        """Returns hex color (e.g. '#FECDD3') of cell background if filled, else None."""
         pass
 
     @abstractmethod
@@ -126,6 +131,16 @@ class ISheet(ABC):
     @abstractmethod
     def add_unique_validation(self, col: str, error_title: str = "خطای ورود داده تکراری", error_message: str = "این مقدار قبلاً در این ستون ثبت شده است و تکراری می‌باشد. لطفاً مقدار یکتا وارد کنید.") -> None:
         """Applies Excel data validation rule to ensure all entries in column must be unique."""
+        pass
+
+    @abstractmethod
+    def remove_unique_validation(self, col: str) -> None:
+        """Removes Excel data validation rule preventing duplicate entries on column."""
+        pass
+
+    @abstractmethod
+    def has_unique_validation(self, col: str) -> bool:
+        """Checks if specified column currently has a unique validation rule."""
         pass
 
     @abstractmethod

@@ -56,6 +56,12 @@ class PreventDuplicatesAction(BaseActionModel):
     highlight_existing: bool = True
 
 
+class RemoveUniqueValidationAction(BaseActionModel):
+    action_type: Literal["remove_unique_validation"] = "remove_unique_validation"
+    target_col: str = "A"
+    clear_highlight: bool = True
+
+
 class DeleteEmptyRowsAction(BaseActionModel):
     action_type: Literal["delete_empty_rows"] = "delete_empty_rows"
     is_destructive: bool = True
@@ -348,6 +354,7 @@ ExcelAction = Union[
     ApplyDiscountAction,
     InsertDateAction,
     PreventDuplicatesAction,
+    RemoveUniqueValidationAction,
     HighlightConditionAction,
     HighlightDuplicatesAction,
     DeleteEmptyRowsAction,

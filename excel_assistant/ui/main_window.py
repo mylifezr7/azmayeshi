@@ -157,6 +157,8 @@ class MainWindow(QMainWindow):
             "smart": {
                 "title": "🤖 ۴. قابلیت‌های هوشمند و کاربردی",
                 "commands": [
+                    ("🔒 قفل یکتاسازی ستون اکسل...", "قفل یکتایی ستون"),
+                    ("🔓 برداشتن قفل یکتایی ستون", "قفل یکتایی ستون A را بردار"),
                     ("🩺 چکاپ عمیق سلامت و خطاهای فایل", "سلامت فایل و بررسی خطاهای اکسل"),
                     ("🧮 میانگین سطری بین ستون‌ها (B و C در D)", "از ستون B و C میانگین بگیر و نتیجه را در D بنویس"),
                     ("📊 گزارش‌ساز خودکار با نمودار گرافیکی", "رسم نمودار ستونی"),
@@ -411,7 +413,11 @@ class MainWindow(QMainWindow):
         elif "فروش" in command:
             self._open_sales_dialog()
         elif "جلوگیری" in command or "یکتا" in command:
-            self._open_unique_col_dialog()
+            if any(w in command for w in ["بردار", "حذف", "برداشتن", "لغو", "باز"]):
+                self.input_edit.setText(command)
+                self._on_send_clicked()
+            else:
+                self._open_unique_col_dialog()
         elif "تاریخ" in command:
             self._open_date_dialog()
         elif "تخفیف" in command:
