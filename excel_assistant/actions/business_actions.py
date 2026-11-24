@@ -451,15 +451,30 @@ class BusinessActionHandler:
             except Exception:
                 sales_sheet = None
 
-        # 3. تشخیص ستون‌ها و ستون‌های موجود قبلی در شیت اصلی (خرید)
-        prod_col = action.product_col
-        stock_col = action.stock_col
-        price_col = action.purchase_price_col
-
+        # 3. تشخیص ستون‌های تحلیلی موجود قبلی در شیت اصلی (ستون‌های ایجادشده در دفعات قبل)
         existing_sold_col = None
         existing_rem_col = None
         existing_status_col = None
         existing_val_col = None
+
+        for c in range(min_c, max_c + 1):
+            letter = col_index_to_letter(c)
+            h = str(sheet.get_value(f"{letter}{header_row}") or "").strip().lower()
+            if "تعداد فروش (" in h or (sales_sheet and "تعداد فروش" in h and any(sales_sheet.name.lower() in h for _ in [1])):
+                existing_sold_col = letter
+            elif "مانده موجودی" in h or "مانده انبار" in h:
+                existing_rem_col = letter
+            elif "وضعیت موجودی" in h or "وضعیت انبار" in h:
+                existing_status_col = letter
+            elif "ارزش ریالی" in h or "ارزش موجودی" in h:
+                existing_val_col = letter
+
+        known_added_cols = [c for c in [existing_sold_col, existing_rem_col, existing_status_col, existing_val_col] if c]
+
+        # تشخیص ستون‌های داده کاربر (نام کالا، قیمت، تعداد خرید) فقط از میان ستون‌های غیرتحلیلی
+        prod_col = action.product_col
+        stock_col = action.stock_col
+        price_col = action.purchase_price_col
 
         best_prod_score = 0
         best_stock_score = 0
@@ -467,47 +482,52 @@ class BusinessActionHandler:
 
         for c in range(min_c, max_c + 1):
             letter = col_index_to_letter(c)
+            if letter in known_added_cols:
+                continue
+
             h = str(sheet.get_value(f"{letter}{header_row}") or "").strip().lower()
-            if "تعداد فروش (" in h or (sales_sheet and "تعداد فروش" in h and any(sales_sheet.name.lower() in h for _ in [1])):
-                existing_sold_col = letter
-            elif "مانده موجودی" in h:
-                existing_rem_col = letter
-            elif "وضعیت موجودی" in h:
-                existing_status_col = letter
-            elif "ارزش ریالی" in h or "ارزش موجودی" in h:
-                existing_val_col = letter
+            if any(ex in h for ex in ["مانده", "وضعیت", "ارزش"]):
+                continue
 
+            # ستون نام یا شرح کالا
             if not action.product_col:
-                p_score = 0
-                if any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "عنوان کالا"]):
-                    p_score = 10
-                elif any(k in h for k in ["کالا", "محصول", "شرح", "عنوان", "product", "item"]) and not any(ck in h for ck in ["کد", "شناسه", "بارکد", "code", "id"]):
-                    p_score = 5
-                elif "کالا" in h:
-                    p_score = 1
-                if p_score > best_prod_score:
-                    best_prod_score = p_score
-                    prod_col = letter
+                if not any(ex in h for ex in ["تعداد", "مقدار", "قیمت", "مبلغ", "فی", "تاریخ", "ضرب", "جمع", "فروش"]):
+                    p_score = 0
+                    if any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "عنوان کالا"]):
+                        p_score = 15
+                    elif any(k in h for k in ["کالا", "محصول", "شرح", "عنوان", "product", "item"]) and not any(ck in h for ck in ["کد", "شناسه", "بارکد", "code", "id"]):
+                        p_score = 10
+                    elif "کالا" in h:
+                        p_score = 5
+                    if p_score > best_prod_score:
+                        best_prod_score = p_score
+                        prod_col = letter
 
+            # ستون تعداد خرید / موجودی اولیه ورودی (باید عاری از کلمات مانده، فروش، وضعیت، قیمت باشد)
             if not action.stock_col:
-                s_score = 0
-                if any(k in h for k in ["تعداد خرید", "موجودی انبار", "تعداد انبار", "مانده انبار", "موجودی"]):
-                    s_score = 10
-                elif any(k in h for k in ["تعداد", "مقدار", "انبار", "stock", "qty", "quantity"]) and "فروش" not in h:
-                    s_score = 5
-                if s_score > best_stock_score:
-                    best_stock_score = s_score
-                    stock_col = letter
+                if not any(ex in h for ex in ["مانده", "فروش", "قیمت", "مبلغ", "فی", "تاریخ", "ضرب", "جمع", "کد", "شناسه", "نام", "شرح"]):
+                    s_score = 0
+                    if any(k in h for k in ["تعداد خرید", "مقدار خرید", "ورودی"]):
+                        s_score = 20
+                    elif any(k in h for k in ["تعداد", "مقدار", "موجودی اولیه", "stock", "qty", "quantity"]):
+                        s_score = 15
+                    elif any(k in h for k in ["موجودی انبار", "تعداد انبار", "موجودی"]):
+                        s_score = 10
+                    if s_score > best_stock_score:
+                        best_stock_score = s_score
+                        stock_col = letter
 
+            # ستون قیمت خرید
             if not action.purchase_price_col:
-                pr_score = 0
-                if any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "نرخ خرید"]):
-                    pr_score = 10
-                elif any(k in h for k in ["قیمت واحد", "فی", "قیمت", "مبلغ واحد", "cost", "unit price", "price"]) and "فروش" not in h:
-                    pr_score = 5
-                if pr_score > best_price_score:
-                    best_price_score = pr_score
-                    price_col = letter
+                if not any(ex in h for ex in ["تعداد", "مقدار", "فروش", "مانده", "وضعیت", "تاریخ", "کد", "نام", "شرح"]):
+                    pr_score = 0
+                    if any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "نرخ خرید"]):
+                        pr_score = 20
+                    elif any(k in h for k in ["قیمت واحد", "قیمت", "فی", "مبلغ واحد", "cost", "unit price", "price"]) and "ضرب" not in h and "جمع" not in h:
+                        pr_score = 10
+                    if pr_score > best_price_score:
+                        best_price_score = pr_score
+                        price_col = letter
 
         # بررسی وجود ستون فروش در همان شیت (در صورتی که شیت مجزای فروش نباشد)
         same_sheet_sold_col = None
@@ -620,6 +640,15 @@ class BusinessActionHandler:
 
             sheet.set_value(f"{status_col}{header_row}", "وضعیت موجودی انبار")
             sheet.set_value(f"{val_col}{header_row}", "ارزش ریالی موجودی")
+
+        # ایمنی قطعی در برابر ارجاع دایره‌ای (Circular Reference):
+        # ستون موجودی ورودی (stock_col) به هیچ عنوان نباید با ستون‌های تحلیلی/هدف (target_cols) یکی باشد
+        if stock_col in target_cols or (rem_col and stock_col == rem_col):
+            for c in range(min_c, last_data_c + 1):
+                col_let = col_index_to_letter(c)
+                if col_let not in target_cols and col_let != prod_col and col_let != price_col and col_let != sold_col:
+                    stock_col = col_let
+                    break
 
         # تمیز کردن ستون‌های اضافه دورافتاده قبلی (مثل ستون K)
         for old_c in known_added_cols:
@@ -928,9 +957,11 @@ class BusinessActionHandler:
         for c in range(p_min_c, p_max_c + 1):
             c_let = col_index_to_letter(c)
             h = str(purchase_sheet.get_value(f"{c_let}{p_hdr_r}") or "").strip().lower()
+            if any(ex in h for ex in ["مانده", "وضعیت", "ارزش"]):
+                continue
             if not p_prod_c and any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "کالا", "محصول"]) and not any(ck in h for ck in ["کد", "شناسه"]):
                 p_prod_c = c_let
-            elif not p_qty_c and any(k in h for k in ["تعداد خرید", "موجودی انبار", "تعداد", "مقدار"]) and "فروش" not in h:
+            elif not p_qty_c and any(k in h for k in ["تعداد خرید", "موجودی اولیه", "تعداد", "مقدار"]) and "فروش" not in h:
                 p_qty_c = c_let
             elif not p_price_c and any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "قیمت واحد", "فی", "قیمت"]) and "فروش" not in h:
                 p_price_c = c_let

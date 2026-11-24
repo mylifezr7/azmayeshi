@@ -849,3 +849,65 @@ def test_nlp_parsing_fifo_lifo_average_prompts():
         assert action.method == expected_method, f"Expected {expected_method} for '{prompt}', got {action.method}"
 
 
+def test_consecutive_inventory_alert_no_circular_reference(test_manager):
+    """
+    Verify that re-running inventory check on an already-processed sheet
+    does not cause a circular reference (e.g. G2 subtracting from itself: G2-F2).
+    """
+    p_sheet = test_manager.create_sheet("خرید_دوباره")
+    p_sheet.set_value("A1", "ردیف")
+    p_sheet.set_value("B1", "نام کالا")
+    p_sheet.set_value("C1", "تعداد")
+    p_sheet.set_value("D1", "قیمت واحد")
+    p_sheet.set_value("E1", "مبلغ کل")
+
+    p_sheet.set_value("A2", 1)
+    p_sheet.set_value("B2", "لپ تاپ")
+    p_sheet.set_value("C2", 50)
+    p_sheet.set_value("D2", 30000000)
+    p_sheet.set_value("E2", 1500000000)
+
+    p_sheet.set_value("A3", 2)
+    p_sheet.set_value("B3", "موس")
+    p_sheet.set_value("C3", 200)
+    p_sheet.set_value("D3", 250000)
+    p_sheet.set_value("E3", 50000000)
+
+    s_sheet = test_manager.create_sheet("فروش_دوباره")
+    s_sheet.set_value("A1", "نام کالا")
+    s_sheet.set_value("B1", "قیمت فروش")
+    s_sheet.set_value("C1", "تعداد فروش")
+
+    s_sheet.set_value("A2", "لپ تاپ")
+    s_sheet.set_value("B2", 35000000)
+    s_sheet.set_value("C2", 48)
+
+    s_sheet.set_value("A3", "موس")
+    s_sheet.set_value("B3", 300000)
+    s_sheet.set_value("C3", 50)
+
+    action = InventoryAlertAction(min_threshold=5, highlight_low_stock=True)
+    ctx = ActionContext(manager=test_manager, sheet=p_sheet)
+
+    # First run
+    res1 = BusinessActionHandler.execute_inventory_alert(action, ctx)
+    assert res1.success is True
+    g2_run1 = p_sheet.get_formula("G2")
+    assert "=IF(OR(B2=\"\", C2=\"\"), \"\", C2-F2)" == g2_run1
+
+    # Second run (simulating user re-running on processed sheet)
+    res2 = BusinessActionHandler.execute_inventory_alert(action, ctx)
+    assert res2.success is True
+    g2_run2 = p_sheet.get_formula("G2")
+    assert "=IF(OR(B2=\"\", C2=\"\"), \"\", C2-F2)" == g2_run2
+    assert "G2-" not in g2_run2, "Circular reference detected in G2!"
+
+    # Third run
+    res3 = BusinessActionHandler.execute_inventory_alert(action, ctx)
+    assert res3.success is True
+    g2_run3 = p_sheet.get_formula("G2")
+    assert "=IF(OR(B2=\"\", C2=\"\"), \"\", C2-F2)" == g2_run3
+    assert "G2-" not in g2_run3, "Circular reference detected in G2!"
+
+
+
