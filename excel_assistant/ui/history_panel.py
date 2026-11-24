@@ -103,25 +103,6 @@ class HistoryPanel(QFrame):
         self.btn_arithmetic.clicked.connect(self.arithmetic_requested.emit)
         layout.addWidget(self.btn_arithmetic)
 
-        # 3. Product discount button: Warm Vibrant Mango / Amber Orange
-        self.btn_discount = QPushButton("🏷️ محاسبه تخفیف کالاها...")
-        self.btn_discount.setObjectName("discountButton")
-        self.btn_discount.setProperty("class", "sidebarActionBtn")
-        self.btn_discount.setStyleSheet(
-            "QPushButton#discountButton {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #B45309, stop:1 #F59E0B);"
-            "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
-            "  border: 1px solid #F59E0B; border-radius: 10px;"
-            "}"
-            "QPushButton#discountButton:hover {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #D97706, stop:1 #FBBF24);"
-            "  border: 1px solid #FBBF24;"
-            "}"
-            "QPushButton#discountButton:pressed { background: #78350F; }"
-        )
-        self.btn_discount.clicked.connect(self.discount_requested.emit)
-        layout.addWidget(self.btn_discount)
-
         layout.addStretch()
 
     def add_command(self, cmd: str):
