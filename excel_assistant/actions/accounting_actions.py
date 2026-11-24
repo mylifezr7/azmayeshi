@@ -362,7 +362,6 @@ class AccountingActionHandler:
         )
 
     @classmethod
-    @classmethod
     def execute_payroll(cls, action: PayrollAction, ctx: ActionContext) -> ActionResult:
         """
         محاسبه حقوق و دستمزد، اضافه‌کاری، بیمه (۷٪ کارگر، ۲۳٪ کارفرما) و مالیات حقوق.
