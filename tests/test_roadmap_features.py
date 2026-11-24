@@ -1033,5 +1033,53 @@ def test_multi_batch_inventory_fifo_allocation(test_manager):
     assert "SUMIF($A$2:$A$5, A2, $F$2:$F$5)<=5.0" in f_status_batch1
 
 
+def test_financial_statement_from_trial_balance(test_manager):
+    """Verify that execute_financial_statement dynamically parses a trial balance sheet."""
+    from excel_assistant.actions.accounting_actions import AccountingActionHandler
+    from excel_assistant.nlp.intent_models import FinancialStatementAction
+
+    tb = test_manager.create_sheet("تراز آزمایشی")
+    tb.set_value("A1", "عنوان حساب")
+    tb.set_value("B1", "مانده بدهکار (ریال)")
+    tb.set_value("C1", "مانده بستانکار (ریال)")
+
+    data = [
+        ("فروش کالا", 0, 1850000000),
+        ("درآمد خدمات", 0, 125000000),
+        ("برگشت از فروش", 42000000, 0),
+        ("تخفیفات فروش", 16000000, 0),
+        ("موجودی کالا اول دوره", 210000000, 0),
+        ("خرید طی دوره", 620000000, 0),
+        ("برگشت از خرید", 0, 18000000),
+        ("تخفیفات خرید", 0, 7000000),
+        ("موجودی کالا پایان دوره", 265000000, 0),
+        ("هزینه حقوق و دستمزد", 310000000, 0),
+        ("هزینه اجاره", 84000000, 0),
+        ("هزینه آب، برق و گاز", 22000000, 0),
+        ("هزینه مالی", 28000000, 0),
+        ("درآمد سود سپرده", 0, 14000000),
+    ]
+    for idx, (acc, d, c) in enumerate(data, start=2):
+        tb.set_value(f"A{idx}", acc)
+        tb.set_value(f"B{idx}", d)
+        tb.set_value(f"C{idx}", c)
+
+    ctx = ActionContext(manager=test_manager, sheet=tb)
+    res = AccountingActionHandler.execute_financial_statement(
+        FinancialStatementAction(statement_type="income_statement"), ctx
+    )
+    assert res.success is True
+    assert "تراز آزمایشی" in res.message_persian
+
+    inc_sheet = test_manager.get_sheet("صورت_سود_و_زیان")
+    # Gross revenue: 1,850,000,000 + 125,000,000 = 1,975,000,000
+    assert inc_sheet.get_value("B4") == 1975000000.0
+    # Sales contra: - (42M + 16M) = -58M
+    assert inc_sheet.get_value("B5") == -58000000.0
+    # COGS: 210M + (620M - 25M) - 265M = 540M
+    assert inc_sheet.get_value("B7") == -540000000.0
+
+
+
 
 

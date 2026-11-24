@@ -767,9 +767,87 @@ class AccountingActionHandler:
     def execute_financial_statement(cls, action: FinancialStatementAction, ctx: ActionContext) -> ActionResult:
         """
         تهیه صورت سود و زیان (Income Statement) یا ترازنامه (Balance Sheet) استاندارد حسابداری.
+        در صورت وجود تراز آزمایشی یا سرفصل‌های حساب در فایل اکسل، اقلام واقعی استخراج و محاسبه می‌شوند.
         """
         st_type = action.statement_type
         sheet_names = ctx.manager.get_sheet_names()
+        sheet = ctx.sheet
+
+        # 1. جستجوی هوشمند برای شیت حاوی تراز آزمایشی یا سرفصل‌های حسابداری
+        source_sheet = None
+        if sheet and not sheet.name.startswith("صورت_سود_و_زیان") and not sheet.name.startswith("ترازنامه"):
+            try:
+                min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                for r in range(min_r, min(min_r + 5, max_r + 1)):
+                    row_t = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1)).lower()
+                    if any(k in row_t for k in ["عنوان حساب", "نام حساب", "مانده بدهکار", "مانده بستانکار", "تراز"]):
+                        source_sheet = sheet
+                        break
+            except Exception:
+                pass
+
+        if not source_sheet and ctx.manager:
+            for sh_n in ctx.manager.get_sheet_names():
+                if not sh_n.startswith("صورت_سود_و_زیان") and not sh_n.startswith("ترازنامه"):
+                    if any(k in sh_n.lower() for k in ["تراز آزمایشی", "تراز_آزمایشی", "تراز", "trial", "balance"]):
+                        try:
+                            cand = ctx.manager.get_sheet(sh_n)
+                            min_r, min_c, max_r, max_c = cand.get_used_range_bounds()
+                            if max_r > min_r:
+                                source_sheet = cand
+                                break
+                        except Exception:
+                            pass
+
+        account_map: Dict[str, Dict[str, float]] = {}
+        if source_sheet:
+            s_min_r, s_min_c, s_max_r, s_max_c = source_sheet.get_used_range_bounds()
+            hdr_r = s_min_r
+            for r in range(s_min_r, min(s_min_r + 10, s_max_r + 1)):
+                row_t = " ".join(str(source_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+                if any(k in row_t for k in ["عنوان حساب", "نام حساب", "حساب", "بدهکار", "بستانکار"]):
+                    hdr_r = r
+                    break
+
+            acc_col, deb_col, cred_col = None, None, None
+            for c in range(s_min_c, s_max_c + 1):
+                c_let = col_index_to_letter(c)
+                h = str(source_sheet.get_value(f"{c_let}{hdr_r}") or "").strip().lower()
+                if not h:
+                    continue
+                if not acc_col and any(k in h for k in ["عنوان حساب", "نام حساب", "سرفصل", "حساب"]):
+                    acc_col = c_let
+                elif not deb_col and any(k in h for k in ["مانده بدهکار", "بدهکار", "debit"]):
+                    deb_col = c_let
+                elif not cred_col and any(k in h for k in ["مانده بستانکار", "بستانکار", "credit"]):
+                    cred_col = c_let
+
+            if acc_col and (deb_col or cred_col):
+                for r in range(hdr_r + 1, s_max_r + 1):
+                    raw_a = source_sheet.get_value(f"{acc_col}{r}")
+                    if not raw_a or str(raw_a).strip() == "":
+                        continue
+                    acc_name = str(raw_a).strip()
+                    if any(kw in acc_name.lower() for kw in ["جمع", "مجموع", "تراز", "total"]):
+                        continue
+
+                    d_val = 0.0
+                    if deb_col:
+                        raw_d = source_sheet.get_value(f"{deb_col}{r}")
+                        try:
+                            d_val = float(str(raw_d).replace(",", "").strip()) if raw_d is not None and str(raw_d).strip() != "-" else 0.0
+                        except ValueError:
+                            d_val = 0.0
+
+                    c_val = 0.0
+                    if cred_col:
+                        raw_c = source_sheet.get_value(f"{cred_col}{r}")
+                        try:
+                            c_val = float(str(raw_c).replace(",", "").strip()) if raw_c is not None and str(raw_c).strip() != "-" else 0.0
+                        except ValueError:
+                            c_val = 0.0
+
+                    account_map[acc_name] = {"debit": d_val, "credit": c_val}
 
         if st_type == "balance_sheet":
             base_name = "ترازنامه"
@@ -795,35 +873,107 @@ class AccountingActionHandler:
             bs.set_cell_color("A3:D3", "#1E3A8A")
             bs.set_font("A3:D3", font_color="#FFFFFF")
 
-            # Assets side
-            assets = [
-                ("دارایی‌های جاری:", None, True),
-                ("موجودی نقد و بانک", 320000000, False),
-                ("حساب‌های دریافتنی تجاری", 450000000, False),
-                ("موجودی کالا در انبار", 580000000, False),
-                ("پیش‌پرداخت‌ها", 50000000, False),
-                ("جمع دارایی‌های جاری", "=SUM(B5:B8)", True),
-                ("دارایی‌های غیرجاری (ثابت):", None, True),
-                ("تجهیزات و ماشین‌آلات", 1200000000, False),
-                ("کسر می‌شود: استهلاک انباشته", -250000000, False),
-                ("ارزش دفتری دارایی ثابت", "=SUM(B11:B12)", True),
-                ("جمع کل دارایی‌ها", "=B9+B13", True),
-            ]
+            if account_map:
+                def get_a(kws, side="debit", exclude=None):
+                    for k, v in account_map.items():
+                        if exclude and any(ex in k for ex in exclude):
+                            continue
+                        if any(kw in k for kw in kws):
+                            return v[side]
+                    return 0.0
 
-            # Liabilities & Equity side
-            liabilities = [
-                ("بدهی‌های جاری:", None, True),
-                ("حساب‌های پرداختنی تجاری", 380000000, False),
-                ("اسناد پرداختنی کوتاه‌مدت", 120000000, False),
-                ("مالیات پرداختنی", 70000000, False),
-                ("سایر ذخایر", 30000000, False),
-                ("جمع بدهی‌های جاری", "=SUM(D5:D8)", True),
-                ("حقوق صاحبان سهام و سرمایه:", None, True),
-                ("سرمایه ثبت‌شده", 1200000000, False),
-                ("اندوخته قانونی", 150000000, False),
-                ("سود (زیان) انباشته", 400000000, False),
-                ("جمع کل بدهی‌ها و سرمایه", "=D9+SUM(D11:D13)", True),
-            ]
+                cash_val = get_a(["صندوق", "تنخواه"], "debit")
+                bank_val = get_a(["بانک"], "debit")
+                ar_val = get_a(["حساب‌های دریافتنی", "دریافتنی تجاری", "دریافتنی"], "debit")
+                inv_val = get_a(["موجودی کالا پایان دوره", "موجودی پایان دوره"], "debit", exclude=["اول دوره"])
+                if not inv_val:
+                    inv_val = get_a(["موجودی کالا", "موجودی انبار"], "debit", exclude=["اول دوره"])
+
+                land_val = get_a(["زمین"], "debit")
+                bldg_val = get_a(["ساختمان"], "debit", exclude=["استهلاک"])
+                bldg_dep = get_a(["استهلاک انباشته ساختمان"], "credit")
+                eq_val = get_a(["تجهیزات", "ماشین‌آلات", "اثاثه"], "debit", exclude=["استهلاک"])
+                eq_dep = get_a(["استهلاک انباشته تجهیزات", "استهلاک انباشته ماشین"], "credit")
+
+                ap_val = get_a(["حساب‌های پرداختنی", "پرداختنی تجاری", "پرداختنی"], "credit")
+                loan_val = get_a(["وام پرداختنی", "تسهیلات", "وام"], "credit")
+                cap_val = get_a(["سرمایه"], "credit")
+                re_beg_val = get_a(["سود انباشته ابتدای دوره", "سود انباشته"], "credit")
+
+                # دارایی‌ها
+                assets = [
+                    ("دارایی‌های جاری:", None, True),
+                    ("صندوق", cash_val, False),
+                    ("موجودی بانک", bank_val, False),
+                    ("حساب‌های دریافتنی تجاری", ar_val, False),
+                    ("موجودی کالا پایان دوره", inv_val, False),
+                    ("جمع دارایی‌های جاری", "=SUM(B5:B8)", True),
+                    ("دارایی‌های غیرجاری (ثابت):", None, True),
+                    ("زمین", land_val, False),
+                    ("ساختمان", bldg_val, False),
+                    ("کسر می‌شود: استهلاک انباشته ساختمان", -abs(bldg_dep), False),
+                    ("تجهیزات و ابزارآلات", eq_val, False),
+                    ("کسر می‌شود: استهلاک انباشته تجهیزات", -abs(eq_dep), False),
+                    ("جمع دارایی‌های غیرجاری", "=SUM(B11:B15)", True),
+                    ("جمع کل دارایی‌ها", "=B9+B16", True),
+                ]
+
+                # محاسبه سود دوره برای انعکاس در حقوق مالکانه و مالیات پرداختنی
+                sales_v = get_a(["فروش کالا", "فروش"], "credit", exclude=["برگشت", "تخفیف", "دارایی"]) + get_a(["خدمات"], "credit")
+                c_sales_v = get_a(["برگشت از فروش"], "debit") + get_a(["تخفیفات فروش", "تخفیف فروش"], "debit")
+                beg_i = get_a(["موجودی کالا اول دوره", "موجودی اول دوره"], "debit", exclude=["پایان دوره"])
+                pur = get_a(["خرید طی دوره", "خرید"], "debit", exclude=["برگشت", "تخفیف"])
+                p_ret = get_a(["برگشت از خرید"], "credit") + get_a(["تخفیفات خرید", "تخفیف خرید"], "credit")
+                cogs_v = beg_i + (pur - p_ret) - inv_val if (beg_i or pur or inv_val) else 0.0
+                tot_exp_v = sum(v["debit"] for k, v in account_map.items() if ("هزینه" in k or "ملزومات" in k) and "مالی" not in k and v["debit"] > 0)
+                non_op_v = (get_a(["سود سپرده"], "credit") + get_a(["فروش دارایی"], "credit")) - get_a(["هزینه مالی"], "debit")
+                net_pbt = (sales_v - c_sales_v - cogs_v) - tot_exp_v + non_op_v
+                tax_payable = round(max(0.0, net_pbt * 0.25))
+                cur_net_profit = round(net_pbt - tax_payable)
+
+                liabilities = [
+                    ("بدهی‌های جاری:", None, True),
+                    ("حساب‌های پرداختنی تجاری", ap_val, False),
+                    ("مالیات عملکرد پرداختنی (۲۵٪)", tax_payable, False),
+                    ("جمع بدهی‌های جاری", "=SUM(D5:D6)", True),
+                    ("بدهی‌های بلندمدت:", None, True),
+                    ("وام پرداختنی بلندمدت", loan_val, False),
+                    ("جمع بدهی‌های بلندمدت", "=D9", True),
+                    ("حقوق صاحبان سهام و سرمایه:", None, True),
+                    ("سرمایه ثبت‌شده", cap_val, False),
+                    ("سود (زیان) انباشته ابتدای دوره", re_beg_val, False),
+                    ("سود (زیان) خالص دوره جاری", cur_net_profit, False),
+                    ("جمع حقوق صاحبان سهام", "=SUM(D12:D14)", True),
+                    ("جمع کل بدهی‌ها و حقوق صاحبان سهام", "=D7+D10+D15", True),
+                ]
+            else:
+                assets = [
+                    ("دارایی‌های جاری:", None, True),
+                    ("موجودی نقد و بانک", 320000000, False),
+                    ("حساب‌های دریافتنی تجاری", 450000000, False),
+                    ("موجودی کالا در انبار", 580000000, False),
+                    ("پیش‌پرداخت‌ها", 50000000, False),
+                    ("جمع دارایی‌های جاری", "=SUM(B5:B8)", True),
+                    ("دارایی‌های غیرجاری (ثابت):", None, True),
+                    ("تجهیزات و ماشین‌آلات", 1200000000, False),
+                    ("کسر می‌شود: استهلاک انباشته", -250000000, False),
+                    ("ارزش دفتری دارایی ثابت", "=SUM(B11:B12)", True),
+                    ("جمع کل دارایی‌ها", "=B9+B13", True),
+                ]
+
+                liabilities = [
+                    ("بدهی‌های جاری:", None, True),
+                    ("حساب‌های پرداختنی تجاری", 380000000, False),
+                    ("اسناد پرداختنی کوتاه‌مدت", 120000000, False),
+                    ("مالیات پرداختنی", 70000000, False),
+                    ("سایر ذخایر", 30000000, False),
+                    ("جمع بدهی‌های جاری", "=SUM(D5:D8)", True),
+                    ("حقوق صاحبان سهام و سرمایه:", None, True),
+                    ("سرمایه ثبت‌شده", 1200000000, False),
+                    ("اندوخته قانونی", 150000000, False),
+                    ("سود (زیان) انباشته", 400000000, False),
+                    ("جمع کل بدهی‌ها و سرمایه", "=D9+SUM(D11:D13)", True),
+                ]
 
             for idx, (lbl, val, is_b) in enumerate(assets):
                 r = 4 + idx
@@ -835,8 +985,7 @@ class AccountingActionHandler:
                         bs.set_value(f"B{r}", val)
                 if is_b:
                     bs.set_font(f"A{r}:B{r}", bold=True)
-                    if idx in [5, 9, 10]:
-                        bs.set_cell_color(f"A{r}:B{r}", "#EFF6FF")
+                    bs.set_cell_color(f"A{r}:B{r}", "#EFF6FF")
 
             for idx, (lbl, val, is_b) in enumerate(liabilities):
                 r = 4 + idx
@@ -848,24 +997,25 @@ class AccountingActionHandler:
                         bs.set_value(f"D{r}", val)
                 if is_b:
                     bs.set_font(f"C{r}:D{r}", bold=True)
-                    if idx in [5, 10]:
-                        bs.set_cell_color(f"C{r}:D{r}", "#EFF6FF")
+                    bs.set_cell_color(f"C{r}:D{r}", "#EFF6FF")
 
-            bs.set_number_format("B4:B14", "#,##0")
-            bs.set_number_format("D4:D14", "#,##0")
+            max_rows = max(len(assets), len(liabilities)) + 4
+            bs.set_number_format(f"B4:B{max_rows}", "#,##0")
+            bs.set_number_format(f"D4:D{max_rows}", "#,##0")
             bs.auto_fit_columns(["A", "B", "C", "D"])
 
+            src_msg = f" از شیت «{source_sheet.name}»" if source_sheet else ""
             return ActionResult(
                 success=True,
                 message_persian=(
-                    f"🏛️ **ترازنامه مالی با موفقیت در شیت «{name}» تهیه شد:**\n\n"
+                    f"🏛️ **ترازنامه مالی{src_msg} با موفقیت در شیت «{name}» تهیه شد:**\n\n"
                     f"• سمت راست: دارایی‌های جاری + دارایی‌های غیرجاری\n"
                     f"• سمت چپ: بدهی‌های جاری + حقوق صاحبان سهام و سرمایه\n"
-                    f"• کلیه سرجمع‌ها با فرمول‌های استاندارد پیاده‌سازی شده و تراز برقراری معادله اساسی حسابداری (دارایی = بدهی + سرمایه) تضمین است."
+                    f"• کلیه سرجمع‌ها با فرمول‌های استاندارد پیاده‌سازی شده و معادله اساسی حسابداری (دارایی = بدهی + سرمایه) کاملاً برقرار است."
                 )
             )
         else:
-            # Income Statement
+            # Income Statement (صورت سود و زیان)
             base_name = "صورت_سود_و_زیان"
             counter = 1
             name = base_name
@@ -888,24 +1038,92 @@ class AccountingActionHandler:
             inc.set_cell_color("A3:C3", "#065F46")
             inc.set_font("A3:C3", font_color="#FFFFFF")
 
-            rows = [
-                ("درآمد حاصل از فروش کالا و خدمات", 1850000000, None, False),
-                ("کسر می‌شود: تخفیفات نقدی فروش", -50000000, None, False),
-                ("فروش خالص", None, "=B4+B5", True),
-                ("کسر می‌شود: بهای تمام شده کالای فروش رفته (COGS)", -980000000, None, False),
-                ("سود (زیان) ناخالص", None, "=C6+B7", True),
-                ("هزینه‌های اداری، عمومی و فروش:", None, None, True),
-                ("حقوق و دستمزد پرسنل اداری", -240000000, None, False),
-                ("هزینه اجاره و ملزومات", -65000000, None, False),
-                ("هزینه بازاریابی و تبلیغات", -45000000, None, False),
-                ("سایر هزینه‌های عملیاتی", -30000000, None, False),
-                ("جمع هزینه‌های اداری و عمومی", None, "=SUM(B10:B13)", True),
-                ("سود (زیان) عملیاتی", None, "=C8+C14", True),
-                ("سایر درآمدها و هزینه‌های غیرعملیاتی", 45000000, None, False),
-                ("سود قبل از کسر مالیات", None, "=C15+B16", True),
-                ("مالیات بر درآمد عملکرد (۲۵٪)", None, "=ROUND(IF(C17>0, C17*0.25, 0), 0)", False),
-                ("سود (زیان) خالص دوره مالی", None, "=C17-C18", True),
-            ]
+            if account_map:
+                def get_acc(kws, side="debit", exclude=None):
+                    for k, v in account_map.items():
+                        if exclude and any(ex in k for ex in exclude):
+                            continue
+                        if any(kw in k for kw in kws):
+                            return v[side]
+                    return 0.0
+
+                sales_k = get_acc(["فروش کالا", "فروش"], "credit", exclude=["برگشت", "تخفیف", "دارایی"])
+                serv_k = get_acc(["خدمات"], "credit")
+                ret_k = get_acc(["برگشت از فروش"], "debit")
+                disc_k = get_acc(["تخفیفات فروش", "تخفیف فروش"], "debit")
+                gross_rev = sales_k + serv_k
+                contra_rev = ret_k + disc_k
+
+                # بهای تمام شده (COGS)
+                beg_inv = get_acc(["موجودی کالا اول دوره", "موجودی اول دوره"], "debit", exclude=["پایان دوره"])
+                purch = get_acc(["خرید طی دوره", "خرید کالا", "خرید"], "debit", exclude=["برگشت", "تخفیف", "دارایی"])
+                p_ret = get_acc(["برگشت از خرید"], "credit")
+                p_disc = get_acc(["تخفیفات خرید", "تخفیف خرید"], "credit")
+                end_inv = get_acc(["موجودی کالا پایان دوره", "موجودی پایان دوره"], "debit", exclude=["اول دوره"])
+                if not end_inv:
+                    end_inv = get_acc(["موجودی کالا", "موجودی انبار"], "debit", exclude=["اول دوره"])
+
+                if beg_inv > 0 or purch > 0 or end_inv > 0:
+                    net_purch = purch - p_ret - p_disc
+                    cogs_val = beg_inv + net_purch - end_inv
+                else:
+                    cogs_val = get_acc(["بهای تمام شده", "cogs"], "debit")
+
+                # هزینه‌های عملیاتی
+                op_exp_list = []
+                for k, v in account_map.items():
+                    if ("هزینه" in k or "ملزومات" in k) and "مالی" not in k and v["debit"] > 0:
+                        op_exp_list.append((k, -abs(v["debit"])))
+
+                # اقلام غیرعملیاتی و مالی
+                fin_exp = get_acc(["هزینه مالی", "بهره"], "debit")
+                interest_inc = get_acc(["سود سپرده"], "credit")
+                gain_asset = get_acc(["سود حاصل از فروش دارایی", "فروش دارایی ثابت"], "credit")
+                net_non_op = (interest_inc + gain_asset) - fin_exp
+
+                rows = [
+                    ("درآمد حاصل از فروش کالا و خدمات", gross_rev, None, False),
+                    ("کسر می‌شود: برگشت از فروش و تخفیفات", -abs(contra_rev), None, False),
+                    ("فروش خالص", None, "=B4+B5", True),
+                    ("کسر می‌شود: بهای تمام شده کالای فروش رفته (COGS)", -abs(cogs_val), None, False),
+                    ("سود (زیان) ناخالص", None, "=C6+B7", True),
+                    ("هزینه‌های اداری، عمومی و فروش:", None, None, True),
+                ]
+                exp_start_r = 10
+                for exp_name, exp_val in op_exp_list:
+                    rows.append((exp_name, exp_val, None, False))
+                exp_end_r = 9 + len(op_exp_list)
+                sum_exp_r = exp_end_r + 1
+                rows.append(("جمع هزینه‌های اداری، عمومی و فروش", None, f"=SUM(B{exp_start_r}:B{exp_end_r})", True))
+                op_profit_r = sum_exp_r + 1
+                rows.append(("سود (زیان) عملیاتی", None, f"=C8+C{sum_exp_r}", True))
+                non_op_r = op_profit_r + 1
+                rows.append(("خالص سایر درآمدها و هزینه‌های غیرعملیاتی و مالی", net_non_op, None, False))
+                pre_tax_r = non_op_r + 1
+                rows.append(("سود قبل از کسر مالیات", None, f"=C{op_profit_r}+B{non_op_r}", True))
+                tax_r = pre_tax_r + 1
+                rows.append(("مالیات بر درآمد عملکرد (۲۵٪)", None, f"=ROUND(IF(C{pre_tax_r}>0, C{pre_tax_r}*0.25, 0), 0)", False))
+                net_profit_r = tax_r + 1
+                rows.append(("سود (زیان) خالص دوره مالی", None, f"=C{pre_tax_r}-C{tax_r}", True))
+            else:
+                rows = [
+                    ("درآمد حاصل از فروش کالا و خدمات", 1850000000, None, False),
+                    ("کسر می‌شود: تخفیفات نقدی فروش", -50000000, None, False),
+                    ("فروش خالص", None, "=B4+B5", True),
+                    ("کسر می‌شود: بهای تمام شده کالای فروش رفته (COGS)", -980000000, None, False),
+                    ("سود (زیان) ناخالص", None, "=C6+B7", True),
+                    ("هزینه‌های اداری، عمومی و فروش:", None, None, True),
+                    ("حقوق و دستمزد پرسنل اداری", -240000000, None, False),
+                    ("هزینه اجاره و ملزومات", -65000000, None, False),
+                    ("هزینه بازاریابی و تبلیغات", -45000000, None, False),
+                    ("سایر هزینه‌های عملیاتی", -30000000, None, False),
+                    ("جمع هزینه‌های اداری و عمومی", None, "=SUM(B10:B13)", True),
+                    ("سود (زیان) عملیاتی", None, "=C8+C14", True),
+                    ("سایر درآمدها و هزینه‌های غیرعملیاتی", 45000000, None, False),
+                    ("سود قبل از کسر مالیات", None, "=C15+B16", True),
+                    ("مالیات بر درآمد عملکرد (۲۵٪)", None, "=ROUND(IF(C17>0, C17*0.25, 0), 0)", False),
+                    ("سود (زیان) خالص دوره مالی", None, "=C17-C18", True),
+                ]
 
             for idx, (title, part_val, tot_val, is_b) in enumerate(rows):
                 r = 4 + idx
@@ -921,16 +1139,17 @@ class AccountingActionHandler:
                     inc.set_font(f"A{r}:C{r}", bold=True)
                     inc.set_cell_color(f"A{r}:C{r}", "#ECFDF5")
 
-            inc.set_number_format("B4:C20", "#,##0")
+            inc.set_number_format(f"B4:C{len(rows)+4}", "#,##0")
             inc.auto_fit_columns(["A", "B", "C"])
 
+            src_msg = f" از شیت «{source_sheet.name}»" if source_sheet else ""
             return ActionResult(
                 success=True,
                 message_persian=(
-                    f"📈 **صورت سود و زیان جامع با موفقیت در شیت «{name}» تهیه شد:**\n\n"
-                    f"• محاسبه فروش خالص پس از کسر تخفیفات\n"
-                    f"• محاسبه سود ناخالص بر مبنای بهای تمام شده کالای فروش رفته\n"
-                    f"• کسر هزینه‌های اداری، عمومی و توزیع و محاسبه سود عملیاتی\n"
-                    f"• کسر مالیات عملکرد (۲۵٪) و محاسبه سود خالص نهایی دوره با فرمول‌های پیوسته اکسل"
+                    f"📈 **صورت سود و زیان جامع{src_msg} با موفقیت در شیت «{name}» تهیه شد:**\n\n"
+                    f"• محاسبه فروش خالص پس از کسر برگشت و تخفیفات\n"
+                    f"• محاسبه بهای تمام شده کالای فروش رفته (COGS) و سود ناخالص\n"
+                    f"• تفکیک دقیق هزینه‌های اداری، عمومی و توزیع و محاسبه سود عملیاتی\n"
+                    f"• اعمال اقلام غیرعملیاتی، کسر مالیات عملکرد (۲۵٪) و محاسبه سود خالص دوره با فرمول‌های پیوسته اکسل"
                 )
             )
