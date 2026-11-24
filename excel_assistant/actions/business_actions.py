@@ -192,86 +192,243 @@ class BusinessActionHandler:
         """
         sheet = ctx.sheet
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+        if max_r < min_r or max_c < min_c:
+            return ActionResult(success=False, message_persian="شیت خالی است و داده‌ای برای بررسی موجودی یافت نشد.")
 
-        # Find columns
-        prod_col = None
-        stock_col = None
-        price_col = None
+        # 1. تشخیص ردیف هدر واقعی
+        header_row = min_r
+        best_hdr_score = -1
+        hdr_keywords = ["کالا", "محصول", "شرح", "عنوان", "نام", "تعداد", "موجودی", "انبار", "قیمت", "مبلغ", "فی", "ردیف", "stock", "price", "product", "qty"]
+
+        for r_cand in range(min_r, min(min_r + 25, max_r + 1)):
+            cand_score = 0
+            for c in range(min_c, max_c + 1):
+                val_str = str(sheet.get_value(f"{col_index_to_letter(c)}{r_cand}") or "").strip().lower()
+                if any(kw in val_str for kw in hdr_keywords):
+                    cand_score += 2
+                elif val_str:
+                    cand_score += 0.5
+            if cand_score > best_hdr_score and cand_score >= 2:
+                best_hdr_score = cand_score
+                header_row = r_cand
+
+        start_row = header_row + 1
+
+        # 2. تشخیص ستون‌ها و ستون‌های موجود قبلی
+        prod_col = action.product_col
+        stock_col = action.stock_col
+        price_col = action.purchase_price_col
+
+        existing_status_col = None
+        existing_val_col = None
+
+        best_prod_score = 0
+        best_stock_score = 0
+        best_price_score = 0
 
         for c in range(min_c, max_c + 1):
             letter = col_index_to_letter(c)
-            h = str(sheet.get_value(f"{letter}{min_r}") or "").lower()
-            if any(k in h for k in ["نام کالا", "شرح کالا", "محصول", "عنوان", "کالا", "product"]):
-                prod_col = letter
-            elif any(k in h for k in ["موجودی", "تعداد انبار", "مانده انبار", "انبار", "stock", "quantity", "تعداد"]):
-                if not stock_col:
+            h = str(sheet.get_value(f"{letter}{header_row}") or "").strip().lower()
+            if "وضعیت موجودی" in h:
+                existing_status_col = letter
+            elif "ارزش ریالی" in h or "ارزش موجودی" in h:
+                existing_val_col = letter
+
+            if not action.product_col:
+                p_score = 0
+                if any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "عنوان کالا"]):
+                    p_score = 10
+                elif any(k in h for k in ["کالا", "محصول", "شرح", "عنوان", "product", "item"]) and not any(ck in h for ck in ["کد", "شناسه", "بارکد", "code", "id"]):
+                    p_score = 5
+                elif "کالا" in h:
+                    p_score = 1
+                if p_score > best_prod_score:
+                    best_prod_score = p_score
+                    prod_col = letter
+
+            if not action.stock_col:
+                s_score = 0
+                if any(k in h for k in ["موجودی انبار", "تعداد انبار", "مانده انبار", "موجودی"]):
+                    s_score = 10
+                elif any(k in h for k in ["تعداد", "مقدار", "انبار", "stock", "qty", "quantity"]):
+                    s_score = 5
+                if s_score > best_stock_score:
+                    best_stock_score = s_score
                     stock_col = letter
-            elif any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "نرخ خرید", "cost", "unit price", "قیمت"]):
-                price_col = letter
 
-        if not stock_col:
-            stock_col = action.stock_col or "C"
+            if not action.purchase_price_col:
+                pr_score = 0
+                if any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "نرخ خرید"]):
+                    pr_score = 10
+                elif any(k in h for k in ["قیمت واحد", "فی", "قیمت", "مبلغ واحد", "cost", "unit price", "price"]):
+                    pr_score = 5
+                if pr_score > best_price_score:
+                    best_price_score = pr_score
+                    price_col = letter
+
+        # تعیین آخرین ستون واقعی دارای داده در جدول
+        last_data_c = min_c
+        for c in range(min_c, max_c + 1):
+            letter = col_index_to_letter(c)
+            if letter in (existing_status_col, existing_val_col):
+                continue
+            hdr = str(sheet.get_value(f"{letter}{header_row}") or "").strip()
+            has_data = bool(hdr)
+            if not has_data:
+                for r in range(start_row, min(start_row + 15, max_r + 1)):
+                    if sheet.get_value(f"{letter}{r}") is not None:
+                        has_data = True
+                        break
+            if has_data:
+                last_data_c = max(last_data_c, c)
+
+        # اگر با هدر پیدا نشد، نمونه‌برداری از محتوای سطرهای زیرین
+        if not prod_col or not stock_col or not price_col:
+            for c in range(min_c, last_data_c + 1):
+                letter = col_index_to_letter(c)
+                if letter in (prod_col, stock_col, price_col, existing_status_col, existing_val_col):
+                    continue
+                text_count = 0
+                num_count = 0
+                num_vals = []
+                for r in range(start_row, min(start_row + 10, max_r + 1)):
+                    v = sheet.get_value(f"{letter}{r}")
+                    if v is not None:
+                        s = str(v).replace(",", "").strip()
+                        try:
+                            f = float(s)
+                            num_count += 1
+                            num_vals.append(f)
+                        except ValueError:
+                            if len(s) > 1:
+                                text_count += 1
+                if not prod_col and text_count >= 2:
+                    prod_col = letter
+                elif not stock_col and num_count >= 2 and all(x >= 0 and x < 100000 for x in num_vals):
+                    if any(x % 1 == 0 and x <= 5000 for x in num_vals):
+                        stock_col = letter
+                elif not price_col and num_count >= 2:
+                    price_col = letter
+
         if not prod_col:
-            prod_col = action.product_col or "B"
+            prod_col = "A" if min_c == 1 else col_index_to_letter(min_c)
+        if not stock_col:
+            stock_col = "C"
         if not price_col:
-            price_col = action.purchase_price_col or "D"
+            price_col = "B" if prod_col != "B" else "D"
 
-        stock_idx = col_letter_to_index(stock_col)
-        status_col_idx = max(max_c + 1, stock_idx + 1)
-        status_col = col_index_to_letter(status_col_idx)
-        val_col = col_index_to_letter(status_col_idx + 1)
+        # 3. تعیین محل ستون‌های وضعیت و ارزش ریالی
+        if existing_status_col and col_letter_to_index(existing_status_col) <= last_data_c + 2:
+            status_col = existing_status_col
+            val_col = existing_val_col or col_index_to_letter(col_letter_to_index(status_col) + 1)
+        else:
+            status_col = col_index_to_letter(last_data_c + 1)
+            val_col = col_index_to_letter(last_data_c + 2)
 
-        sheet.set_value(f"{status_col}{min_r}", "وضعیت موجودی انبار")
-        sheet.set_value(f"{val_col}{min_r}", "ارزش ریالی موجودی")
-        sheet.set_font(f"{status_col}{min_r}:{val_col}{min_r}", bold=True)
-        sheet.set_cell_color(f"{status_col}{min_r}:{val_col}{min_r}", "#E0E7FF")
+        # پاک‌سازی ستون‌های دورافتاده قبلی در صورت وجود (مانند ستون K در اثر اجرای قبلی)
+        if existing_status_col and existing_status_col not in (status_col, val_col):
+            for r in range(header_row, max_r + 2):
+                sheet.set_value(f"{existing_status_col}{r}", None)
+                sheet.set_cell_color(f"{existing_status_col}{r}", None)
+        if existing_val_col and existing_val_col not in (status_col, val_col):
+            for r in range(header_row, max_r + 2):
+                sheet.set_value(f"{existing_val_col}{r}", None)
+                sheet.set_cell_color(f"{existing_val_col}{r}", None)
+
+        sheet.set_value(f"{status_col}{header_row}", "وضعیت موجودی انبار")
+        sheet.set_value(f"{val_col}{header_row}", "ارزش ریالی موجودی")
+        sheet.set_font(f"{status_col}{header_row}:{val_col}{header_row}", bold=True)
+        sheet.set_cell_color(f"{status_col}{header_row}:{val_col}{header_row}", "#E0E7FF")
 
         threshold = action.min_threshold
         low_stock_items = []
         total_items_count = 0
         total_valuation = 0.0
 
-        start_row = min_r + 1
+        SUMMARY_KEYWORDS = ["مجموع", "جمع", "کل", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
+        existing_sum_row = None
+        last_data_row = start_row - 1
+
         for r in range(start_row, max_r + 1):
-            prod_name = str(sheet.get_value(f"{prod_col}{r}") or f"کالای ردیف {r}").strip()
+            raw_prod = sheet.get_value(f"{prod_col}{r}")
             stock_val = sheet.get_value(f"{stock_col}{r}")
             price_val = sheet.get_value(f"{price_col}{r}")
 
+            # بررسی سطر خلاصه/مجموع (مانند مجموع کل در انتهای جدول)
+            row_text = " ".join(
+                str(sheet.get_value(f"{col_index_to_letter(c)}{r}") or "")
+                for c in range(min_c, last_data_c + 1)
+            ).strip().lower()
+
+            is_summary = any(kw in row_text for kw in SUMMARY_KEYWORDS)
+            if is_summary:
+                if existing_sum_row is None:
+                    existing_sum_row = r
+                sheet.set_value(f"{status_col}{r}", None)
+                continue
+
+            # بررسی سطرهای خالی و فاصله‌دار (Spacer rows)
+            is_prod_empty = (raw_prod is None or str(raw_prod).strip() == "")
+            is_stock_empty = (stock_val is None or str(stock_val).strip() == "")
+            is_price_empty = (price_val is None or str(price_val).strip() == "")
+
+            if is_prod_empty and is_stock_empty:
+                # پاک کردن فرمول‌ها و رنگ صورتی قبلی از روی سطرهای خالی
+                sheet.set_value(f"{status_col}{r}", None)
+                sheet.set_value(f"{val_col}{r}", None)
+                sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
+                continue
+
+            prod_name = str(raw_prod).strip() if not is_prod_empty else f"کالای ردیف {r}"
             try:
-                s_qty = float(str(stock_val).replace(",", "").strip()) if stock_val is not None else 0.0
+                s_qty = float(str(stock_val).replace(",", "").strip()) if not is_stock_empty else 0.0
             except ValueError:
                 s_qty = 0.0
 
             try:
-                u_price = float(str(price_val).replace(",", "").strip()) if price_val is not None else 0.0
+                u_price = float(str(price_val).replace(",", "").strip()) if not is_price_empty else 0.0
             except ValueError:
                 u_price = 0.0
 
             total_items_count += 1
+            last_data_row = r
             item_val = s_qty * u_price
             total_valuation += item_val
 
-            # Formula for Status: =IF(stock_col<=threshold, "⚠️ کسری موجودی", "موجودی کافی ✅")
+            # فرمول وضعیت: اگر سلول خالی باشد هیچ پیامی درج نشود، در غیر این صورت هشدار کسری
             sheet.set_formula(
                 f"{status_col}{r}",
-                f'=IF({stock_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅")'
+                f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", IF({stock_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
             )
-            # Formula for Valuation: =stock_col * price_col
-            sheet.set_formula(f"{val_col}{r}", f"={stock_col}{r}*{price_col}{r}")
+            sheet.set_formula(
+                f"{val_col}{r}",
+                f'=IF(OR({stock_col}{r}="", {price_col}{r}=""), "", {stock_col}{r}*{price_col}{r})'
+            )
 
             if s_qty <= threshold:
                 low_stock_items.append({"name": prod_name, "stock": s_qty, "row": r})
                 if action.highlight_low_stock:
-                    sheet.set_cell_color(f"{stock_col}{r}:{val_col}{r}", "#FEE2E2")
+                    sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", "#FEE2E2")
+            else:
+                # اگر موجودی کافی است، هایلایت صورتی قبلی پاک شود
+                sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
 
-        # Summary Row
-        sum_row = max_r + 1
-        sheet.set_value(f"{prod_col}{sum_row}", "مجموع کل ارزش موجودی انبار:")
-        sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{max_r})")
-        sheet.set_font(f"{prod_col}{sum_row}:{val_col}{sum_row}", bold=True)
-        sheet.set_cell_color(f"{prod_col}{sum_row}:{val_col}{sum_row}", "#DCFCE7")
+        # مدیریت سطر جمع کل
+        if existing_sum_row:
+            sum_row = existing_sum_row
+            sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{last_data_row})")
+            sheet.set_font(f"{val_col}{sum_row}", bold=True)
+            sheet.set_number_format(f"{val_col}{sum_row}", "#,##0")
+        elif last_data_row >= start_row:
+            sum_row = last_data_row + 1
+            sheet.set_value(f"{prod_col}{sum_row}", "مجموع کل ارزش موجودی انبار:")
+            sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{last_data_row})")
+            sheet.set_font(f"{prod_col}{sum_row}:{val_col}{sum_row}", bold=True)
+            sheet.set_cell_color(f"{prod_col}{sum_row}:{val_col}{sum_row}", "#DCFCE7")
+            sheet.set_number_format(f"{val_col}{sum_row}", "#,##0")
 
-        sheet.set_number_format(f"{val_col}{start_row}:{val_col}{sum_row}", "#,##0")
+        if last_data_row >= start_row:
+            sheet.set_number_format(f"{val_col}{start_row}:{val_col}{last_data_row}", "#,##0")
         sheet.auto_fit_columns([status_col, val_col])
 
         alert_text = ""

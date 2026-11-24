@@ -239,6 +239,68 @@ def test_inventory_alert_action(test_manager):
     assert "IF(C2<=5" in str(sheet.get_formula("E2"))
 
 
+def test_inventory_alert_ignores_empty_spacer_and_summary_rows(test_manager):
+    """Verify that inventory control ignores spacer blank rows and summary rows,
+    places status columns immediately next to data, and doesn't falsely warn on empty rows."""
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "نام کالا")
+    sheet.set_value("B1", "قیمت")
+    sheet.set_value("C1", "تعداد")
+    sheet.set_value("D1", "جمع")
+    sheet.set_value("E1", "تاریخ")
+
+    products = [
+        ("موز", 150000, 10, 1500000),
+        ("بیسکویت", 50000, 30, 1500000),
+        ("نان", 6000, 50, 300000),
+        ("مودمس", 280000, 100, 28000000),
+        ("سوسیس", 150000, 10, 1500000),
+        ("کالباس", 160000, 10, 1600000),
+        ("قند", 250000, 500, 125000000),
+    ]
+
+    for idx, (p, price, qty, total) in enumerate(products, start=2):
+        sheet.set_value(f"A{idx}", p)
+        sheet.set_value(f"B{idx}", price)
+        sheet.set_value(f"C{idx}", qty)
+        sheet.set_value(f"D{idx}", total)
+        sheet.set_value(f"E{idx}", "1405/08/02")
+
+    # Spacer rows: rows 9 and 10 are completely blank
+    # (Leaving A9:E10 empty)
+
+    # Summary rows: rows 11 and 12
+    sheet.set_value("A11", "مجموع کل ار")
+    sheet.set_value("A12", "مجموع کل ار")
+
+    action = InventoryAlertAction(min_threshold=5.0, highlight_low_stock=True)
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+    assert res.success is True
+    # None of the 7 products are <= 5
+    assert "کلیه اقلام دارای موجودی کافی" in res.message_persian
+    assert "کسری موجودی: **0**" in res.message_persian
+
+    # Status column is placed at F (next to E), and valuation at G
+    assert sheet.get_value("F1") == "وضعیت موجودی انبار"
+    assert sheet.get_value("G1") == "ارزش ریالی موجودی"
+
+    # Row 2 (موز) has formula with safe blank check
+    f2 = str(sheet.get_formula("F2"))
+    assert 'IF(C2<=5' in f2 or 'IF(C2<=5.0' in f2
+
+    # Spacer rows (row 9, 10) must be None / blank (NOT pink, NOT shortage)
+    assert sheet.get_value("F9") is None
+    assert sheet.get_value("G9") is None
+    assert sheet.get_cell_color("F9") is None
+    assert sheet.get_cell_color("A9") is None
+
+    # Summary row (row 11) must have SUM formula for valuation
+    f_sum = str(sheet.get_formula("G11"))
+    assert "=SUM(G2:G8)" in f_sum
+
+
 # 9. Top-Selling Products Test (پرفروش‌ترین کالاها)
 def test_top_selling_action(test_manager):
     sheet = test_manager.get_active_sheet()
