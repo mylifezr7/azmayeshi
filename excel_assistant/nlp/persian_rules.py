@@ -1,6 +1,7 @@
 """
 Deterministic Semantic Rule Parser for Persian Excel Commands.
 Parses natural colloquial Persian instructions into structured Action models without external APIs.
+Employs robust slot extraction, colloquial normalizations, and extensive synonym matching.
 """
 import re
 from typing import Dict, List, Optional, Tuple, Union
@@ -48,34 +49,49 @@ from excel_assistant.nlp.intent_models import (
     UndoLastAction,
 )
 from excel_assistant.nlp.persian_normalizer import (
-    normalize_persian_text, extract_column_identifier, extract_color_hex
+    normalize_persian_text,
+    extract_column_identifier,
+    extract_color_hex,
+    extract_target_column,
+    extract_source_columns,
+    extract_percentage,
+    extract_row_range,
+    resolve_column,
+)
+from excel_assistant.nlp.synonyms import (
+    ARITHMETIC_SYNONYMS,
+    STATS_SYNONYMS,
+    EMPTY_ROW_ROW_WORDS,
+    EMPTY_ROW_EMPTY_WORDS,
+    DELETE_VERBS,
+    DUPLICATE_WORDS,
+    PREVENT_WORDS,
+    SORT_WORDS,
+    SORT_DESCENDING_WORDS,
+    SORT_ASCENDING_WORDS,
+    FILTER_WORDS,
+    CLEAR_FILTER_WORDS,
+    AUTOFIT_WORDS,
+    TABLE_WORDS,
+    CURRENCY_TOMAN_WORDS,
+    PERCENTAGE_WORDS,
+    TEXT_TO_NUMBER_WORDS,
+    SPLIT_WORDS,
+    MERGE_WORDS,
+    RECONCILIATION_WORDS,
+    UNDO_WORDS,
+    SAVE_WORDS,
+    BACKUP_WORDS,
+    PDF_WORDS,
 )
 from excel_assistant.core.utils import col_index_to_letter
 
 
-def resolve_column(token: str, header_map: Optional[Dict[str, str]] = None) -> Optional[str]:
-    """
-    Resolves a column token either as a letter (e.g. 'A') or by matching a known header name.
-    """
-    clean = token.strip()
-    # Check if letter
-    col = extract_column_identifier(clean)
-    if col:
-        return col
-
-    # Check headers
-    if header_map:
-        clean_norm = normalize_persian_text(clean).lower()
-        for h_name, col_letter in header_map.items():
-            h_norm = normalize_persian_text(h_name).lower()
-            if clean_norm == h_norm or clean_norm in h_norm or h_norm in clean_norm:
-                return col_letter
-
-    return None
-
-
 class PersianRuleParser:
-    """Parses Persian natural text commands into typed ExcelAction instances."""
+    """
+    Parses Persian commands into executable ExcelAction objects deterministically.
+    Handles colloquial language, variable word orders, and entity/slot extraction.
+    """
 
     @classmethod
     def parse(cls, raw_command: str, header_map: Optional[Dict[str, str]] = None) -> Optional[ExcelAction]:
@@ -83,36 +99,35 @@ class PersianRuleParser:
         text_lower = text.lower()
 
         # 1. Undo command
-        if any(w in text_lower for w in ["لغو", "اندو", "آندو", "برگرد عقب", "بازگرداندن"]):
+        if any(w in text_lower for w in UNDO_WORDS):
             return UndoLastAction(description_persian="لغو آخرین عملیات انجام‌شده")
 
         # 1.5 Deep File Audit / سلامت و خطاهای فایل اکسل
-        if any(w in text_lower for w in ["سلامت فایل", "خطاهای فایل", "بررسی خطاهای فایل", "چکاپ فایل", "سلول های خالی", "فرمول های اشتباه", "تحلیل هوشمند فایل", "خطاهای محاسباتی", "داده های نامعتبر"]):
+        if any(w in text_lower for w in [
+            "سلامت فایل", "خطاهای فایل", "بررسی خطاهای فایل", "چکاپ فایل",
+            "سلول های خالی", "فرمول های اشتباه", "تحلیل هوشمند فایل",
+            "خطاهای محاسباتی", "داده های نامعتبر"
+        ]):
             return DeepFileAuditAction(description_persian="تحلیل هوشمند و عمیق سلامت فایل اکسل")
 
         # 1.6 Backup / نسخه پشتیبان
-        if any(w in text_lower for w in ["پشتیبان", "بکاپ", "backup"]):
+        if any(w in text_lower for w in BACKUP_WORDS):
             return BackupAction(description_persian="ذخیره نسخه پشتیبان از فایل اکسل")
 
         # 1.65 Save Workbook / ذخیره فایل اکسل
-        if any(w in text_lower for w in ["ذخیره فایل", "سیو فایل", "سیو کن", "ذخیره کن", "تغییرات را ذخیره کن", "ذخیره تغییرات", "فایل را ذخیره کن"]) or text_lower.strip() in ["ذخیره", "سیو", "save"]:
+        if any(w in text_lower for w in SAVE_WORDS) or text_lower.strip() in ["ذخیره", "سیو", "save"]:
             return SaveWorkbookAction(description_persian="ذخیره تغییرات فایل اکسل")
 
         # 1.7 PDF Export / خروجی PDF
-        if any(w in text_lower for w in ["pdf", "پی دی اف", "پرینت"]) and any(w in text_lower for w in ["خروجی", "دانلود", "تبدیل", "صادر", "گرفتن", "بگیر"]):
+        if any(w in text_lower for w in PDF_WORDS) or (
+            any(w in text_lower for w in ["pdf", "پی دی اف", "پرینت"]) and
+            any(w in text_lower for w in ["خروجی", "دانلود", "تبدیل", "صادر", "گرفتن", "بگیر"])
+        ):
             return PdfExportAction(description_persian="تولید خروجی PDF استاندارد از شیت فعال")
 
         # 1.8 Reconciliation / مغایرت‌گیری دو ستون یا دو فهرست
-        if any(w in text_lower for w in ["مغایرت", "تطبیق دو ستون", "مقایسه دو ستون", "مغایرت گیری", "مغایرت‌گیری"]):
-            cols_found = []
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in cols_found:
-                    cols_found.append(res)
-            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text):
-                c_up = c_let.upper()
-                if c_up not in cols_found:
-                    cols_found.append(c_up)
+        if any(w in text_lower for w in RECONCILIATION_WORDS):
+            cols_found = extract_source_columns(text, header_map)
             c1 = cols_found[0] if len(cols_found) >= 1 else "A"
             c2 = cols_found[1] if len(cols_found) >= 2 else "B"
             return ReconciliationAction(
@@ -131,27 +146,41 @@ class PersianRuleParser:
             )
 
         # 1.10 Payroll, Overtime, Insurance & Salary Tax / حقوق و دستمزد
-        if any(w in text_lower for w in ["حقوق و دستمزد", "حقوق", "دستمزد", "اضافه کاری", "اضافه‌کاری", "بیمه کارگر", "بیمه تامین اجتماعی", "مالیات حقوق", "فیش حقوق"]):
+        if any(w in text_lower for w in [
+            "حقوق و دستمزد", "حقوق", "دستمزد", "اضافه کاری", "اضافه‌کاری",
+            "بیمه کارگر", "بیمه تامین اجتماعی", "مالیات حقوق", "فیش حقوق"
+        ]):
             return PayrollAction(description_persian="محاسبه لیست حقوق، اضافه‌کاری، بیمه و مالیات")
 
         # 1.11 Inventory Alert & Valuation / موجودی انبار و هشدار کمبود موجودی
-        if any(w in text_lower for w in ["کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار", "کنترل انبار", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی"]):
+        if any(w in text_lower for w in [
+            "کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار",
+            "کنترل انبار", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی"
+        ]):
             return InventoryAlertAction(description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی")
 
         # 1.12 Top Selling Products / پرفروش‌ترین کالاها
-        if any(w in text_lower for w in ["پرفروش ترین", "پرفروش‌ترین", "کالاهای پرفروش", "بیشترین فروش کالا", "پرفروش"]):
+        if any(w in text_lower for w in [
+            "پرفروش ترین", "پرفروش‌ترین", "کالاهای پرفروش", "بیشترین فروش کالا", "پرفروش"
+        ]):
             return TopSellingAction(description_persian="گزارش پرفروش‌ترین کالاهای ثبت‌شده")
 
         # 1.13 Customer Ledger / بدهی و طلب مشتریان
-        if any(w in text_lower for w in ["بدهی مشتری", "طلب مشتری", "بدهی و طلب", "مانده مشتری", "طرف حساب"]):
+        if any(w in text_lower for w in [
+            "بدهی مشتری", "طلب مشتری", "بدهی و طلب", "مانده مشتری", "طرف حساب"
+        ]):
             return CustomerLedgerAction(description_persian="محاسبه مانده بدهی و طلب مشتریان")
 
         # 1.14 Trial Balance / تراز آزمایشی
-        if any(w in text_lower for w in ["تراز آزمایشی", "تراز ازمایشی", "تراز ۴ ستونه", "تراز چهار ستونه", "تراز ۶ ستونه", "تراز شش ستونه"]):
+        if any(w in text_lower for w in [
+            "تراز آزمایشی", "تراز ازمایشی", "تراز ۴ ستونه", "تراز چهار ستونه", "تراز ۶ ستونه", "تراز شش ستونه"
+        ]):
             return TrialBalanceAction(description_persian="تهیه تراز آزمایشی چهار ستونه حسابداری")
 
         # 1.15 Account Balance / محاسبه مانده حساب (بدهکار و بستانکار)
-        if any(w in text_lower for w in ["مانده حساب", "مانده بدهکار و بستانکار", "محاسبه مانده بدهکار", "مانده گیری", "ستون مانده"]):
+        if any(w in text_lower for w in [
+            "مانده حساب", "مانده بدهکار و بستانکار", "محاسبه مانده بدهکار", "مانده گیری", "ستون مانده"
+        ]):
             return AccountBalanceAction(description_persian="محاسبه مانده حساب جاری بدهکار و بستانکار")
 
         # 1.16 Depreciation / محاسبه استهلاک دارایی‌ها
@@ -175,23 +204,28 @@ class PersianRuleParser:
             )
 
         # 1.18 Auto Chart / رسم نمودار گرافیکی
-        if any(w in text_lower for w in ["نمودار", "چارت"]) and any(w in text_lower for w in ["رسم", "بکش", "ایجاد", "نمایش", "تولید", "ساز"]):
+        if any(w in text_lower for w in ["نمودار", "چارت"]) and any(w in text_lower for w in [
+            "رسم", "بکش", "ایجاد", "نمایش", "تولید", "ساز"
+        ]):
             return AutoChartAction(description_persian="تولید نمودار گرافیکی خودکار اکسل")
 
         # 1.19 Percentage Price Adjustment / افزایش یا کاهش درصدی قیمت‌ها
         # e.g.: قیمت‌های ستون C را ۱۵ درصد افزایش بده
         # e.g.: ستون B را ۱۰ درصد کاهش بده
-        if ("درصد" in text or "%" in text) and any(w in text for w in ["افزایش", "کاهش", "گران", "ارزان"]):
-            pct_m = re.search(r'(\d+(?:\.\d+)?)\s*(?:درصد|%)', text)
-            pct_val = float(pct_m.group(1)) if pct_m else 10.0
-            is_decrease = any(w in text for w in ["کاهش", "ارزان", "کم کن"])
+        # e.g.: ستون B رو 10% گرون کن
+        # e.g.: ستون C رو ۱۵ درصد ارزون کن
+        if ("درصد" in text or "%" in text or "٪" in text) and any(w in text_lower for w in [
+            "افزایش", "کاهش", "گران", "گرون", "ارزان", "ارزون", "بالا ببر", "کم کن", "اضافه کن"
+        ]):
+            pct_val = extract_percentage(text) or 10.0
+            is_decrease = any(w in text_lower for w in ["کاهش", "ارزان", "ارزون", "کم کن", "پایین بیار"])
             op = "decrease" if is_decrease else "increase"
 
             col_m = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             target_col = resolve_column(col_m.group(1), header_map) if col_m else None
             if not target_col:
-                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
-                target_col = let_m.group(1).upper() if let_m else "C"
+                cols = extract_source_columns(text, header_map)
+                target_col = cols[0] if cols else "C"
 
             return PriceAdjustmentAction(
                 target_col=target_col,
@@ -202,29 +236,19 @@ class PersianRuleParser:
 
         # 1.20 Row-by-Row Multi-Column Average / میانگین سطری بین ستون‌ها
         # e.g.: از ستون B و C میانگین بگیر و نتیجه را در D بنویس
-        if "میانگین" in text and (" و " in text or "در " in text):
-            target_match = re.search(r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)\s*(?:قرار\s*بده|بنویس|درج\s*کن|بریز|بگذار|ثبت\s*کن)?\s*[.]*$', text)
-            target_c = resolve_column(target_match.group(1), header_map) if target_match else None
-
-            all_cols = []
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in all_cols and res != target_c:
-                    all_cols.append(res)
-            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text):
-                c_up = c_let.upper()
-                if c_up not in all_cols and c_up != target_c:
-                    all_cols.append(c_up)
-
-            if len(all_cols) >= 2 and target_c:
+        # e.g.: میانگین B و C رو بریز توی D
+        if any(w in text_lower for w in ["میانگین", "معدل"]) and (" و " in text or "در " in text or "توی " in text or "تو " in text):
+            target_c, rem_text = extract_target_column(text, header_map)
+            source_cols = extract_source_columns(rem_text, header_map)
+            if len(source_cols) >= 2 and target_c:
                 return ColumnArithmeticAction(
                     operation="average",
-                    col1=all_cols[0],
-                    col2=all_cols[1],
-                    columns=all_cols,
+                    col1=source_cols[0],
+                    col2=source_cols[1],
+                    columns=source_cols,
                     target_col=target_c,
                     as_formula=True,
-                    description_persian=f"میانگین سطری ستون‌های {' و '.join(all_cols)} و درج در ستون {target_c}"
+                    description_persian=f"میانگین سطری ستون‌های {' و '.join(source_cols)} و درج در ستون {target_c}"
                 )
 
         # 2. Analyze sheet command
@@ -232,26 +256,30 @@ class PersianRuleParser:
             return AnalyzeSheetAction(description_persian="تحلیل هوشمند ساختار شیت و داده‌ها")
 
         # 3. Delete empty rows
-        if ("ردیف" in text_lower or "سطر" in text_lower) and ("خالی" in text_lower) and any(w in text_lower for w in ["حذف", "پاک", "دلیت"]):
+        has_empty_word = any(w in text_lower for w in EMPTY_ROW_EMPTY_WORDS)
+        has_row_word = any(w in text_lower for w in EMPTY_ROW_ROW_WORDS)
+        has_delete_verb = any(w in text_lower for w in DELETE_VERBS)
+        if (has_empty_word and (has_row_word or "خالی" in text_lower) and has_delete_verb) or (has_row_word and "خالی" in text_lower and has_delete_verb):
             return DeleteEmptyRowsAction(
                 description_persian="حذف ردیف‌های خالی از شیت",
                 is_destructive=True
             )
 
         # 4. Prevent duplicates / Delete duplicates / Highlight duplicates
-        if "تکراری" in text_lower or any(w in text_lower for w in ["یکتا کن", "یکتاسازی"]):
-            # Check target column if specified
+        if any(w in text_lower for w in DUPLICATE_WORDS) or any(w in text_lower for w in ["یکتا کن", "یکتاسازی"]):
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not target_col:
+                cols = extract_source_columns(text, header_map)
+                target_col = cols[0] if cols else None
 
-            # Check if user wants to prevent duplicates or validate uniqueness
-            if any(w in text_lower for w in ["نباید", "جلوگیری", "جلوی", "مانع", "ارور", "خطا", "ثبت نشود", "وارد نشود", "قفل", "یکتا"]):
+            if any(w in text_lower for w in PREVENT_WORDS):
                 return PreventDuplicatesAction(
                     target_col=target_col or "A",
                     description_persian=f"جلوگیری از ورود دادهٔ تکراری و قفل یکتاسازی ستون {target_col or 'A'}"
                 )
 
-            if any(w in text_lower for w in ["حذف", "پاک", "دلیت"]):
+            if any(w in text_lower for w in DELETE_VERBS):
                 return DeleteDuplicatesAction(
                     target_col=target_col,
                     description_persian=f"حذف ردیف‌های تکراری{' در ستون ' + target_col if target_col else ''}",
@@ -268,25 +296,30 @@ class PersianRuleParser:
                 )
 
         # 5. Autofit columns
-        if any(w in text_lower for w in ["عرض ستون", "تنظیم ستون", "اتوفیت", "fit"]):
+        if any(w in text_lower for w in AUTOFIT_WORDS) or ("عرض" in text_lower and any(w in text_lower for w in ["تنظیم", "اندازه", "خودکار", "اتوماتیک"])):
             return AutoFitColumnsAction(description_persian="تنظیم خودکار عرض ستون‌ها بر اساس محتوا")
 
-        # 6. Create table
-        if "جدول" in text_lower and any(w in text_lower for w in ["بساز", "ایجاد", "تبدیل", "درست کن"]):
+        # 6. Create table (checked only if NOT a filter command)
+        if "فیلتر" not in text_lower and (
+            any(w in text_lower for w in TABLE_WORDS) or
+            ("جدول" in text_lower and any(w in text_lower for w in ["بساز", "ایجاد", "تبدیل", "درست کن", "درست"]))
+        ):
             return CreateTableAction(description_persian="تبدیل محدوده داده‌ها به جدول اکسل (Excel Table)")
 
         # 7. Sorting
-        if any(w in text_lower for w in ["مرتب", "سورت", "sort"]):
-            # Check direction
+        if any(w in text_lower for w in SORT_WORDS):
             ascending = True
-            if any(w in text_lower for w in ["بیشترین به کمترین", "نزولی", "زیاد به کم", "بزرگ به کوچک"]):
+            if any(w in text_lower for w in SORT_DESCENDING_WORDS):
                 ascending = False
-            elif any(w in text_lower for w in ["کمترین به بیشترین", "صعودی", "کم به زیاد", "کوچک به بزرگ"]):
+            elif any(w in text_lower for w in SORT_ASCENDING_WORDS):
                 ascending = True
 
-            # Find key column
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
-            key_col = resolve_column(col_match.group(1), header_map) if col_match else "A"
+            key_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not key_col:
+                cols = extract_source_columns(text, header_map)
+                key_col = cols[0] if cols else "A"
+
             dir_str = "صعودی (کم به زیاد)" if ascending else "نزولی (بیش از کم)"
             return SortDataAction(
                 key_col=key_col,
@@ -298,30 +331,15 @@ class PersianRuleParser:
         # e.g.: تخفیف ستون B با ستون C در ستون D
         # e.g.: 20 درصد تخفیف روی ستون B در ستون D
         # e.g.: ستون B با تخفیف ستون C در ستون D
-        if "تخفیف" in text:
-            pct_m = re.search(r'(\d+(?:\.\d+)?)\s*(?:درصد|%)', text)
-            fixed_pct = float(pct_m.group(1)) if pct_m else None
+        if "تخفیف" in text_lower:
+            fixed_pct = extract_percentage(text)
+            target_c, rem_text = extract_target_column(text, header_map)
+            source_cols = extract_source_columns(rem_text, header_map)
 
-            target_c = None
-            target_match = re.search(
-                r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)\s*(?:قرار\s*بده|قرار\s*ده|بنویس|درج\s*کن|بریز|بگذار|ثبت\s*کن|قرار\s*بگیرد|بذار)?\s*[.]*$',
-                text
-            )
-            if target_match:
-                target_c = resolve_column(target_match.group(1), header_map)
-
-            found_cols = []
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in found_cols and res != target_c:
-                    found_cols.append(res)
-            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text):
-                c_up = c_let.upper()
-                if c_up not in found_cols and c_up != target_c:
-                    found_cols.append(c_up)
-
-            price_c = found_cols[0] if len(found_cols) >= 1 else "B"
-            disc_c = found_cols[1] if len(found_cols) >= 2 else None
+            price_c = source_cols[0] if len(source_cols) >= 1 else "B"
+            disc_c = source_cols[1] if len(source_cols) >= 2 else None
+            if fixed_pct is not None:
+                disc_c = None
 
             d_str = f"ستون {disc_c}" if disc_c else (f"{fixed_pct}%" if fixed_pct else "تخفیف")
             return ApplyDiscountAction(
@@ -333,13 +351,6 @@ class PersianRuleParser:
             )
 
         # 7.55 Profit Calculation: محاسبه سود (روزانه، ماهانه، سالانه، کل / فروش منهای خرید)
-        # e.g.: محاسبه سود روزانه ماهانه و سالانه و کل
-        # e.g.: محاسبه سود روزانه و ماهانه
-        # e.g.: محاسبه سود روزانه
-        # e.g.: سود ماهانه رو حساب کن
-        # e.g.: محاسبه سود
-        # e.g.: فروش رو منهای مبلغ خرید کن تا سود به دست بیاد
-        # e.g.: تعداد فروش و قیمت فروش در شیت 1 و تعداد خرید و قیمت خرید در شیت 2
         if "سود" in text or ("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])):
             period = "all"
             if "روزانه" in text and not any(w in text for w in ["ماهانه", "سالانه", "کل"]):
@@ -384,11 +395,7 @@ class PersianRuleParser:
             if purchase_m and purchase_m.group(1):
                 purchase_col = resolve_column(purchase_m.group(1), header_map)
 
-            found_cols = []
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in found_cols:
-                    found_cols.append(res)
+            found_cols = extract_source_columns(text, header_map)
 
             if len(found_cols) >= 2:
                 if not profit_col and not date_col:
@@ -430,12 +437,6 @@ class PersianRuleParser:
             )
 
         # 7.6 Sales Summary: محاسبه فروش روزانه، ماهانه، سالانه و کل
-        # e.g.: محاسبه فروش روزانه و ماهانه و سالانه و کل
-        # e.g.: فروش روزانه را حساب کن
-        # e.g.: فروش ماهانه را حساب کن
-        # e.g.: فروش سالانه رو محاسبه کن
-        # e.g.: فروش کل چقدره؟
-        # e.g.: گزارش فروش ستون D بر اساس تاریخ ستون A
         if "فروش" in text and any(w in text for w in [
             "محاسبه", "حساب", "گزارش", "روزانه", "ماهانه", "سالانه", "کل", "چقدر", "چند", "آمار", "تحلیل", "جمع"
         ]):
@@ -452,7 +453,6 @@ class PersianRuleParser:
             date_col = None
             amount_col = None
 
-            # Detect explicit column references
             date_m = re.search(r'(?:ستون|بر اساس)?\s*تاریخ\s*(?:ستون)?\s*([A-Za-z0-9\u0600-\u06FF]+)?', text)
             if date_m and date_m.group(1):
                 date_col = resolve_column(date_m.group(1), header_map)
@@ -461,12 +461,7 @@ class PersianRuleParser:
             if amount_m and amount_m.group(1):
                 amount_col = resolve_column(amount_m.group(1), header_map)
 
-            # Check general column mentions if not yet matched
-            found_cols = []
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in found_cols:
-                    found_cols.append(res)
+            found_cols = extract_source_columns(text, header_map)
 
             if len(found_cols) >= 2:
                 if not amount_col and not date_col:
@@ -503,13 +498,10 @@ class PersianRuleParser:
             )
 
         # 7.7 Insert Date: درج تاریخ در اکسل
-        # e.g.: از سطر 1 تا 30 در ستون A تاریخ بزن
-        # e.g.: درج تاریخ 1403/08/29 از ردیف 1 تا 30 در ستون A
-        # e.g.: از سطر 1 تا 30 در ستون 1 تاریخ بنویس
-        if "تاریخ" in text and any(w in text for w in ["بزن", "درج", "بنویس", "قرار", "بذار", "ثبت", "سطر", "ردیف", " تا "]):
-            row_m = re.search(r'از\s*(?:سطر|ردیف)\s*(\d+)\s*تا\s*(?:سطر|ردیف)?\s*(\d+)', text)
-            start_r = int(row_m.group(1)) if row_m else 1
-            end_r = int(row_m.group(2)) if row_m else 30
+        if "تاریخ" in text_lower and any(w in text_lower for w in ["بزن", "درج", "بنویس", "قرار", "بذار", "ثبت", "سطر", "ردیف", " تا "]):
+            start_r, end_r = extract_row_range(text)
+            start_r = start_r or 1
+            end_r = end_r or 30
 
             date_m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', text)
             if date_m:
@@ -518,9 +510,12 @@ class PersianRuleParser:
                 y, m, d = 1403, 8, 29
 
             col_m = re.search(r'(?:در|توی|روی)?\s*ستون\s*([A-Za-z0-9\u0600-\u06FF]+)', text)
-            col = resolve_column(col_m.group(1), header_map) if col_m else 'A'
+            col = resolve_column(col_m.group(1), header_map) if col_m else None
+            if not col:
+                cols = extract_source_columns(text, header_map)
+                col = cols[0] if cols else 'A'
 
-            mode = 'sequential' if any(w in text for w in ['متوالی', 'روزشمار', 'پشت سر هم', 'افزایشی']) else 'fixed'
+            mode = 'sequential' if any(w in text_lower for w in ['متوالی', 'روزشمار', 'پشت سر هم', 'افزایشی']) else 'fixed'
             return InsertDateAction(
                 target_col=col,
                 start_row=start_r,
@@ -536,116 +531,33 @@ class PersianRuleParser:
         # e.g.: ستون B را در C ضرب کن و در D قرار بده
         # e.g.: ستون A را در ستون B ضرب کن و جواب را در C بنویس
         # e.g.: ستون قیمت را در ستون تعداد ضرب کن
-        arith_ops = {
-            "ضرب": "multiply",
-            "ضربدر": "multiply",
-            "*": "multiply",
-            "جمع": "add",
-            "به علاوه": "add",
-            "+": "add",
-            "منهای": "subtract",
-            "منها": "subtract",
-            "تفریق": "subtract",
-            "-": "subtract",
-            "تقسیم": "divide",
-            "/": "divide",
-        }
-
+        # e.g.: ستون D رو ضربدر B کن و جواب رو E بذار
+        # e.g.: حاصل‌ضرب B و D رو داخل E قرار بده
+        # e.g.: B و D رو در هم ضرب کن و نتیجه رو در E بنویس
+        # e.g.: توی E بنویس حاصلضرب D و B
+        # e.g.: D رو تو B ضرب کن بریز تو E
+        # e.g.: ستون C رو منهای B کن و توی A بنویس
+        # e.g.: حاصل تفریق ستون A و B بره تو C
+        # e.g.: مجموع D و B رو توی E بنویس
         detected_op = None
-        for op_word, op_type in arith_ops.items():
-            if op_word in text:
+        for op_type, syn_list in ARITHMETIC_SYNONYMS.items():
+            if any(syn in text_lower for syn in syn_list):
                 detected_op = op_type
                 break
 
         if detected_op:
-            text_clean = text.strip()
+            target_c, rem_text = extract_target_column(text, header_map)
+            source_cols = extract_source_columns(rem_text, header_map)
 
-            # Step 1: Detect target column if present
-            target_c = None
-            target_match = re.search(
-                r'(?:در|توی|داخل|به)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)\s*(?:قرار\s*بده|قرار\s*ده|قرار\s*بگذار|بنویس|درج\s*کن|بریز|بگذار|ثبت\s*کن|قرار\s*بگیرد|بذار)?\s*[.]*$',
-                text_clean
-            )
-
-            target_end_pos = len(text_clean)
-            if target_match:
-                cand_target = resolve_column(target_match.group(1), header_map)
-                if cand_target:
-                    target_c = cand_target
-                    target_end_pos = target_match.start()
-
-            prefix_text = text_clean[:target_end_pos]
-
-            # Find columns mentioned in prefix (with 'ستون' or after prepositions or as isolated letters/headers)
-            prefix_cols = []
-
-            # 1. Multi-column pattern e.g. 'ستون های 2 و 4 و 5' or 'ستون B و D و E'
-            multi_m = re.search(
-                r'ستون(?:\s*های)?\s+([A-Za-z0-9\s،,و\u0600-\u06FF]+?)(?:\s+(?:را|رو|با|در|جمع|ضرب|تفریق|منهای|تقسیم|\*|\+|-|\/|$))',
-                prefix_text
-            )
-            if multi_m:
-                tokens = re.split(r'[\s،,و]+', multi_m.group(1).strip())
-                for t in tokens:
-                    res = resolve_column(t, header_map)
-                    if res and res not in prefix_cols:
-                        prefix_cols.append(res)
-
-            # 2. Check explicit 'ستون X'
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in prefix_cols:
-                    prefix_cols.append(res)
-
-            # 3. Check after prepositions (e.g. 'در C', 'در سی', 'با B', 'با بی')
-            for c_str in re.findall(r'(?:در|با|ضربدر|منهای|تقسیم بر|به علاوه|و)\s+(?:ستون\s+)?([A-Za-z0-9\u0600-\u06FF]+)', prefix_text):
-                res = resolve_column(c_str, header_map)
-                if res and res not in prefix_cols:
-                    prefix_cols.append(res)
-
-            # 4. Check isolated Latin letters in prefix (e.g. 'در C ضرب کن')
-            for c_letter in re.findall(r'\b([A-Za-z]{1,2})\b', prefix_text):
-                c_up = c_letter.upper()
-                if c_up not in prefix_cols:
-                    prefix_cols.append(c_up)
-
-            # 5. Check headers in prefix
-            if header_map:
-                for h_name, col_let in header_map.items():
-                    if h_name in prefix_text and col_let not in prefix_cols:
-                        prefix_cols.append(col_let)
-
-            if len(prefix_cols) >= 2:
-                c1, c2 = prefix_cols[0], prefix_cols[1]
-                op_fa = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}[detected_op]
-                return ColumnArithmeticAction(
-                    operation=detected_op,
-                    col1=c1,
-                    col2=c2,
-                    columns=prefix_cols,
-                    target_col=target_c,
-                    as_formula=True,
-                    description_persian=f"{op_fa} ستون‌های {'، '.join(prefix_cols)}{' و درج نتیجه در ستون ' + target_c if target_c else ''}"
-                )
-
-            # Fallback check across whole text
-            all_cols = []
-            for c_str in re.findall(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text_clean):
-                res = resolve_column(c_str, header_map)
-                if res and res not in all_cols:
-                    all_cols.append(res)
-            for c_let in re.findall(r'\b([A-Za-z]{1,2})\b', text_clean):
-                c_up = c_let.upper()
-                if c_up not in all_cols:
-                    all_cols.append(c_up)
-
-            if len(all_cols) >= 2:
-                c1, c2 = all_cols[0], all_cols[1]
-                if not target_c and len(all_cols) >= 3:
-                    target_c = all_cols[-1]
-                    source_cols = all_cols[:-1]
-                else:
+            # If fewer than 2 source columns found in rem_text and no target_c, check entire text
+            if len(source_cols) < 2 and not target_c:
+                all_cols = extract_source_columns(text, header_map)
+                if len(all_cols) >= 2:
                     source_cols = all_cols
+
+            # Column arithmetic strictly requires at least 2 source columns
+            if len(source_cols) >= 2:
+                c1, c2 = source_cols[0], source_cols[1]
                 op_fa = {"multiply": "ضرب", "add": "جمع", "subtract": "تفریق", "divide": "تقسیم"}[detected_op]
                 return ColumnArithmeticAction(
                     operation=detected_op,
@@ -659,60 +571,53 @@ class PersianRuleParser:
 
         # 9. Statistical calculations: جمع خودکار، میانگین، بیشترین، کمترین، میانه، تعداد سلول‌های پر
         # e.g.: میانگین ستون D را حساب کن
-        # e.g.: جمع خودکار ستون B
+        # e.g.: مجموع ستون B را محاسبه کن
         # e.g.: بیشترین و کمترین ستون C
-        stats_map = {
-            "میانگین": "average",
-            "معدل": "average",
-            "مجموع": "sum",
-            "جمع خودکار": "sum",
-            "اتوسام": "sum",
-            "اتو سام": "sum",
-            "جمع": "sum",
-            "کل": "sum",
-            "بیشترین": "max",
-            "حداکثر": "max",
-            "ماکزیمم": "max",
-            "کمترین": "min",
-            "حداقل": "min",
-            "مینیمم": "min",
-            "میانه": "median",
-            "سلول های پر": "counta",
-            "سلول‌های پر": "counta",
-            "سلولهای پر": "counta",
-            "غیر خالی": "counta",
-            "غیرخالی": "counta",
-            "تعداد": "count",
-            "شمارش": "count",
-            "درصد": "percentage",
-        }
+        # e.g.: ستون B رو میانگین بگیر
+        detected_stat = None
+        all_stat_syns = []
+        for stat_code, syn_list in STATS_SYNONYMS.items():
+            for syn in syn_list:
+                all_stat_syns.append((syn, stat_code))
+        # Prioritize longer phrases (e.g. 'سلول‌های پر' before 'شمارش')
+        all_stat_syns.sort(key=lambda x: len(x[0]), reverse=True)
 
-        for stat_word, stat_code in sorted(stats_map.items(), key=lambda x: len(x[0]), reverse=True):
-            if stat_word in text:
+        for syn, stat_code in all_stat_syns:
+            if syn in text_lower:
                 if stat_code == "percentage" and "فرمت" in text_lower:
                     continue
-                # Find source column
-                col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
-                source_col = resolve_column(col_match.group(1), header_map) if col_match else None
-                if not source_col:
-                    # Try single letter token after word e.g. "میانگین D"
-                    letter_match = re.search(r'\b([A-Za-z]{1,2})\b', text)
-                    if letter_match:
-                        source_col = letter_match.group(1).upper()
+                detected_stat = stat_code
+                break
 
-                if source_col:
-                    stat_fa = {"average": "میانگین", "sum": "جمع خودکار", "max": "بیشترین مقدار (MAX)", "min": "کمترین مقدار (MIN)",
-                               "median": "میانه", "count": "تعداد عددی", "counta": "تعداد سلول‌های پر", "percentage": "درصد"}[stat_code]
-                    return ColumnStatsAction(
-                        stat_type=stat_code,
-                        source_col=source_col,
-                        description_persian=f"محاسبه {stat_fa} برای ستون {source_col}"
-                    )
+        if detected_stat:
+            col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
+            source_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not source_col:
+                source_cols = extract_source_columns(text, header_map)
+                source_col = source_cols[0] if source_cols else None
+            if not source_col:
+                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
+                source_col = let_m.group(1).upper() if let_m else None
+
+            if source_col:
+                stat_fa = {
+                    "average": "میانگین",
+                    "sum": "جمع خودکار",
+                    "max": "بیشترین مقدار (MAX)",
+                    "min": "کمترین مقدار (MIN)",
+                    "median": "میانه",
+                    "count": "تعداد عددی",
+                    "counta": "تعداد سلول‌های پر",
+                    "percentage": "درصد",
+                }.get(detected_stat, detected_stat)
+                return ColumnStatsAction(
+                    stat_type=detected_stat,
+                    source_col=source_col,
+                    description_persian=f"محاسبه {stat_fa} برای ستون {source_col}"
+                )
 
         # 10. Merge Cells: ادغام سلول‌ها
-        # e.g.: سلول‌های A1:D1 را ادغام کن
-        # e.g.: ادغام A1 تا B1
-        if any(w in text_lower for w in ["ادغام", "مرج", "merge", "یکپارچه سازی سلول"]):
+        if any(w in text_lower for w in MERGE_WORDS):
             rng_m = re.search(r'([A-Za-z]+\d+)\s*(?::|تا|الی|to|-)\s*([A-Za-z]+\d+)', text)
             if rng_m:
                 range_str = f"{rng_m.group(1).upper()}:{rng_m.group(2).upper()}"
@@ -727,30 +632,24 @@ class PersianRuleParser:
             )
 
         # 11. Convert text to number: تبدیل متن به عدد و اصلاح داده‌های عددی
-        # e.g.: تبدیل متن به عدد در ستون B
-        # e.g.: اصلاح داده‌های عددی ستون A
-        # e.g.: اعداد متنی ستون C را به عدد واقعی تبدیل کن
-        if any(w in text_lower for w in ["متن به عدد", "تبدیل به عدد", "اصلاح داده‌های عددی", "اصلاح اعداد", "اعداد متنی", "تبدیل اعداد", "اصلاح داده"]):
+        if any(w in text_lower for w in TEXT_TO_NUMBER_WORDS) or ("متن به عدد" in text_lower or ("عددی" in text_lower and "متن" in text_lower)):
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             target_col = resolve_column(col_match.group(1), header_map) if col_match else None
             if not target_col:
-                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
-                target_col = let_m.group(1).upper() if let_m else "A"
+                cols = extract_source_columns(text, header_map)
+                target_col = cols[0] if cols else "A"
             return ConvertTextToNumberAction(
                 target_col=target_col,
                 description_persian=f"تبدیل متون عددی ستون {target_col} به عدد واقعی و اصلاح فرمت"
             )
 
         # 12. Split text / Text to columns: جدا کردن متن (تفکیک نام، نام خانوادگی و...)
-        # e.g.: تفکیک نام و نام خانوادگی در ستون A
-        # e.g.: جدا کردن متن ستون B بر اساس فاصله
-        # e.g.: تفکیک ستون A با خط تیره
-        if any(w in text_lower for w in ["جدا کردن متن", "تفکیک نام", "تفکیک ستون", "جداسازی متن", "جدا کردن ستون", "تفکیک متن", "جداسازی نام", "split"]):
+        if any(w in text_lower for w in SPLIT_WORDS) or "تفکیک" in text_lower:
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             source_col = resolve_column(col_match.group(1), header_map) if col_match else None
             if not source_col:
-                let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
-                source_col = let_m.group(1).upper() if let_m else "A"
+                cols = extract_source_columns(text, header_map)
+                source_col = cols[0] if cols else "A"
 
             delim = " "
             if any(w in text_lower for w in ["خط تیره", "دش", "-", "منها"]):
@@ -772,18 +671,18 @@ class PersianRuleParser:
             )
 
         # 13. Smart Filter: فیلتر هوشمند اطلاعات بر اساس شرط یا اتوفیلتر
-        # e.g.: فیلتر ستون B بزرگتر از 100
-        # e.g.: فیلتر هوشمند جدول
-        # e.g.: حذف فیلتر
-        if "فیلتر" in text_lower or "filter" in text_lower:
-            if any(w in text_lower for w in ["حذف فیلتر", "پاک کردن فیلتر", "بدون فیلتر", "پاکسازی فیلتر"]):
-                return FilterDataAction(
-                    condition="clear",
-                    description_persian="پاک کردن تمام فیلترها و نمایش همه سطرها"
-                )
+        if any(w in text_lower for w in CLEAR_FILTER_WORDS):
+            return FilterDataAction(
+                condition="clear",
+                description_persian="پاک کردن تمام فیلترها و نمایش همه سطرها"
+            )
 
+        if any(w in text_lower for w in FILTER_WORDS):
             col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
             target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+            if not target_col:
+                cols = extract_source_columns(text, header_map)
+                target_col = cols[0] if cols else None
 
             cond_type = None
             val = None
@@ -819,14 +718,11 @@ class PersianRuleParser:
                 )
 
         # 14. Set Cell Format: تغییر فرمت سلول (عدد، درصد، تاریخ، واحد پول)
-        # e.g.: فرمت ستون B را به تومان تغییر بده
-        # e.g.: فرمت درصدی برای ستون C
-        # e.g.: فرمت ستون A تاریخ
         if "فرمت" in text_lower or any(w in text_lower for w in ["سه رقم", "هزارگان", "درصدی", "تومانی"]):
             fmt_type = "currency"
-            if any(w in text_lower for w in ["تومان", "ریال", "واحد پول", "پول"]):
+            if any(w in text_lower for w in CURRENCY_TOMAN_WORDS) or any(w in text_lower for w in ["تومان", "ریال", "واحد پول", "پول"]):
                 fmt_type = "currency"
-            elif any(w in text_lower for w in ["درصد", "%", "درصدی"]):
+            elif any(w in text_lower for w in PERCENTAGE_WORDS) or any(w in text_lower for w in ["درصد", "%", "درصدی"]):
                 fmt_type = "percentage"
             elif "تاریخ" in text_lower:
                 fmt_type = "date"
@@ -842,8 +738,8 @@ class PersianRuleParser:
                 col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
                 target = resolve_column(col_match.group(1), header_map) if col_match else None
                 if not target:
-                    let_m = re.search(r'\b([A-Za-z]{1,2})\b', text)
-                    target = let_m.group(1).upper() if let_m else "A"
+                    cols = extract_source_columns(text, header_map)
+                    target = cols[0] if cols else "A"
 
             fmt_fa_names = {
                 "currency": "واحد پول (تومان)",
@@ -874,13 +770,15 @@ class PersianRuleParser:
 
         for cond_phrase, cond_type in cond_matches:
             if cond_phrase in text:
-                # Extract value
                 val_match = re.search(rf'{cond_phrase}\s*([-+]?\d*\.?\d+)', text)
                 if val_match:
                     threshold_val = float(val_match.group(1))
                     color = extract_color_hex(text, default="#90EE90")
                     col_match = re.search(r'ستون\s+([A-Za-z0-9\u0600-\u06FF]+)', text)
                     target_col = resolve_column(col_match.group(1), header_map) if col_match else None
+                    if not target_col:
+                        cols = extract_source_columns(text, header_map)
+                        target_col = cols[0] if cols else None
 
                     cond_fa = {"gt": "بیشتر از", "lt": "کمتر از", "eq": "مساوی"}[cond_type]
                     return HighlightConditionAction(
@@ -891,7 +789,7 @@ class PersianRuleParser:
                         description_persian=f"هایلایت سلول‌های {cond_fa} {threshold_val} با رنگ {color}"
                     )
 
-        # 11. Format cells (Font bold, size, color)
+        # 16. Format cells (Font bold, size, color)
         # e.g.: سلول‌های A1:D1 را بولد کن
         # e.g.: ردیف اول را زرد کن
         if any(w in text_lower for w in ["بولد", "پررنگ", "bold", "ایتالیک", "اندازه فونت", "فونت"]):

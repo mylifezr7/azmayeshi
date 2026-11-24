@@ -41,6 +41,7 @@ class AmbiguousCommandError(ExcelAssistantException):
     """Raised when user Persian command is ambiguous and needs clarification."""
     def __init__(self, message: str, clarification_prompt: str = "", suggested_options: list = None):
         super().__init__(message)
+        self.message = message
         self.clarification_prompt = clarification_prompt
         self.suggested_options = suggested_options or []
 
