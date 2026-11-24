@@ -541,3 +541,174 @@ def test_persian_rule_parser_new_features():
 
     a15 = PersianRuleParser.parse("خروجی PDF از شیت", header_map)
     assert isinstance(a15, PdfExportAction)
+
+
+# 19. Inventory Alert Multi-Sheet Sales Deduction Tests
+def test_inventory_alert_multi_sheet_sales_deduction(test_manager):
+    """Test inventory alert deducting sales from purchase across separate 'خرید' and 'فروش' sheets."""
+    p_sheet = test_manager.create_sheet("خرید")
+    s_sheet = test_manager.create_sheet("فروش")
+
+    p_sheet.set_value("A1", "نام کالا")
+    p_sheet.set_value("B1", "قیمت خرید")
+    p_sheet.set_value("C1", "تعداد خرید")
+
+    p_sheet.set_value("A2", "لپ‌تاپ")
+    p_sheet.set_value("B2", 20000000)
+    p_sheet.set_value("C2", 10)
+
+    p_sheet.set_value("A3", "کیبورد")
+    p_sheet.set_value("B3", 500000)
+    p_sheet.set_value("C3", 8)
+
+    p_sheet.set_value("A4", "ماوس")
+    p_sheet.set_value("B4", 200000)
+    p_sheet.set_value("C4", 50)
+
+    s_sheet.set_value("A1", "نام کالا")
+    s_sheet.set_value("B1", "قیمت فروش")
+    s_sheet.set_value("C1", "تعداد فروش")
+
+    s_sheet.set_value("A2", "لپ‌تاپ")
+    s_sheet.set_value("B2", 25000000)
+    s_sheet.set_value("C2", 7)
+
+    s_sheet.set_value("A3", "لپ‌تاپ")
+    s_sheet.set_value("B3", 25000000)
+    s_sheet.set_value("C3", 1)  # Total sold laptop = 8 (Remaining = 10 - 8 = 2 <= 5 -> Alert!)
+
+    s_sheet.set_value("A4", "کیبورد")
+    s_sheet.set_value("B4", 700000)
+    s_sheet.set_value("C4", 5)  # Total sold keyboard = 5 (Remaining = 8 - 5 = 3 <= 5 -> Alert!)
+
+    s_sheet.set_value("A5", "ماوس")
+    s_sheet.set_value("B5", 300000)
+    s_sheet.set_value("C5", 15) # Total sold mouse = 15 (Remaining = 50 - 15 = 35 > 5 -> OK)
+
+    action = InventoryAlertAction(min_threshold=5.0, highlight_low_stock=True)
+    ctx = ActionContext(manager=test_manager, sheet=p_sheet)
+    res = BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+    assert res.success is True
+    assert "کسر فروش از خرید" in res.message_persian
+    assert "48,500,000" in res.message_persian  # 2*20M + 3*500k + 35*200k = 48.5M
+    assert "لپ‌تاپ" in res.message_persian
+    assert "کیبورد" in res.message_persian
+
+    # Check generated headers in purchase sheet
+    assert p_sheet.get_value("D1") == "تعداد فروش (فروش)"
+    assert p_sheet.get_value("E1") == "مانده موجودی انبار"
+    assert p_sheet.get_value("F1") == "وضعیت موجودی انبار"
+    assert p_sheet.get_value("G1") == "ارزش ریالی موجودی"
+
+    # Check formulas for Row 2 (Laptop)
+    f_sold = str(p_sheet.get_formula("D2"))
+    assert "SUMIF('فروش'!$A$2:$A$5, A2, 'فروش'!$C$2:$C$5)" in f_sold
+
+    f_rem = str(p_sheet.get_formula("E2"))
+    assert "C2-D2" in f_rem
+
+    f_status = str(p_sheet.get_formula("F2"))
+    assert "E2<=5" in f_status or "E2<=5.0" in f_status
+
+    f_val = str(p_sheet.get_formula("G2"))
+    assert "E2*B2" in f_val
+
+    # Check highlighting: Laptop (row 2) and Keyboard (row 3) highlighted pink, Mouse (row 4) not highlighted
+    assert p_sheet.get_cell_color("F2") == "#FEE2E2"
+    assert p_sheet.get_cell_color("F3") == "#FEE2E2"
+    assert p_sheet.get_cell_color("F4") is None
+
+    # Check summary row at row 5
+    assert "مجموع کل ارزش موجودی انبار" in str(p_sheet.get_value("A5"))
+    assert "=SUM(G2:G4)" in str(p_sheet.get_formula("G5"))
+    assert "=SUM(D2:D4)" in str(p_sheet.get_formula("D5"))
+    assert "=SUM(E2:E4)" in str(p_sheet.get_formula("E5"))
+
+
+def test_inventory_alert_auto_switches_from_sales_to_purchase_sheet(test_manager):
+    """Test running inventory alert while the user is currently viewing the sales sheet."""
+    p_sheet = test_manager.create_sheet("خرید")
+    s_sheet = test_manager.create_sheet("فروش")
+
+    p_sheet.set_value("A1", "نام کالا")
+    p_sheet.set_value("B1", "قیمت خرید")
+    p_sheet.set_value("C1", "تعداد خرید")
+
+    p_sheet.set_value("A2", "مانیتور")
+    p_sheet.set_value("B2", 6000000)
+    p_sheet.set_value("C2", 10)
+
+    s_sheet.set_value("A1", "نام کالا")
+    s_sheet.set_value("B1", "قیمت فروش")
+    s_sheet.set_value("C1", "تعداد فروش")
+
+    s_sheet.set_value("A2", "مانیتور")
+    s_sheet.set_value("B2", 8000000)
+    s_sheet.set_value("C2", 8)  # Remaining = 10 - 8 = 2 <= 5
+
+    # Context active sheet is sales sheet!
+    action = InventoryAlertAction(min_threshold=5.0)
+    ctx = ActionContext(manager=test_manager, sheet=s_sheet)
+    res = BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+    assert res.success is True
+    # Successfully switched to purchase sheet and applied deduction
+    assert p_sheet.get_value("E1") == "مانده موجودی انبار"
+    assert "C2-D2" in str(p_sheet.get_formula("E2"))
+    assert "12,000,000" in res.message_persian  # 2 * 6,000,000 = 12M
+
+
+def test_inventory_alert_same_sheet_sales_deduction(test_manager):
+    """Test inventory alert with purchase and sales columns in the same sheet."""
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "نام کالا")
+    sheet.set_value("B1", "قیمت خرید")
+    sheet.set_value("C1", "تعداد خرید")
+    sheet.set_value("D1", "تعداد فروش")
+
+    sheet.set_value("A2", "پرینتر")
+    sheet.set_value("B2", 10000000)
+    sheet.set_value("C2", 12)
+    sheet.set_value("D2", 10)  # Remaining = 2 <= 5 -> Alert
+
+    sheet.set_value("A3", "اسکنر")
+    sheet.set_value("B3", 5000000)
+    sheet.set_value("C3", 20)
+    sheet.set_value("D3", 5)   # Remaining = 15 > 5 -> OK
+
+    action = InventoryAlertAction(min_threshold=5.0)
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = BusinessActionHandler.execute_inventory_alert(action, ctx)
+
+    assert res.success is True
+    assert sheet.get_value("E1") == "مانده موجودی انبار"
+    assert sheet.get_value("F1") == "وضعیت موجودی انبار"
+    assert sheet.get_value("G1") == "ارزش ریالی موجودی"
+
+    # Row 2 remaining formula: C2 - D2
+    assert "C2-D2" in str(sheet.get_formula("E2"))
+    # Valuation formula: E2 * B2
+    assert "E2*B2" in str(sheet.get_formula("G2"))
+    # Valuation: (2 * 10M) + (15 * 5M) = 20M + 75M = 95M
+    assert "95,000,000" in res.message_persian
+    assert "پرینتر" in res.message_persian
+
+
+def test_nlp_parsing_inventory_sales_deduction_prompts():
+    """Verify NLP intent parsing for colloquial user requests about deducting sales from purchases."""
+    from excel_assistant.nlp.parser import PersianIntentParser
+    parser = PersianIntentParser()
+
+    prompts = [
+        "باید تعداد فروش از خرید کم کنه تا موجودی باقی مانده رو به دست بیاره",
+        "کسر فروش از خرید برای موجودی انبار",
+        "تعداد فروش رو از خرید کسر کن تا مانده انبار مشخص بشه",
+        "مانده موجودی انبار رو حساب کن",
+        "کنترل موجودی انبار",
+    ]
+
+    for p in prompts:
+        action = parser.parse(p)
+        assert isinstance(action, InventoryAlertAction), f"Failed to parse '{p}' as InventoryAlertAction, got {type(action).__name__}"
+

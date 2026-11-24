@@ -157,9 +157,45 @@ class PersianRuleParser:
         # 1.11 Inventory Alert & Valuation / موجودی انبار و هشدار کمبود موجودی
         if any(w in text_lower for w in [
             "کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار",
-            "کنترل انبار", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی"
+            "کنترل انبار", "کنترل موجودی", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی",
+            "مانده موجودی", "موجودی باقی مانده", "موجودی باقیمانده", "مانده انبار", "موجودی کالا", "موجودی"
         ]):
-            return InventoryAlertAction(description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی")
+            thresh = 5.0
+            th_m = re.search(r'(?:زیر|کمتر از|آستانه|حداقل)\s*([0-9]+)', text)
+            if th_m:
+                try:
+                    thresh = float(th_m.group(1))
+                except ValueError:
+                    thresh = 5.0
+
+            sales_s = None
+            purchase_s = None
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_\u0600-\u06FF]+)', text, flags=re.IGNORECASE)
+            if len(sheets_found) >= 2:
+                if "فروش" in text and "خرید" in text:
+                    f_pos = text.find("فروش")
+                    k_pos = text.find("خرید")
+                    if f_pos < k_pos:
+                        sales_s = sheets_found[0]
+                        purchase_s = sheets_found[1]
+                    else:
+                        purchase_s = sheets_found[0]
+                        sales_s = sheets_found[1]
+                else:
+                    sales_s = sheets_found[0]
+                    purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                if "فروش" in text:
+                    sales_s = sheets_found[0]
+                elif "خرید" in text or "انبار" in text:
+                    purchase_s = sheets_found[0]
+
+            return InventoryAlertAction(
+                min_threshold=thresh,
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی"
+            )
 
         # 1.12 Top Selling Products / پرفروش‌ترین کالاها
         if any(w in text_lower for w in [
@@ -369,7 +405,7 @@ class PersianRuleParser:
             )
 
         # 7.55 Profit Calculation: محاسبه سود (روزانه، ماهانه، سالانه، کل / فروش منهای خرید)
-        if "سود" in text or ("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])):
+        if "سود" in text or (("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])) and not any(inv_kw in text for inv_kw in ["موجودی", "انبار"])):
             period = "all"
             if "روزانه" in text and not any(w in text for w in ["ماهانه", "سالانه", "کل"]):
                 period = "daily"

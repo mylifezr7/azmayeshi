@@ -245,6 +245,8 @@ class InventoryAlertAction(BaseActionModel):
     stock_col: Optional[str] = None
     min_threshold: float = 5.0
     purchase_price_col: Optional[str] = None
+    sales_sheet: Optional[str] = None
+    purchase_sheet: Optional[str] = None
     highlight_low_stock: bool = True
     description_persian: str = "کنترل موجودی انبار و هشدار کمبود موجودی"
 
