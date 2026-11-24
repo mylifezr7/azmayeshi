@@ -116,3 +116,25 @@ def test_dropup_and_enlarged_controls():
     assert "<button class=\"chip\" onclick=\"sendCommand('مغایرت‌گیری" not in HTML_TEMPLATE
 
 
+def test_sidebar_and_categories_reorganization():
+    """Verify that uniqueness lock, date, analysis, profit, and sales were moved to categories and accounting."""
+    main_window_src = (Path(__file__).parent.parent / "excel_assistant" / "ui" / "main_window.py").read_text(encoding="utf-8")
+    history_panel_src = (Path(__file__).parent.parent / "excel_assistant" / "ui" / "history_panel.py").read_text(encoding="utf-8")
+
+    # In HistoryPanel, the 5 action buttons are no longer added to sidebar layout
+    assert "layout.addWidget(self.btn_unique)" not in history_panel_src
+    assert "layout.addWidget(self.btn_date)" not in history_panel_src
+    assert "layout.addWidget(self.btn_analyze)" not in history_panel_src
+    assert "layout.addWidget(self.btn_sales)" not in history_panel_src
+    assert "layout.addWidget(self.btn_profit)" not in history_panel_src
+
+    # Accounting category contains profit and sales calculation
+    assert "محاسبه سود" in main_window_src
+    assert "محاسبه فروش" in main_window_src
+
+    # Web UI template also includes profit and sales in accounting
+    assert 'label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"' in HTML_TEMPLATE
+    assert 'label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"' in HTML_TEMPLATE
+
+
+

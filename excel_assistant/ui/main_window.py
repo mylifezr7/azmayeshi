@@ -128,11 +128,14 @@ class MainWindow(QMainWindow):
                     ("🔺 بیشترین و کمترین (MAX / MIN)", "بیشترین مقدار ستون A"),
                     ("🔢 شمارش اطلاعات و سلول‌های پر", "شمارش سلول‌های پر ستون A"),
                     ("🔢 تبدیل متن به عدد (اصلاح داده‌ها)", "تبدیل متن به عدد در ستون A"),
+                    ("📅 درج تاریخ در شیت...", "درج تاریخ در شیت"),
                 ]
             },
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
+                    ("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", "محاسبه سود"),
+                    ("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", "محاسبه فروش"),
                     ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
                     ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
                     ("💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", "محاسبه مانده حساب"),
@@ -157,8 +160,9 @@ class MainWindow(QMainWindow):
             "smart": {
                 "title": "🤖 ۴. قابلیت‌های هوشمند و کاربردی",
                 "commands": [
-                    ("🔒 قفل یکتاسازی ستون اکسل...", "قفل یکتایی ستون"),
-                    ("🔓 برداشتن قفل یکتایی ستون", "قفل یکتایی ستون A را بردار"),
+                    ("🔒 مدیریت و قفل یکتاسازی ستون...", "قفل یکتایی ستون"),
+                    ("🔓 لغو و برداشتن قفل یکتایی ستون", "قفل یکتایی ستون را بردار"),
+                    ("📊 تحلیل هوشمند شیت و داده‌ها", "تحلیل ساختار فایل و شیت"),
                     ("🩺 چکاپ عمیق سلامت و خطاهای فایل", "سلامت فایل و بررسی خطاهای اکسل"),
                     ("🧮 میانگین سطری بین ستون‌ها (B و C در D)", "از ستون B و C میانگین بگیر و نتیجه را در D بنویس"),
                     ("📊 گزارش‌ساز خودکار با نمودار گرافیکی", "رسم نمودار ستونی"),
@@ -170,6 +174,10 @@ class MainWindow(QMainWindow):
             "management": {
                 "title": "⚙️ ۵. امکانات مدیریتی خود برنامه",
                 "commands": [
+                    ("🔒 قفل و مدیریت یکتایی ستون...", "قفل یکتایی ستون"),
+                    ("🔓 لغو و برداشتن قفل یکتایی ستون", "قفل یکتایی ستون را بردار"),
+                    ("📅 درج تاریخ در شیت (شمسی/میلادی)...", "درج تاریخ در شیت"),
+                    ("📊 تحلیل هوشمند شیت و داده‌ها", "تحلیل ساختار فایل و شیت"),
                     ("💾 ذخیره تغییرات فایل اکسل (Ctrl+S)", "ذخیره فایل"),
                     ("💾 ذخیره نسخه پشتیبان (Backup)", "ذخیره نسخه پشتیبان"),
                     ("📄 تولید خروجی PDF استاندارد", "خروجی PDF از شیت"),
@@ -410,16 +418,17 @@ class MainWindow(QMainWindow):
     def _on_quick_chip_clicked(self, command: str):
         if "سود" in command:
             self._open_profit_dialog()
-        elif "فروش" in command:
+        elif "فروش" in command and any(w in command for w in ["محاسبه", "گزارش", "روزانه", "ماهانه", "سالانه", "کل"]):
             self._open_sales_dialog()
         elif "جلوگیری" in command or "یکتا" in command:
             if any(w in command for w in ["بردار", "حذف", "برداشتن", "لغو", "باز"]):
-                self.input_edit.setText(command)
-                self._on_send_clicked()
+                self._open_unique_col_dialog(initial_mode="unlock")
             else:
-                self._open_unique_col_dialog()
-        elif "تاریخ" in command:
+                self._open_unique_col_dialog(initial_mode="lock")
+        elif "تاریخ" in command and any(w in command for w in ["درج", "ثبت", "شیت"]):
             self._open_date_dialog()
+        elif "تحلیل" in command:
+            self._on_analyze_clicked()
         elif "تخفیف" in command:
             self._open_discount_dialog()
         elif "جمع" in command:
@@ -434,10 +443,10 @@ class MainWindow(QMainWindow):
             self.input_edit.setText(command)
             self._on_send_clicked()
 
-    def _open_unique_col_dialog(self):
-        """Opens interactive wizard dialog for locking a column to prevent duplicate values."""
+    def _open_unique_col_dialog(self, initial_mode: str = "lock"):
+        """Opens interactive wizard dialog for locking or unlocking a column to prevent duplicate values."""
         from excel_assistant.ui.unique_column_dialog import UniqueColumnWizardDialog
-        dialog = UniqueColumnWizardDialog(manager=self.manager, parent=self)
+        dialog = UniqueColumnWizardDialog(manager=self.manager, initial_mode=initial_mode, parent=self)
         if dialog.exec() == QDialog.Accepted:
             action = dialog.get_action()
             self.chat_widget.add_user_message(action.description_persian)
@@ -522,8 +531,11 @@ class MainWindow(QMainWindow):
 
         # Check for standalone arithmetic keywords to launch wizard
         lower = text.lower()
-        if any(k in lower for k in ["یکتا", "یکتاسازی", "کد ملی", "کد محصول", "جلوگیری از تکرار"]) and len(lower.split()) <= 3:
-            self._open_unique_col_dialog()
+        if any(k in lower for k in ["یکتا", "یکتاسازی", "کد ملی", "کد محصول", "جلوگیری از تکرار"]) and len(lower.split()) <= 4:
+            if any(w in lower for w in ["بردار", "حذف", "برداشتن", "لغو", "باز"]):
+                self._open_unique_col_dialog(initial_mode="unlock")
+            else:
+                self._open_unique_col_dialog(initial_mode="lock")
             return
 
         if "سود" in lower and len(lower.split()) <= 4:
@@ -534,12 +546,12 @@ class MainWindow(QMainWindow):
             self._open_sales_dialog()
             return
 
-        if "تاریخ" in lower and len(lower.split()) <= 2:
+        if "تاریخ" in lower and any(k in lower for k in ["درج", "ثبت", "شیت"]) and len(lower.split()) <= 4:
             self._open_date_dialog()
             return
 
-        if "تخفیف" in lower and len(lower.split()) <= 2:
-            self._open_discount_dialog()
+        if "تحلیل" in lower and any(k in lower for k in ["شیت", "ساختار", "فایل", "داده", "هوشمند"]) and len(lower.split()) <= 5:
+            self._on_analyze_clicked()
             return
 
         if lower in ["جمع", "ضرب", "تفریق", "تقسیم", "4 عمل اصلی", "۴ عمل اصلی", "محاسبه", "محاسبات", "ماشین حساب"]:
