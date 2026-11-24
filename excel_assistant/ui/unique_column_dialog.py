@@ -20,15 +20,21 @@ from excel_assistant.core.connection import ExcelConnectionManager
 class UniqueColumnWizardDialog(QDialog):
     """Modern RTL dialog providing dedicated sections for applying or canceling column uniqueness lock."""
 
-    def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
+    def __init__(self, manager: Optional[ExcelConnectionManager] = None, initial_mode: str = "lock", parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.manager = manager
-        self.mode = "lock"  # "lock" or "unlock"
+        self.mode = initial_mode if initial_mode in ("lock", "unlock") else "lock"
         self.setWindowTitle("🔒 مدیریت یکتاسازی ستون اکسل (اعمال یا لغو قفل)")
         self.resize(540, 600)
         self.setLayoutDirection(Qt.RightToLeft)
 
         self._init_ui()
+        if self.mode == "unlock":
+            self.rb_unlock.setChecked(True)
+            self._on_mode_toggled(False)
+        else:
+            self.rb_lock.setChecked(True)
+            self._on_mode_toggled(True)
         self._load_sheet_columns()
         self._update_preview()
 

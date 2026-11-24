@@ -849,14 +849,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <button class="btn-shortcut btn-save" onclick="saveWorkbook()">💾 ذخیره فایل (Save)... <span class="hotkey-badge">Ctrl+S</span></button>
             <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
-            <button class="btn-shortcut btn-unique" onclick="promptPreventDuplicates()">🔒 قفل یکتایی ستون اکسل...</button>
-            <button class="btn-shortcut btn-unlock" onclick="promptRemoveUniqueValidation()">🔓 برداشتن قفل یکتایی ستون...</button>
             <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
             <button class="btn-shortcut btn-discount" onclick="promptDiscount()">🏷️ محاسبه تخفیف کالاها...</button>
-            <button class="btn-shortcut btn-date" onclick="promptInsertDate()">📅 درج تاریخ در شیت...</button>
-            <button class="btn-shortcut btn-analyze" onclick="sendCommand('تحلیل ساختار فایل و شیت')">📊 تحلیل هوشمند شیت</button>
-            <button class="btn-shortcut btn-sales" onclick="openSalesModal()">💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)... <span class="hotkey-badge">Ctrl+Shift+S</span></button>
-            <button class="btn-shortcut btn-profit" onclick="openProfitModal()">💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)... <span class="hotkey-badge">Ctrl+P</span></button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
@@ -1310,12 +1304,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     {label: "📊 محاسبه میانگین داده‌ها", cmd: "میانگین ستون A"},
                     {label: "🔺 بیشترین و کمترین (MAX / MIN)", cmd: "بیشترین مقدار ستون A"},
                     {label: "🔢 شمارش اطلاعات و سلول‌های پر", cmd: "شمارش سلول‌های پر ستون A"},
-                    {label: "🔢 تبدیل متن به عدد (اصلاح داده‌ها)", cmd: "تبدیل متن به عدد در ستون A"}
+                    {label: "🔢 تبدیل متن به عدد (اصلاح داده‌ها)", cmd: "تبدیل متن به عدد در ستون A"},
+                    {label: "📅 درج تاریخ در شیت...", cmd: "درج تاریخ در شیت"}
                 ]
             },
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
+                    {label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"},
+                    {label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"},
                     {label: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B"},
                     {label: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی"},
                     {label: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب"},
@@ -1340,8 +1337,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "smart": {
                 "title": "🤖 ۴. قابلیت‌های هوشمند و کاربردی",
                 "commands": [
-                    {label: "🔒 قفل یکتاسازی ستون اکسل...", cmd: "قفل یکتایی ستون A"},
-                    {label: "🔓 برداشتن قفل یکتایی ستون", cmd: "قفل یکتایی ستون A را بردار"},
+                    {label: "🔒 مدیریت و قفل یکتاسازی ستون...", cmd: "قفل یکتایی ستون"},
+                    {label: "🔓 لغو و برداشتن قفل یکتایی ستون", cmd: "قفل یکتایی ستون A را بردار"},
+                    {label: "📊 تحلیل هوشمند شیت و داده‌ها", cmd: "تحلیل ساختار فایل و شیت"},
                     {label: "🩺 چکاپ عمیق سلامت و خطاهای فایل", cmd: "سلامت فایل و بررسی خطاهای اکسل"},
                     {label: "🧮 میانگین سطری بین ستون‌ها (B و C در D)", cmd: "از ستون B و C میانگین بگیر و نتیجه را در D بنویس"},
                     {label: "📊 گزارش‌ساز خودکار با نمودار گرافیکی", cmd: "رسم نمودار ستونی"},
@@ -1353,6 +1351,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "management": {
                 "title": "⚙️ ۵. امکانات مدیریتی خود برنامه",
                 "commands": [
+                    {label: "🔒 قفل و مدیریت یکتایی ستون...", cmd: "قفل یکتایی ستون"},
+                    {label: "🔓 لغو و برداشتن قفل یکتایی ستون", cmd: "قفل یکتایی ستون A را بردار"},
+                    {label: "📅 درج تاریخ در شیت (شمسی/میلادی)...", cmd: "درج تاریخ در شیت"},
+                    {label: "📊 تحلیل هوشمند شیت و داده‌ها", cmd: "تحلیل ساختار فایل و شیت"},
                     {label: "💾 ذخیره تغییرات فایل اکسل (Ctrl+S)", cmd: "ذخیره فایل"},
                     {label: "💾 ذخیره نسخه پشتیبان (Backup)", cmd: "ذخیره نسخه پشتیبان"},
                     {label: "📄 تولید خروجی PDF استاندارد", cmd: "خروجی PDF از شیت"},
@@ -1391,10 +1393,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function runSelectedAction() {
             const actSelect = document.getElementById('actSelect');
             const cmd = actSelect.value || document.getElementById('commandInput').value.trim();
-            if (cmd) {
-                sendCommand(cmd);
-            } else {
+            if (!cmd) {
                 appendMessage('ai', '⚠️ لطفاً ابتدا یک عملیات را از منوی کشویی انتخاب کنید یا دستور خود را بنویسید.');
+                return;
+            }
+            if (cmd === 'قفل یکتایی ستون') {
+                promptPreventDuplicates();
+            } else if (cmd.includes('قفل یکتایی') && (cmd.includes('بردار') || cmd.includes('لغو') || cmd.includes('حذف'))) {
+                promptRemoveUniqueValidation();
+            } else if (cmd === 'محاسبه سود') {
+                openProfitModal();
+            } else if (cmd === 'محاسبه فروش') {
+                openSalesModal();
+            } else if (cmd === 'درج تاریخ در شیت') {
+                promptInsertDate();
+            } else {
+                sendCommand(cmd);
             }
         }
 
