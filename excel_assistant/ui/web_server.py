@@ -1661,6 +1661,12 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
     # Initialize sample data if fresh workbook
     sheet = ctrl.manager.get_active_sheet()
     if sheet.get_value("A1") is None:
+        try:
+            if hasattr(sheet, '_ws') and hasattr(sheet._ws, 'title'):
+                sheet._ws.title = "فروش"
+        except Exception:
+            pass
+
         # Sheet 1: Sales with dates
         sheet.set_value("A1", "تاریخ")
         sheet.set_value("B1", "کالا")
@@ -1695,26 +1701,26 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
 
         # Create Sheet 2 for Purchases if not present
         if len(ctrl.manager.active_driver.get_sheet_names()) < 2:
-            sheet2 = ctrl.manager.active_driver.create_sheet("Sheet2")
+            sheet2 = ctrl.manager.active_driver.create_sheet("خرید")
             sheet2.set_value("A1", "کالا")
             sheet2.set_value("B1", "تعداد خرید")
             sheet2.set_value("C1", "قیمت خرید")
             sheet2.set_value("D1", "خرید کل")
 
             sheet2.set_value("A2", "لپ‌تاپ")
-            sheet2.set_value("B2", 5)
+            sheet2.set_value("B2", 10)
             sheet2.set_value("C2", 950)
 
             sheet2.set_value("A3", "موبایل")
-            sheet2.set_value("B3", 20)
+            sheet2.set_value("B3", 25)
             sheet2.set_value("C3", 620)
 
             sheet2.set_value("A4", "تبلت")
-            sheet2.set_value("B4", 7)
+            sheet2.set_value("B4", 10)
             sheet2.set_value("C4", 350)
 
             sheet2.set_value("A5", "مانیتور")
-            sheet2.set_value("B5", 3)
+            sheet2.set_value("B5", 5)
             sheet2.set_value("C5", 220)
 
     WebAssistantHandler.controller = ctrl

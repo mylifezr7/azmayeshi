@@ -200,17 +200,42 @@ class BusinessActionHandler:
             except Exception:
                 all_sheets = []
 
-        # اگر کاربر در شیت فروش بود اما شیت خرید وجود داشت، شیت خرید به عنوان مبنا انتخاب می‌شود
-        if any(kw in sheet.name.lower() for kw in ["فروش", "sales"]) and not action.purchase_sheet:
-            for sh_n in all_sheets:
-                if any(p_kw in sh_n.lower() for p_kw in ["خرید", "purchase", "انبار", "موجودی"]):
-                    try:
-                        sheet = ctx.manager.get_sheet(sh_n)
-                        break
-                    except Exception:
-                        pass
-
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+
+        # اگر کاربر در شیت فروش بود اما شیت خرید وجود داشت، شیت خرید به عنوان مبنا انتخاب می‌شود
+        is_current_sales = any(kw in sheet.name.lower() for kw in ["فروش", "sales"])
+        if not is_current_sales and max_r >= min_r:
+            for r_c in range(min_r, min(min_r + 5, max_r + 1)):
+                r_txt = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r_c}") or "") for c in range(min_c, max_c + 1)).lower()
+                if "فروش" in r_txt and not any(k in r_txt for k in ["تعداد خرید", "قیمت خرید", "موجودی انبار"]):
+                    is_current_sales = True
+                    break
+
+        if is_current_sales and not action.purchase_sheet:
+            for sh_n in all_sheets:
+                if sh_n != sheet.name:
+                    if any(p_kw in sh_n.lower() for p_kw in ["خرید", "purchase", "انبار", "موجودی"]):
+                        try:
+                            sheet = ctx.manager.get_sheet(sh_n)
+                            min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                            break
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            cand_p = ctx.manager.get_sheet(sh_n)
+                            cp_min_r, cp_min_c, cp_max_r, cp_max_c = cand_p.get_used_range_bounds()
+                            for r_p in range(cp_min_r, min(cp_min_r + 5, cp_max_r + 1)):
+                                p_txt = " ".join(str(cand_p.get_value(f"{col_index_to_letter(c)}{r_p}") or "") for c in range(cp_min_c, cp_max_c + 1)).lower()
+                                if any(k in p_txt for k in ["تعداد خرید", "قیمت خرید", "موجودی انبار", "خرید"]):
+                                    sheet = cand_p
+                                    min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                                    break
+                            if sheet == cand_p:
+                                break
+                        except Exception:
+                            pass
+
         if max_r < min_r or max_c < min_c:
             return ActionResult(success=False, message_persian="شیت خالی است و داده‌ای برای بررسی موجودی یافت نشد.")
 
@@ -253,6 +278,22 @@ class BusinessActionHandler:
                     try:
                         sales_sheet = ctx.manager.get_sheet(sh_n)
                         break
+                    except Exception:
+                        pass
+
+        if not sales_sheet and ctx.manager:
+            for sh_n in all_sheets:
+                if sh_n != sheet.name:
+                    try:
+                        cand_s = ctx.manager.get_sheet(sh_n)
+                        c_min_r, c_min_c, c_max_r, c_max_c = cand_s.get_used_range_bounds()
+                        for r_c in range(c_min_r, min(c_min_r + 5, c_max_r + 1)):
+                            row_t = " ".join(str(cand_s.get_value(f"{col_index_to_letter(c)}{r_c}") or "") for c in range(c_min_c, c_max_c + 1)).lower()
+                            if "فروش" in row_t and any(k in row_t for k in ["تعداد", "مقدار", "کالا", "محصول", "مبلغ", "قیمت"]):
+                                sales_sheet = cand_s
+                                break
+                        if sales_sheet:
+                            break
                     except Exception:
                         pass
 
