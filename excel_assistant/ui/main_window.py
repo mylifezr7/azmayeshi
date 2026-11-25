@@ -135,16 +135,18 @@ class MainWindow(QMainWindow):
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    ("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", "محاسبه سود"),
-                    ("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", "محاسبه فروش"),
-                    ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
+                    ("💵 محاسبه هوشمند سود و زیان (تشخیص خودکار شیت‌ها و ستون‌ها)", "محاسبه سود"),
+                    ("💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", "محاسبه فروش"),
+                    ("💼 لیست حقوق و دستمزد، بیمه و مالیات (تشخیص خودکار)", "محاسبه حقوق و دستمزد"),
                     ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
                     ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
                     ("💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", "محاسبه مانده حساب"),
-                    ("💼 لیست حقوق و دستمزد، بیمه و مالیات", "محاسبه حقوق و دستمزد"),
                     ("📉 محاسبه جدول استهلاک دارایی‌ها", "محاسبه استهلاک"),
                     ("📈 تهیه صورت سود و زیان جامع دوره", "صورت سود و زیان جامع"),
                     ("🏛️ تهیه ترازنامه مالی (بیلان)", "ترازنامه"),
+                    ("⚙️ تنظیمات دستی ستون‌های محاسبه سود...", "تنظیمات سود"),
+                    ("⚙️ تنظیمات دستی ستون‌های گزارش فروش...", "تنظیمات فروش"),
+                    ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
                 ]
             },
             "sales_inventory": {
@@ -261,20 +263,23 @@ class MainWindow(QMainWindow):
         self.history_panel.discount_requested.connect(self._open_discount_dialog)
         self.history_panel.date_requested.connect(self._open_date_dialog)
         self.history_panel.unique_col_requested.connect(self._open_unique_col_dialog)
-        self.history_panel.sales_requested.connect(self._open_sales_dialog)
-        self.history_panel.profit_requested.connect(self._open_profit_dialog)
+        self.history_panel.sales_requested.connect(lambda: self._on_message_submitted("محاسبه فروش"))
+        self.history_panel.profit_requested.connect(lambda: self._on_message_submitted("محاسبه سود"))
 
         # Keyboard shortcuts (میانبرهای کیبورد)
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self._on_save_clicked)
 
+        # Ctrl+P: تشخیص و محاسبه خودکار سود (مانند حقوق و دستمزد)
         self.shortcut_profit = QShortcut(QKeySequence("Ctrl+P"), self)
-        self.shortcut_profit.activated.connect(self._open_profit_dialog)
+        self.shortcut_profit.activated.connect(lambda: self._on_message_submitted("محاسبه سود"))
+        # Ctrl+Shift+P: باز کردن ویزارد تنظیمات دستی
         self.shortcut_profit_shift = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
         self.shortcut_profit_shift.activated.connect(self._open_profit_dialog)
 
+        # Ctrl+Shift+S: تشخیص و محاسبه خودکار فروش
         self.shortcut_sales = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
-        self.shortcut_sales.activated.connect(self._open_sales_dialog)
+        self.shortcut_sales.activated.connect(lambda: self._on_message_submitted("محاسبه فروش"))
 
     def _perform_initial_connection(self):
         try:
@@ -425,9 +430,9 @@ class MainWindow(QMainWindow):
         self.quick_combo.blockSignals(False)
 
     def _on_quick_chip_clicked(self, command: str):
-        if "سود" in command:
+        if any(w in command for w in ["تنظیمات دستی ستون‌های محاسبه سود", "تنظیمات سود", "ویزارد سود", "دستی ستون سود"]):
             self._open_profit_dialog()
-        elif "فروش" in command and any(w in command for w in ["محاسبه", "گزارش", "روزانه", "ماهانه", "سالانه", "کل"]):
+        elif any(w in command for w in ["تنظیمات دستی ستون‌های گزارش فروش", "تنظیمات فروش", "ویزارد فروش", "دستی ستون فروش"]):
             self._open_sales_dialog()
         elif "جلوگیری" in command or "یکتا" in command:
             if any(w in command for w in ["بردار", "حذف", "برداشتن", "لغو", "باز"]):
@@ -438,18 +443,13 @@ class MainWindow(QMainWindow):
             self._open_date_dialog()
         elif "تحلیل" in command:
             self._on_analyze_clicked()
-        elif "تخفیف" in command:
+        elif "تخفیف" in command and any(w in command for w in ["ویزارد", "پنجره", "دستی"]):
             self._open_discount_dialog()
         elif "۴ عمل" in command or "4 عمل" in command or "عمل اصلی" in command:
             self._open_arithmetic_dialog("add")
-        elif "جمع" in command:
-            self._open_arithmetic_dialog("add")
-        elif "تفریق" in command or "منها" in command:
-            self._open_arithmetic_dialog("subtract")
-        elif "ضرب" in command:
-            self._open_arithmetic_dialog("multiply")
-        elif "تقسیم" in command:
-            self._open_arithmetic_dialog("divide")
+        elif command.strip() in ["جمع", "تفریق", "ضرب", "تقسیم"]:
+            op_map = {"جمع": "add", "تفریق": "subtract", "ضرب": "multiply", "تقسیم": "divide"}
+            self._open_arithmetic_dialog(op_map.get(command.strip(), "add"))
         else:
             self.input_edit.setText(command)
             self._on_send_clicked()
@@ -549,11 +549,11 @@ class MainWindow(QMainWindow):
                 self._open_unique_col_dialog(initial_mode="lock")
             return
 
-        if "سود" in lower and len(lower.split()) <= 4:
+        if any(k in lower for k in ["تنظیمات سود", "ویزارد سود", "پنجره سود", "دستی سود", "تنظیمات محاسبه سود"]):
             self._open_profit_dialog()
             return
 
-        if "فروش" in lower and any(k in lower for k in ["روزانه", "ماهانه", "سالانه", "کل", "محاسبه", "گزارش"]) and len(lower.split()) <= 4:
+        if any(k in lower for k in ["تنظیمات فروش", "ویزارد فروش", "پنجره فروش", "دستی فروش", "تنظیمات گزارش فروش"]):
             self._open_sales_dialog()
             return
 

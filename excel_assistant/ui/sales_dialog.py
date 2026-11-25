@@ -156,22 +156,33 @@ class SalesSummaryWizardDialog(QDialog):
 
         self.btn_cancel = QPushButton("انصراف")
         self.btn_cancel.setStyleSheet(
-            "background-color: #1E293B; color: #E2E8F0; padding: 9px 20px; border-radius: 8px; font-weight: bold; font-size: 12.5px;"
+            "background-color: #1E293B; color: #E2E8F0; padding: 9px 18px; border-radius: 8px; font-weight: bold; font-size: 12px;"
         )
         self.btn_cancel.clicked.connect(self.reject)
 
-        self.btn_submit = QPushButton("محاسبه و ایجاد گزارش 📈 (تایید)")
+        self.btn_auto = QPushButton("⚡ محاسبه کاملاً خودکار (تشخیص هوشمند)")
+        self.btn_auto.setToolTip("اجرای خودکار بدون نیاز به انتخاب دستی ستون‌ها (دقیقاً مشابه محاسبه حقوق و دستمزد)")
+        self.btn_auto.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #38BDF8); "
+            "color: white; padding: 9px 18px; border-radius: 8px; font-weight: bold; font-size: 12.5px; border: 1px solid #38BDF8;"
+        )
+        self.btn_auto.clicked.connect(self._on_auto_submit)
+
+        self.btn_submit = QPushButton("محاسبه با ستون انتخابی 📈")
         self.btn_submit.setDefault(True)
         self.btn_submit.setAutoDefault(True)
         self.btn_submit.setStyleSheet(
             "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981); "
-            "color: white; padding: 9px 28px; border-radius: 8px; font-weight: bold; font-size: 13px; border: 1px solid #10B981;"
+            "color: white; padding: 9px 22px; border-radius: 8px; font-weight: bold; font-size: 12.5px; border: 1px solid #10B981;"
         )
         self.btn_submit.clicked.connect(self._on_submit)
 
         btn_box.addWidget(self.btn_cancel)
+        btn_box.addWidget(self.btn_auto)
         btn_box.addWidget(self.btn_submit)
         root_layout.addLayout(btn_box)
+
+        self._is_auto = False
 
     def _load_sheet_columns(self):
         if not self.manager or not self.manager.is_connected():
@@ -307,7 +318,12 @@ class SalesSummaryWizardDialog(QDialog):
         )
         self.preview_text.setText(preview)
 
+    def _on_auto_submit(self):
+        self._is_auto = True
+        self.accept()
+
     def _on_submit(self):
+        self._is_auto = False
         d_col, a_col = self._get_active_columns()
         if not d_col or not a_col:
             QMessageBox.warning(self, "خطا", "لطفاً ستون تاریخ و ستون مبلغ فروش را مشخص کنید.")
@@ -319,7 +335,6 @@ class SalesSummaryWizardDialog(QDialog):
         self.accept()
 
     def get_action(self) -> SalesSummaryAction:
-        d_col, a_col = self._get_active_columns()
         period = self._get_period()
         create_sheet = self.chk_create_sheet.isChecked()
 
@@ -330,6 +345,17 @@ class SalesSummaryWizardDialog(QDialog):
             "monthly": "ماهانه",
             "yearly": "سالانه"
         }.get(period, "جامع")
+
+        if getattr(self, "_is_auto", False):
+            return SalesSummaryAction(
+                date_col=None,
+                amount_col=None,
+                period=period,
+                create_report_sheet=create_sheet,
+                description_persian=f"محاسبه هوشمند و گزارش فروش {period_fa} (تشخیص خودکار ستون‌ها)"
+            )
+
+        d_col, a_col = self._get_active_columns()
 
         return SalesSummaryAction(
             date_col=d_col,
