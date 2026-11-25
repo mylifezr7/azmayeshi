@@ -198,29 +198,133 @@ class AccountingActionHandler:
     @classmethod
     def execute_trial_balance(cls, action: TrialBalanceAction, ctx: ActionContext) -> ActionResult:
         """
-        تهیه تراز آزمایشی ۴ ستونه / ۶ ستونه (Trial Balance).
+        تهیه تراز آزمایشی (Trial Balance).
+        در صورت وجود سرفصل‌های حسابداری در شیت فعال، حساب‌های واقعی استخراج و تراز می‌شوند.
         """
         sheet = ctx.sheet
-        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
-        # Scan for existing accounts or create standard trial balance sheet
+        # اسکن شیت فعال برای یافتن حساب‌های واقعی
+        detected_accounts = []
+        source_sheet = None
+        if sheet and not sheet.name.startswith("تراز_آزمایشی") and not sheet.name.startswith("صورت_سود") and not sheet.name.startswith("ترازنامه"):
+            try:
+                min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                hdr_r = min_r
+                for r in range(min_r, min(min_r + 10, max_r + 1)):
+                    row_t = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1)).lower()
+                    if any(k in row_t for k in ["عنوان حساب", "نام حساب", "حساب", "بدهکار", "بستانکار"]):
+                        hdr_r = r
+                        source_sheet = sheet
+                        break
+
+                if source_sheet:
+                    acc_col, deb_col, cred_col = None, None, None
+                    for c in range(min_c, max_c + 1):
+                        c_let = col_index_to_letter(c)
+                        h = str(sheet.get_value(f"{c_let}{hdr_r}") or "").strip().lower()
+                        if not acc_col and any(k in h for k in ["عنوان حساب", "نام حساب", "سرفصل", "حساب"]):
+                            acc_col = c_let
+                        elif not deb_col and any(k in h for k in ["مانده بدهکار", "گردش بدهکار", "بدهکار", "debit"]):
+                            deb_col = c_let
+                        elif not cred_col and any(k in h for k in ["مانده بستانکار", "گردش بستانکار", "بستانکار", "credit"]):
+                            cred_col = c_let
+
+                    if acc_col and (deb_col or cred_col):
+                        for r in range(hdr_r + 1, max_r + 1):
+                            raw_a = sheet.get_value(f"{acc_col}{r}")
+                            if not raw_a or str(raw_a).strip() == "":
+                                continue
+                            acc_name = str(raw_a).strip()
+                            if any(kw in acc_name.lower() for kw in ["جمع", "مجموع", "تراز", "total"]):
+                                continue
+                            d_val = 0.0
+                            if deb_col:
+                                raw_d = sheet.get_value(f"{deb_col}{r}")
+                                try:
+                                    d_val = float(str(raw_d).replace(",", "").strip()) if raw_d is not None and str(raw_d).strip() != "-" else 0.0
+                                except ValueError:
+                                    d_val = 0.0
+                            c_val = 0.0
+                            if cred_col:
+                                raw_c = sheet.get_value(f"{cred_col}{r}")
+                                try:
+                                    c_val = float(str(raw_c).replace(",", "").strip()) if raw_c is not None and str(raw_c).strip() != "-" else 0.0
+                                except ValueError:
+                                    c_val = 0.0
+                            detected_accounts.append((acc_name, d_val, c_val))
+            except Exception:
+                pass
+
         sheet_names = ctx.manager.get_sheet_names()
-        tb_name = "تراز_آزمایشی"
+        tb_name = "تراز_آزمایشی_استاندارد" if source_sheet else "تراز_آزمایشی"
         counter = 1
-        while tb_name in sheet_names:
-            tb_name = f"تراز_آزمایشی_{counter}"
+        name = tb_name
+        while name in sheet_names:
+            name = f"{tb_name}_{counter}"
             counter += 1
 
-        tb_sheet = ctx.manager.create_sheet(tb_name)
+        tb_sheet = ctx.manager.create_sheet(name)
         if hasattr(tb_sheet, "_ws"):
             tb_sheet._ws.views.sheetView[0].rightToLeft = True
 
-        # Header Title
+        date_str = datetime.datetime.now().strftime("%Y/%m/%d")
+
+        if detected_accounts:
+            tb_sheet.set_value("A1", "تراز آزمایشی استخراج‌شده حساب‌ها (کنترل مانده‌ها)")
+            tb_sheet.set_font("A1", bold=True, size=15)
+            tb_sheet.merge_cells("A1:E1")
+
+            tb_sheet.set_value("A2", f"تاریخ گزارش: {date_str} | منبع: شیت «{source_sheet.name}» | واحد: ریال/تومان")
+            tb_sheet.merge_cells("A2:E2")
+
+            headers = [
+                ("A4", "ردیف"),
+                ("B4", "نام و شرح حساب"),
+                ("C4", "مانده بدهکار"),
+                ("D4", "مانده بستانکار"),
+                ("E4", "وضعیت حساب")
+            ]
+            for cell_ref, text in headers:
+                tb_sheet.set_value(cell_ref, text)
+            tb_sheet.set_font("A4:E4", bold=True)
+            tb_sheet.set_cell_color("A4:E4", "#1E3A8A")
+            tb_sheet.set_font("A4:E4", font_color="#FFFFFF")
+
+            row = 5
+            for idx, (acc_name, dr, cr) in enumerate(detected_accounts, start=1):
+                tb_sheet.set_value(f"A{row}", idx)
+                tb_sheet.set_value(f"B{row}", acc_name)
+                tb_sheet.set_value(f"C{row}", dr if dr > 0 else 0)
+                tb_sheet.set_value(f"D{row}", cr if cr > 0 else 0)
+                tb_sheet.set_formula(f"E{row}", f'=IF(C{row}>D{row}, "بدهکار", IF(D{row}>C{row}, "بستانکار", "تسویه"))')
+                row += 1
+
+            total_row = row
+            tb_sheet.set_value(f"A{total_row}", "جمع کل مانده‌ها")
+            tb_sheet.merge_cells(f"A{total_row}:B{total_row}")
+            tb_sheet.set_formula(f"C{total_row}", f"=SUM(C5:C{total_row-1})")
+            tb_sheet.set_formula(f"D{total_row}", f"=SUM(D5:D{total_row-1})")
+            tb_sheet.set_formula(f"E{total_row}", f'=IF(C{total_row}=D{total_row}, "تراز است ✅", "⚠️ مغایرت تراز")')
+
+            tb_sheet.set_font(f"A{total_row}:E{total_row}", bold=True)
+            tb_sheet.set_cell_color(f"A{total_row}:E{total_row}", "#DCFCE7")
+            tb_sheet.set_number_format(f"C5:D{total_row}", "#,##0")
+            tb_sheet.auto_fit_columns(["A", "B", "C", "D", "E"])
+
+            return ActionResult(
+                success=True,
+                message_persian=(
+                    f"📊 **تراز آزمایشی ({len(detected_accounts)} حساب از شیت «{source_sheet.name}») با موفقیت در شیت «{name}» ایجاد شد:**\n\n"
+                    f"• استخراج خودکار سرفصل‌ها و مانده‌های بدهکار و بستانکار\n"
+                    f"• درج فرمول‌های جمع کل و وضعیت تراز بودن ستون‌ها"
+                )
+            )
+
+        # در صورت نبود داده قبلی، جدول نمونه ایجاد می‌شود
         tb_sheet.set_value("A1", "تراز آزمایشی چهار ستونه حساب‌ها")
         tb_sheet.set_font("A1", bold=True, size=15)
         tb_sheet.merge_cells("A1:G1")
 
-        date_str = datetime.datetime.now().strftime("%Y/%m/%d")
         tb_sheet.set_value("A2", f"تاریخ گزارش: {date_str} | واحد: ریال/تومان")
         tb_sheet.merge_cells("A2:G2")
 
@@ -240,7 +344,7 @@ class AccountingActionHandler:
         tb_sheet.set_cell_color("A4:G4", "#1E3A8A")
         tb_sheet.set_font("A4:G4", font_color="#FFFFFF")
 
-        # Standard chart of accounts data
+        # Standard chart of accounts data (کاملاً متوازن: جمع بدهکار = جمع بستانکار = ۲,۹۹۰,۰۰۰,۰۰۰)
         accounts_data = [
             ("101", "موجودی نقد و بانک", 450000000, 120000000),
             ("102", "حساب‌ها و اسناد دریافتنی تجاری", 280000000, 95000000),
@@ -250,24 +354,21 @@ class AccountingActionHandler:
             ("201", "حساب‌ها و اسناد پرداختنی تجاری", 110000000, 390000000),
             ("202", "اسناد پرداختنی بلندمدت (وام)", 50000000, 250000000),
             ("203", "مالیات و بیمه پرداختنی", 25000000, 65000000),
-            ("301", "سرمایه اولیه سهامداران", 0, 1000000000),
+            ("301", "سرمایه اولیه سهامداران", 0, 1095000000),
             ("401", "درآمد حاصل از فروش کالا و خدمات", 0, 780000000),
             ("501", "بهای تمام شده کالای فروش رفته", 420000000, 0),
             ("601", "هزینه‌های اداری، عمومی و فروش", 140000000, 0),
         ]
 
         row = 5
-        for code, name, dr, cr in accounts_data:
+        for code, name_acc, dr, cr in accounts_data:
             tb_sheet.set_value(f"A{row}", code)
-            tb_sheet.set_value(f"B{row}", name)
+            tb_sheet.set_value(f"B{row}", name_acc)
             tb_sheet.set_value(f"C{row}", dr)
             tb_sheet.set_value(f"D{row}", cr)
             # Formulas for Balances:
-            # Debit Balance = IF(C>D, C-D, 0)
             tb_sheet.set_formula(f"E{row}", f"=IF(C{row}>D{row}, C{row}-D{row}, 0)")
-            # Credit Balance = IF(D>C, D-C, 0)
             tb_sheet.set_formula(f"F{row}", f"=IF(D{row}>C{row}, D{row}-C{row}, 0)")
-            # Status
             tb_sheet.set_formula(f"G{row}", f'=IF(E{row}>0, "بدهکار", IF(F{row}>0, "بستانکار", "تسویه"))')
             row += 1
 
@@ -283,7 +384,6 @@ class AccountingActionHandler:
         tb_sheet.set_font(f"A{total_row}:G{total_row}", bold=True)
         tb_sheet.set_cell_color(f"A{total_row}:G{total_row}", "#DCFCE7")
 
-        # Format numbers
         tb_sheet.set_number_format(f"C5:F{total_row}", "#,##0")
         tb_sheet.auto_fit_columns(["A", "B", "C", "D", "E", "F", "G"])
 
@@ -291,7 +391,7 @@ class AccountingActionHandler:
             success=True,
             message_persian=(
                 f"📊 **تراز آزمایشی چهار ستونه با موفقیت تهیه شد.**\n\n"
-                f"• شیت اختصاصی: **{tb_name}**\n"
+                f"• شیت اختصاصی: **{name}**\n"
                 f"• ستون‌ها: کد حساب، نام حساب، گردش بدهکار، گردش بستانکار، مانده بدهکار، مانده بستانکار، وضعیت\n"
                 f"• کلیه مانده‌ها و جمع کل با فرمول‌های داینامیک اکسل پیاده‌سازی شدند.\n"
                 f"• کنترل خودکار تساوی بدهکار و بستانکار فعال است."
