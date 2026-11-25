@@ -165,8 +165,27 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addWidget(p_box)
 
-        # Section 3: Period Selection
-        period_lbl = QLabel("⏱️ ۳. دوره زمانی تفکیک سود:")
+        # Section: Valuation Method
+        method_lbl = QLabel("🏷️ ۳. روش ارزیابی بهای تمام‌شده و انبار:")
+        method_lbl.setStyleSheet("font-weight: bold; color: #10B981; font-size: 12.5px;")
+        main_layout.addWidget(method_lbl)
+
+        self.method_group = QButtonGroup(self)
+        method_layout = QHBoxLayout()
+        self.rb_fifo = QRadioButton("فایفو (FIFO)")
+        self.rb_fifo.setChecked(True)
+        self.rb_lifo = QRadioButton("لایفو (LIFO)")
+        self.rb_avg = QRadioButton("میانگین موزون (Average)")
+
+        for rb in [self.rb_fifo, self.rb_lifo, self.rb_avg]:
+            rb.setStyleSheet("color: #CBD5E1; font-size: 11px;")
+            self.method_group.addButton(rb)
+            method_layout.addWidget(rb)
+            rb.toggled.connect(lambda: self._update_preview())
+        main_layout.addLayout(method_layout)
+
+        # Section 4: Period Selection
+        period_lbl = QLabel("⏱️ ۴. دوره زمانی تفکیک سود:")
         period_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 12.5px;")
         main_layout.addWidget(period_lbl)
 
@@ -407,10 +426,13 @@ class ProfitWizardDialog(QDialog):
         elif self.rb_yearly.isChecked():
             period_desc = "📆 تفکیک سود سالانه"
 
+        method_str = "فایفو (FIFO)" if self.rb_fifo.isChecked() else ("لایفو (LIFO)" if self.rb_lifo.isChecked() else "میانگین موزون (Average)")
+
         preview = (
             f"🛒 **فروش ({s_sheet}):** ستون فروش `{s_col}` | ستون تاریخ: `{d_col}`\n"
             f"📦 **خرید ({p_sheet}):** ستون خرید/هزینه `{p_col}`\n"
-            f"💵 **فرمول سود خالص:** `= ({s_sheet}!{s_col}) - ({p_sheet}!{p_col})`\n"
+            f"🏷️ **روش محاسبه بهای تمام‌شده (COGS):** {method_str}\n"
+            f"💵 **فرمول سود ناخالص:** `= فروش خالص - بهای تمام‌شده کالای فروش‌رفته ({method_str})`\n"
             f"⏱️ **دوره تفکیک گزارش:** {period_desc}\n"
             f"📑 ایجاد شیت خروجی: {'بله (شیت اختصاصی «گزارش_سود» با داشبورد و فرمول‌ها)' if self.chk_create_sheet.isChecked() else 'در شیت فعلی'}"
         )
@@ -426,6 +448,12 @@ class ProfitWizardDialog(QDialog):
         d_col = self.input_date.text().strip().upper() or self.combo_date.currentData() or "A"
         s_col = self.input_sales.text().strip().upper() or self.combo_sales.currentData() or "B"
         p_col = self.input_purchase.text().strip().upper() or self.combo_purchase.currentData() or "C"
+
+        val_method = "fifo"
+        if self.rb_lifo.isChecked():
+            val_method = "lifo"
+        elif self.rb_avg.isChecked():
+            val_method = "average"
 
         period = "all"
         if self.rb_total.isChecked():
@@ -451,7 +479,8 @@ class ProfitWizardDialog(QDialog):
             date_col=d_col,
             sales_col=s_col,
             purchase_col=p_col,
+            valuation_method=val_method,
             period=period,
             create_report_sheet=self.chk_create_sheet.isChecked(),
-            description_persian=f"محاسبه سود {period_fa} (فروش {s_sheet} ستون {s_col} منهای خرید {p_sheet} ستون {p_col} بر اساس تاریخ {d_col})"
+            description_persian=f"محاسبه سود {period_fa} با روش {val_method} (فروش {s_sheet} ستون {s_col} منهای خرید {p_sheet} ستون {p_col} بر اساس تاریخ {d_col})"
         )

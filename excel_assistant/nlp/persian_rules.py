@@ -157,9 +157,12 @@ class PersianRuleParser:
 
         # 1.109 Inventory Valuation (FIFO, LIFO, Weighted Average) / ارزش‌گذاری انبار به روش‌های فایفو، لایفو و میانگین
         if any(w in text_lower for w in [
-            "فایفو", "fifo", "لایفو", "lifo", "میانگین موزون", "ارزش‌گذاری انبار", "ارزش گذاری انبار",
-            "ارزش‌گذاری موجودی", "ارزش گذاری موجودی", "کاردکس", "کاردکس کالا"
-        ]):
+            "ارزش‌گذاری انبار", "ارزش گذاری انبار", "ارزش‌گذاری موجودی", "ارزش گذاری موجودی",
+            "کاردکس", "کاردکس کالا"
+        ]) or (
+            any(w in text_lower for w in ["فایفو", "fifo", "لایفو", "lifo", "میانگین موزون"])
+            and not any(w in text_lower for w in ["سود", "زیان", "سودآوری", "حاشیه سود"])
+        ):
             v_method = "fifo"
             if any(w in text_lower for w in ["مقایسه", "هر سه", "هر ۳", "کاردکس"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
                 v_method = "compare"
@@ -535,6 +538,20 @@ class PersianRuleParser:
                 if not profit_col and not date_col:
                     profit_col = found_cols[0]
 
+            val_method = "fifo"
+            if any(w in text_lower for w in ["لایفو", "lifo"]):
+                val_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین", "موزون", "میانگین موزون", "average"]):
+                val_method = "average"
+            elif any(w in text_lower for w in ["فایفو", "fifo"]):
+                val_method = "fifo"
+
+            method_fa = {
+                "fifo": "فایفو (FIFO)",
+                "lifo": "لایفو (LIFO)",
+                "average": "میانگین موزون (Weighted Average)"
+            }[val_method]
+
             period_fa = {
                 "all": "روزانه، ماهانه، سالانه و کل",
                 "daily": "روزانه",
@@ -551,9 +568,10 @@ class PersianRuleParser:
                 profit_col=profit_col,
                 sales_col=sales_col,
                 purchase_col=purchase_col,
+                valuation_method=val_method,
                 period=period,
                 create_report_sheet=True,
-                description_persian=f"محاسبه سود {period_fa}"
+                description_persian=f"محاسبه سود {period_fa} به روش {method_fa}"
             )
 
         # 7.6 Sales Summary: محاسبه فروش روزانه، ماهانه، سالانه و کل

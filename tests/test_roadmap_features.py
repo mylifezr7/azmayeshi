@@ -1159,6 +1159,74 @@ def test_profit_calculation_multibatch_fifo_with_discounts(test_manager):
     assert res.data["total_profit"] == 123000000.0
 
 
+def test_profit_calculation_lifo_and_average_multibatch(test_manager):
+    """Verify LIFO and Weighted Average valuation methods in profit calculation."""
+    from excel_assistant.actions.math_actions import MathActionHandler
+    from excel_assistant.nlp.intent_models import ProfitCalculationAction
+    from excel_assistant.nlp.parser import PersianIntentParser
+
+    parser = PersianIntentParser()
+    act_lifo = parser.parse("محاسبه سود به روش لایفو")
+    assert isinstance(act_lifo, ProfitCalculationAction)
+    assert act_lifo.valuation_method == "lifo"
+
+    act_avg = parser.parse("محاسبه سود با روش میانگین موزون")
+    assert isinstance(act_avg, ProfitCalculationAction)
+    assert act_avg.valuation_method == "average"
+
+    ws_sales = test_manager.create_sheet("فروش_کالا")
+    sales_rows = [
+        ["تاریخ", "کالا", "تعداد", "قیمت فروش"],
+        ["1405/01/10", "کالای X", 15, 30000],
+    ]
+    for r_idx, row in enumerate(sales_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    ws_purch = test_manager.create_sheet("خرید_کالا")
+    purch_rows = [
+        ["کالا", "تاریخ", "تعداد", "قیمت خرید"],
+        ["کالای X", "1405/01/01", 10, 10000],
+        ["کالای X", "1405/01/05", 10, 20000],
+    ]
+    for r_idx, row in enumerate(purch_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    ctx = ActionContext(manager=test_manager, sheet=ws_sales)
+
+    # 1. FIFO: 10 @ 10,000 + 5 @ 20,000 = 200,000 COGS -> Profit = 250,000
+    res_fifo = MathActionHandler.execute_profit_calculation(
+        ProfitCalculationAction(sales_sheet="فروش_کالا", purchase_sheet="خرید_کالا", valuation_method="fifo"),
+        ctx
+    )
+    assert res_fifo.success is True
+    assert res_fifo.data["total_sales"] == 450000.0
+    assert res_fifo.data["total_purchase"] == 200000.0
+    assert res_fifo.data["total_profit"] == 250000.0
+
+    # 2. LIFO: 10 @ 20,000 + 5 @ 10,000 = 250,000 COGS -> Profit = 200,000
+    res_lifo = MathActionHandler.execute_profit_calculation(
+        ProfitCalculationAction(sales_sheet="فروش_کالا", purchase_sheet="خرید_کالا", valuation_method="lifo"),
+        ctx
+    )
+    assert res_lifo.success is True
+    assert res_lifo.data["total_sales"] == 450000.0
+    assert res_lifo.data["total_purchase"] == 250000.0
+    assert res_lifo.data["total_profit"] == 200000.0
+
+    # 3. Average: Total cost = 300,000 / 20 units = 15,000/unit -> COGS = 15 * 15,000 = 225,000 -> Profit = 225,000
+    res_avg = MathActionHandler.execute_profit_calculation(
+        ProfitCalculationAction(sales_sheet="فروش_کالا", purchase_sheet="خرید_کالا", valuation_method="average"),
+        ctx
+    )
+    assert res_avg.success is True
+    assert res_avg.data["total_sales"] == 450000.0
+    assert res_avg.data["total_purchase"] == 225000.0
+    assert res_avg.data["total_profit"] == 225000.0
+
+
+
 
 
 

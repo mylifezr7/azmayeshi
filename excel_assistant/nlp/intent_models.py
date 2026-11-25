@@ -161,6 +161,7 @@ class ProfitCalculationAction(BaseActionModel):
     profit_col: Optional[str] = None
     sales_col: Optional[str] = None
     purchase_col: Optional[str] = None
+    valuation_method: Literal["fifo", "lifo", "average"] = "fifo"
     period: Literal["all", "daily", "monthly", "yearly", "total", "by_item"] = "all"
     create_report_sheet: bool = True
     description_persian: str = "محاسبه سود (روزانه، ماهانه، سالانه و کل)"

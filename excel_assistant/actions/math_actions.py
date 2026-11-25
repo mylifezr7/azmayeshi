@@ -654,9 +654,18 @@ class MathActionHandler:
         if not sheet_names:
             return ActionResult(success=False, message_persian="⚠️ هیچ شیتی در ورک‌بوک یافت نشد.")
 
-        # 1. Resolve Sales Sheet (Sheet 1) and Purchase Sheet (Sheet 2)
-        sales_sheet_name = None
-        purchase_sheet_name = None
+        # 1. Resolve Sales Sheet (Sheet 1) and Purchase Sheet (Sheet 2) with Smart Auto-Detection
+        auto_sales_sheet = None
+        auto_purch_sheet = None
+        sales_sheet_kws = ["فاکتورهای فروش", "فاکتورها", "فروش", "فاکتور", "sales", "invoice"]
+        purch_sheet_kws = ["خرید و موجودی", "موجودی کالا", "خرید", "موجودی", "انبار", "purchase", "inventory", "stock"]
+
+        for sn in sheet_names:
+            sn_l = sn.lower()
+            if not auto_sales_sheet and any(k in sn_l for k in sales_sheet_kws) and not any(k in sn_l for k in purch_sheet_kws):
+                auto_sales_sheet = sn
+            elif not auto_purch_sheet and any(k in sn_l for k in purch_sheet_kws) and not any(k in sn_l for k in sales_sheet_kws):
+                auto_purch_sheet = sn
 
         def resolve_sheet_name(target_val, fallback):
             if not target_val:
@@ -676,9 +685,21 @@ class MathActionHandler:
                     return name
             return fallback
 
-        sales_sheet_name = resolve_sheet_name(action.sales_sheet, sheet_names[0])
-        purchase_fallback = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
-        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, purchase_fallback)
+        default_sales = auto_sales_sheet or (ctx.sheet.name if ctx.sheet and ctx.sheet.name in sheet_names else sheet_names[0])
+        default_purch = auto_purch_sheet or (sheet_names[1] if len(sheet_names) >= 2 else default_sales)
+
+        sales_sheet_name = resolve_sheet_name(action.sales_sheet, default_sales)
+        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, default_purch)
+
+        val_method = getattr(action, "valuation_method", "fifo") or "fifo"
+        if val_method not in ["fifo", "lifo", "average"]:
+            val_method = "fifo"
+
+        method_persian = {
+            "fifo": "فایفو (FIFO)",
+            "lifo": "لایفو (LIFO)",
+            "average": "میانگین موزون (Weighted Average)"
+        }[val_method]
 
         s_sheet = ctx.manager.get_sheet(sales_sheet_name)
         p_sheet = ctx.manager.get_sheet(purchase_sheet_name)
@@ -933,20 +954,36 @@ class MathActionHandler:
                     prior_consumed = consumed_stock_by_prod[prod]
                     consumed_stock_by_prod[prod] += s_qty
 
-                    # Allocate COGS in FIFO order across batches
                     cogs = 0.0
-                    accum_b = 0.0
-                    sale_start = prior_consumed
-                    sale_end = prior_consumed + s_qty
-
-                    for b_qty, b_price in batches:
-                        b_start = accum_b
-                        b_end = accum_b + b_qty
-                        accum_b += b_qty
-
-                        overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
-                        if overlap > 0:
-                            cogs += overlap * b_price
+                    if val_method == "average":
+                        tot_b_cost = sum(q * p for q, p in batches)
+                        tot_b_qty = sum(q for q, _ in batches)
+                        unit_cost = (tot_b_cost / tot_b_qty) if tot_b_qty > 0 else 0.0
+                        cogs = s_qty * unit_cost
+                    elif val_method == "lifo":
+                        # Allocate COGS in LIFO order (latest purchases consumed first)
+                        accum_b = 0.0
+                        sale_start = prior_consumed
+                        sale_end = prior_consumed + s_qty
+                        for b_qty, b_price in reversed(batches):
+                            b_start = accum_b
+                            b_end = accum_b + b_qty
+                            accum_b += b_qty
+                            overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                            if overlap > 0:
+                                cogs += overlap * b_price
+                    else:
+                        # Allocate COGS in FIFO order (earliest purchases consumed first)
+                        accum_b = 0.0
+                        sale_start = prior_consumed
+                        sale_end = prior_consumed + s_qty
+                        for b_qty, b_price in batches:
+                            b_start = accum_b
+                            b_end = accum_b + b_qty
+                            accum_b += b_qty
+                            overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                            if overlap > 0:
+                                cogs += overlap * b_price
 
                     p_total_bought = sum(b[0] for b in batches)
                     p_unit_price = (cogs / s_qty) if s_qty > 0 else 0.0
@@ -1067,7 +1104,7 @@ class MathActionHandler:
 
             curr_r = 1
             # Banner
-            report_sheet.set_value(f"A{curr_r}", "📊 داشبورد و گزارش جامع سود و زیان (مبلغ فروش منهای مبلغ خرید)")
+            report_sheet.set_value(f"A{curr_r}", f"📊 داشبورد و گزارش جامع سود و زیان (روش {method_persian})")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=14, color_hex="#38BDF8")
             report_sheet.set_cell_color(f"A{curr_r}", "#09132B")
             curr_r += 2
@@ -1087,7 +1124,7 @@ class MathActionHandler:
 
             kpis = [
                 ("💰 کل مبلغ فروش", f"{total_sales_all:,.0f} تومان", f"شیت: {sales_sheet_name}"),
-                ("🛒 کل مبلغ خرید اقلام فروش‌رفته (COGS)", f"{total_purchase_all:,.0f} تومان", f"تعداد فروش × فی خرید ({purchase_sheet_name})"),
+                ("🛒 کل مبلغ خرید اقلام فروش‌رفته (COGS)", f"{total_purchase_all:,.0f} تومان", f"محاسبه بر مبنای روش {method_persian}"),
                 ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای بهای خرید اقلام فروش‌رفته"),
                 ("📈 میانگین حاشیه سود", f"{overall_margin:.1f}%", "درصد سود از کل فروش"),
             ]
@@ -1102,12 +1139,30 @@ class MathActionHandler:
             if purchase_batches_by_prod:
                 for p, rem_q in product_remaining.items():
                     batches = purchase_batches_by_prod.get(p, [])
-                    to_val = rem_q
                     val = 0.0
-                    for b_q, b_p in reversed(batches):
-                        take = min(to_val, b_q)
-                        val += take * b_p
-                        to_val -= take
+                    if val_method == "average":
+                        tot_b_cost = sum(q * pr for q, pr in batches)
+                        tot_b_qty = sum(q for q, _ in batches)
+                        unit_cost = (tot_b_cost / tot_b_qty) if tot_b_qty > 0 else 0.0
+                        val = rem_q * unit_cost
+                    elif val_method == "lifo":
+                        # LIFO: remaining inventory comes from earliest batches
+                        to_val = rem_q
+                        for b_q, b_p in batches:
+                            take = min(to_val, b_q)
+                            val += take * b_p
+                            to_val -= take
+                            if to_val <= 0:
+                                break
+                    else:
+                        # FIFO: remaining inventory comes from latest batches
+                        to_val = rem_q
+                        for b_q, b_p in reversed(batches):
+                            take = min(to_val, b_q)
+                            val += take * b_p
+                            to_val -= take
+                            if to_val <= 0:
+                                break
                     product_stock_val[p] = val
             tot_stock_val = sum(product_stock_val.values())
 
@@ -1310,15 +1365,15 @@ class MathActionHandler:
 
         tot_sold_qty = sum(it["s_qty"] for it in matched_items)
         msg_lines = [
-            f"💵 **محاسبه سود ({period_title}) با موفقیت انجام شد ({profit_status}):**",
+            f"💵 **محاسبه سود به روش {method_persian} ({period_title}) با موفقیت انجام شد ({profit_status}):**",
             f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد فروش: `{tot_sold_qty:,.0f}` عدد در `{len(matched_items)}` قلم)",
-            f"🛒 **بهای تمام‌شده اقلام فروش‌رفته (COGS):** `{total_purchase_all:,.0f}` تومان (محاسبه‌شده از: تعداد فروش × قیمت خرید واحد)",
+            f"🛒 **بهای تمام‌شده اقلام فروش‌رفته (COGS):** `{total_purchase_all:,.0f}` تومان (محاسبه‌شده بر مبنای روش {method_persian})",
             "───────────────────────────────",
             f"✨ **سود خالص کل (فروش منهای بهای خرید اقلام فروخته‌شده):** **`{total_profit_all:,.0f}` تومان**",
             f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**"
         ]
         if tot_rem_stock > 0:
-            msg_lines.append(f"📦 **موجودی باقیمانده در انبار:** `{tot_rem_stock:,.0f}` قلم به ارزش `{tot_stock_val:,.0f}` تومان (سرمایه در گردش که جزء هزینه این فروش نیست)")
+            msg_lines.append(f"📦 **موجودی باقیمانده در انبار:** `{tot_rem_stock:,.0f}` قلم به ارزش `{tot_stock_val:,.0f}` تومان (ارزیابی شده به روش {method_persian})")
         if has_dates and daily_map:
             best_day = max(daily_map.items(), key=lambda x: x[1]["profit"])
             msg_lines.append(f"📅 **تعداد روزهای ثبت‌شده:** `{len(daily_map)}` روز (پرسودترین روز: `{best_day[0]}` با سود `{best_day[1]['profit']:,.0f}` تومان)")
@@ -1345,6 +1400,7 @@ class MathActionHandler:
                 "margin_pct": overall_margin,
                 "remaining_stock": tot_rem_stock,
                 "stock_value": tot_stock_val,
+                "valuation_method": val_method,
                 "item_count": len(matched_items),
                 "daily_count": len(daily_map) if has_dates else 0,
                 "monthly_count": len(monthly_map) if has_dates else 0
