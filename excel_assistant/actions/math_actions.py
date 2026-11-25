@@ -378,36 +378,45 @@ class MathActionHandler:
         if action.date_col:
             d_raw = str(action.date_col).strip().upper()
             date_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+
+        # Scan sheet headers for structural detection
+        explicit_total_col = None
+        total_kws = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش", "فروش کل", "مبلغ نهایی", "کل مبلغ", "total amount", "total sales"]
+        qty_kws = ["تعداد", "مقدار", "حجم", "qty", "quantity"]
+        price_kws = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
+        disc_kws = ["تخفیف", "درصد تخفیف", "discount"]
+
+        for c_idx in range(min_c, max_c + 1):
+            c_let = col_index_to_letter(c_idx)
+            hdr = str(sheet.get_value(f"{c_let}{min_r}") or "").lower()
+            if not explicit_total_col and any(k in hdr for k in total_kws):
+                explicit_total_col = c_let
+            if not qty_col and any(k in hdr for k in qty_kws):
+                qty_col = c_let
+            if not price_col and any(k in hdr for k in price_kws):
+                price_col = c_let
+            if not disc_col and any(k in hdr for k in disc_kws):
+                disc_col = c_let
+
         if action.amount_col:
             a_raw = str(action.amount_col).strip().upper()
-            amount_col = col_index_to_letter(int(a_raw)) if a_raw.isdigit() else a_raw
+            chosen_col = col_index_to_letter(int(a_raw)) if a_raw.isdigit() else a_raw
+            chosen_hdr = str(sheet.get_value(f"{chosen_col}{min_r}") or "").lower()
+            # If the user or wizard selected a unit price column (e.g. "قیمت واحد (ریال)") instead of total amount
+            if any(k in chosen_hdr for k in price_kws) and not any(k in chosen_hdr for k in total_kws):
+                price_col = chosen_col
+                amount_col = None
+            else:
+                amount_col = chosen_col
 
-        # Auto-detect if missing
-        if not date_col or not amount_col:
-            explicit_total_col = None
-            total_kws = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش", "فروش کل", "مبلغ نهایی", "کل مبلغ", "total amount", "total sales"]
-            qty_kws = ["تعداد", "مقدار", "حجم", "qty", "quantity"]
-            price_kws = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
-            disc_kws = ["تخفیف", "درصد تخفیف", "discount"]
+        if not amount_col:
+            if explicit_total_col:
+                amount_col = explicit_total_col
+            elif qty_col and price_col:
+                computed_desc = f"تعداد ({qty_col}) × قیمت واحد ({price_col}){' - تخفیف (' + disc_col + ')' if disc_col else ''}"
 
-            for c_idx in range(min_c, max_c + 1):
-                c_let = col_index_to_letter(c_idx)
-                hdr = str(sheet.get_value(f"{c_let}{min_r}") or "").lower()
-                if not explicit_total_col and any(k in hdr for k in total_kws):
-                    explicit_total_col = c_let
-                if not qty_col and any(k in hdr for k in qty_kws):
-                    qty_col = c_let
-                if not price_col and any(k in hdr for k in price_kws):
-                    price_col = c_let
-                if not disc_col and any(k in hdr for k in disc_kws):
-                    disc_col = c_let
-
-            if not action.amount_col:
-                if explicit_total_col:
-                    amount_col = explicit_total_col
-                elif qty_col and price_col:
-                    computed_desc = f"تعداد ({qty_col}) × قیمت واحد ({price_col}){' - تخفیف (' + disc_col + ')' if disc_col else ''}"
-
+        # Auto-detect date_col or amount_col if still missing
+        if not date_col or (not amount_col and not computed_desc):
             col_scores_date = {}
             col_scores_amount = {}
 

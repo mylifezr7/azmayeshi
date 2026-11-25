@@ -184,7 +184,13 @@ class SalesSummaryWizardDialog(QDialog):
         best_amount_idx = min(1, max_c - min_c)
 
         date_keywords = ["تاریخ", "date", "روز", "زمان", "time", "day", "month"]
-        amount_keywords = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع"]
+        total_keywords = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "مبلغ نهایی", "کل فروش", "total"]
+        general_amount_keywords = ["مبلغ", "فروش", "درآمد", "sales", "amount"]
+        unit_price_keywords = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
+
+        found_total_idx = None
+        found_gen_idx = None
+        found_unit_idx = None
 
         items = []
         for idx, c in enumerate(range(min_c, max_c + 1)):
@@ -198,8 +204,19 @@ class SalesSummaryWizardDialog(QDialog):
             hdr_lower = header_val.lower()
             if any(k in hdr_lower for k in date_keywords):
                 best_date_idx = idx
-            if any(k in hdr_lower for k in amount_keywords):
-                best_amount_idx = idx
+            if found_total_idx is None and any(k in hdr_lower for k in total_keywords):
+                found_total_idx = idx
+            elif found_gen_idx is None and any(k in hdr_lower for k in general_amount_keywords) and not any(k in hdr_lower for k in unit_price_keywords):
+                found_gen_idx = idx
+            elif found_unit_idx is None and any(k in hdr_lower for k in unit_price_keywords):
+                found_unit_idx = idx
+
+        if found_total_idx is not None:
+            best_amount_idx = found_total_idx
+        elif found_gen_idx is not None:
+            best_amount_idx = found_gen_idx
+        elif found_unit_idx is not None:
+            best_amount_idx = found_unit_idx
 
         self.combo_date.blockSignals(True)
         self.combo_amount.blockSignals(True)
@@ -283,7 +300,8 @@ class SalesSummaryWizardDialog(QDialog):
         }.get(period, "گزارش فروش")
 
         preview = (
-            f"📌 ستون تاریخ: `{d_col}` | ستون مبلغ فروش: `{a_col}`\n"
+            f"📌 ستون تاریخ: `{d_col}` | ستون مبلغ/قیمت فروش: `{a_col}`\n"
+            f"💡 **نحوه محاسبه:** در صورت انتخاب ستون قیمت واحد، سیستم خودکار مبلغ واقعی فروش را از حاصل‌ضرب تعداد در قیمت با کسر تخفیفات محاسبه می‌کند.\n"
             f"📊 دوره گزارش: **{period_desc}**\n"
             f"📑 ایجاد شیت خروجی: {'بله (شیت «گزارش_فروش» با جداول تحلیلی)' if self.chk_create_sheet.isChecked() else 'در شیت فعلی'}"
         )
