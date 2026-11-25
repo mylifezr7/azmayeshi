@@ -382,8 +382,26 @@ class OpenpyxlDriver(IExcelDriver):
     def connect(self, workbook_name_or_path: Optional[str] = None) -> WorkbookInfo:
         target_path = workbook_name_or_path or self.file_path
         if target_path and os.path.exists(target_path):
-            self._wb = openpyxl.load_workbook(target_path, data_only=False)
-            self.file_path = target_path
+            ext = os.path.splitext(target_path)[1].lower()
+            if ext == '.csv':
+                import csv
+                self._wb = openpyxl.Workbook()
+                ws = self._wb.active
+                ws.title = os.path.splitext(os.path.basename(target_path))[0][:31] or "CSV"
+                with open(target_path, 'r', encoding='utf-8-sig', errors='replace') as f:
+                    reader = csv.reader(f)
+                    for r_idx, row in enumerate(reader, start=1):
+                        for c_idx, val in enumerate(row, start=1):
+                            ws.cell(row=r_idx, column=c_idx, value=val)
+                self.file_path = target_path
+            elif ext == '.xls':
+                raise ValueError(
+                    f"فرمت قدیمی '{os.path.basename(target_path)}' (.xls) توسط موتور مستقل پشتیبانی نمی‌شود. "
+                    "لطفاً فایل را در اکسل باز کنید و با فرمت مدرن Excel Workbook (*.xlsx) ذخیره (Save As) کنید."
+                )
+            else:
+                self._wb = openpyxl.load_workbook(target_path, data_only=False)
+                self.file_path = target_path
         else:
             self._wb = openpyxl.Workbook()
             if target_path:
@@ -468,9 +486,22 @@ class OpenpyxlDriver(IExcelDriver):
         if not self._wb:
             raise WorkbookNotFoundError("No workbook is open.")
         target = path or self.file_path or "Book1.xlsx"
-        self._wb.save(target)
-        self.file_path = target
-        return target
+        try:
+            self._wb.save(target)
+            self.file_path = target
+            return target
+        except PermissionError:
+            base, ext = os.path.splitext(target)
+            alt_target = f"{base}_new{ext or '.xlsx'}"
+            try:
+                self._wb.save(alt_target)
+                self.file_path = alt_target
+                return alt_target
+            except Exception:
+                raise PermissionError(
+                    f"فایل اکسل '{os.path.basename(target)}' هم‌اکنون در نرم‌افزار اکسل یا برنامه دیگری باز است و قفل شده است.\n"
+                    f"💡 لطفاً فایل را در اکسل ببندید یا با نام دیگری ذخیره کنید."
+                )
 
     def close(self) -> None:
         if self._wb:

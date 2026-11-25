@@ -13,7 +13,7 @@ from excel_assistant.nlp.intent_models import (
     ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction, SalesSummaryAction, ProfitCalculationAction
 )
 from excel_assistant.core.utils import (
-    col_letter_to_index, col_index_to_letter, bounds_to_range_str
+    col_letter_to_index, col_index_to_letter, bounds_to_range_str, to_float_safe
 )
 
 
@@ -470,23 +470,11 @@ class MathActionHandler:
             disc_vals = sheet.get_column_values(disc_col, include_header=False) if disc_col else [0] * len(qty_vals)
             amount_vals = []
             for q_raw, p_raw, d_raw in zip(qty_vals, price_vals, disc_vals):
-                q = 0.0
-                p = 0.0
-                d = 0.0
-                try:
-                    q = float(str(q_raw or 0).replace(',', '').strip())
-                except ValueError:
-                    q = 0.0
-                try:
-                    p = float(str(p_raw or 0).replace(',', '').strip())
-                except ValueError:
-                    p = 0.0
-                try:
-                    d = float(str(d_raw or 0).replace('%', '').replace(',', '').strip())
-                    if d > 1.0:
-                        d = d / 100.0
-                except ValueError:
-                    d = 0.0
+                q = to_float_safe(q_raw)
+                p = to_float_safe(p_raw)
+                d = to_float_safe(d_raw)
+                if d > 1.0:
+                    d = d / 100.0
                 d = max(0.0, min(1.0, d))
                 amount_vals.append(max(0.0, q * p * (1.0 - d)))
         else:
@@ -496,13 +484,7 @@ class MathActionHandler:
         for d_raw, a_raw in zip(date_vals, amount_vals):
             if d_raw is None and a_raw is None:
                 continue
-            amt = 0.0
-            if a_raw is not None:
-                s_amt = str(a_raw).replace(',', '').replace('تومان', '').replace('ریال', '').strip()
-                try:
-                    amt = float(s_amt)
-                except ValueError:
-                    amt = 0.0
+            amt = to_float_safe(a_raw) if a_raw is not None else 0.0
 
             d_str = None
             if d_raw is not None:
@@ -797,13 +779,8 @@ class MathActionHandler:
         p_min_r, p_min_c, p_max_r, p_max_c = p_sheet.get_used_range_bounds()
 
         def clean_val(v):
-            if v is None:
-                return 0.0
-            s = str(v).replace(',', '').replace('تومان', '').replace('ریال', '').strip()
-            try:
-                return float(s)
-            except ValueError:
-                return 0.0
+            from excel_assistant.core.utils import to_float_safe
+            return to_float_safe(v, default=0.0)
 
         # Auto-detect columns in Sales Sheet
         s_qty_col = None

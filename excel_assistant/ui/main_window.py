@@ -602,6 +602,13 @@ class MainWindow(QMainWindow):
             self._open_arithmetic_dialog(op_map.get(lower, "add"))
             return
 
+        self._on_message_submitted(text)
+
+    def _on_message_submitted(self, text: str):
+        text = text.strip()
+        if not text:
+            return
+
         self.btn_send.setEnabled(False)
         self.btn_send.setText("⏳ در حال اجرا...")
         QApplication.processEvents()
