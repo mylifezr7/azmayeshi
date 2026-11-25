@@ -563,6 +563,12 @@ class MathActionHandler:
             existing_sheets = ctx.manager.active_driver.get_sheet_names()
             if report_sheet_name in existing_sheets:
                 report_sheet = ctx.manager.active_driver.get_sheet(report_sheet_name)
+                try:
+                    ub_r1, ub_c1, ub_r2, ub_c2 = report_sheet.get_used_range_bounds()
+                    if ub_r2 >= ub_r1 and ub_r2 > 0:
+                        report_sheet.delete_rows(list(range(ub_r1, ub_r2 + 1)))
+                except Exception:
+                    pass
             else:
                 report_sheet = ctx.manager.active_driver.create_sheet(report_sheet_name)
 
@@ -1179,6 +1185,12 @@ class MathActionHandler:
             existing_sheets = driver.get_sheet_names()
             if report_sheet_name in existing_sheets:
                 report_sheet = driver.get_sheet(report_sheet_name)
+                try:
+                    ub_r1, ub_c1, ub_r2, ub_c2 = report_sheet.get_used_range_bounds()
+                    if ub_r2 >= ub_r1 and ub_r2 > 0:
+                        report_sheet.delete_rows(list(range(ub_r1, ub_r2 + 1)))
+                except Exception:
+                    pass
             else:
                 report_sheet = driver.create_sheet(report_sheet_name)
 
