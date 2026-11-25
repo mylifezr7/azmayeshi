@@ -149,7 +149,7 @@ class MessageBubble(QFrame):
         time_str = time.strftime("%H:%M")
         header_text = f"👤 {sender} ({time_str})" if is_user else f"🤖 {sender} ({time_str})"
         header_lbl = QLabel(header_text)
-        header_color = "#38BDF8" if is_user else "#60A5FA"
+        header_color = "#5EEAD4" if is_user else "#FBBF24"
         header_lbl.setStyleSheet(f"font-size: 11px; color: {header_color}; font-weight: bold; border: none; background: transparent;")
         layout.addWidget(header_lbl)
 
@@ -201,8 +201,8 @@ class MessageBubble(QFrame):
         elif is_user:
             self.setStyleSheet("""
                 QFrame#messageBubble {
-                    background-color: rgba(12, 25, 58, 0.92);
-                    border: 1.5px solid #2563EB;
+                    background-color: rgba(6, 36, 30, 0.95);
+                    border: 1.5px solid #0D9488;
                     border-radius: 14px;
                 }
                 QLabel {
@@ -213,8 +213,8 @@ class MessageBubble(QFrame):
         else:
             self.setStyleSheet("""
                 QFrame#messageBubble {
-                    background-color: rgba(8, 16, 38, 0.88);
-                    border: 1.5px solid #1D4ED8;
+                    background-color: rgba(3, 20, 18, 0.92);
+                    border: 1.5px solid #D97706;
                     border-radius: 14px;
                 }
                 QLabel {
@@ -280,7 +280,7 @@ class ChatWidget(QWidget):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_area.setStyleSheet(
             f"QScrollArea#chatScrollArea {{"
-            f"  background-color: #020617;"
+            f"  background-color: #031412;"
             f"  background-image: url('{BACKGROUND_IMAGE_PATH}');"
             f"  background-position: center bottom;"
             f"  background-repeat: no-repeat;"

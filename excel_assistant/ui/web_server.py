@@ -37,16 +37,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         :root {
-            --bg-deep: #020617;
-            --bg-card: #081026;
-            --border-blue: #1D4ED8;
-            --border-subtle: #132247;
+            --bg-deep: #031412;
+            --bg-card: #051A18;
+            --border-blue: #0D9488;
+            --border-subtle: #0F3A34;
             --text-light: #F8FAFC;
             --text-muted: #94A3B8;
-            --user-bubble: rgba(6, 32, 44, 0.92);
-            --ai-bubble: rgba(4, 21, 31, 0.90);
-            --accent-cyan: #38BDF8;
-            --accent-blue: #2563EB;
+            --user-bubble: rgba(6, 36, 30, 0.95);
+            --ai-bubble: rgba(3, 20, 18, 0.92);
+            --accent-cyan: #2DD4BF;
+            --accent-blue: #0D9488;
             --accent-gold: #F59E0B;
             --accent-emerald: #10B981;
         }
@@ -596,14 +596,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .message-user {
             align-self: flex-start;
             background-color: var(--user-bubble);
-            border: 1.5px solid var(--accent-blue);
+            border: 1.5px solid #0D9488;
             border-top-right-radius: 2px;
         }
 
         .message-ai {
             align-self: flex-end;
             background-color: var(--ai-bubble);
-            border: 1.5px solid var(--border-blue);
+            border: 1.5px solid #D97706;
             border-top-left-radius: 2px;
         }
 

@@ -130,18 +130,6 @@ QListWidget#historyList::item:selected {{
     background-color: #047857;
     color: #FFFFFF;
 }}
-    margin-bottom: 4px;
-}}
-
-QListWidget#historyList::item:hover {{
-    background-color: #0B193D;
-    color: #60A5FA;
-}}
-
-QListWidget#historyList::item:selected {{
-    background-color: #1D4ED8;
-    color: #FFFFFF;
-}}
 
 /* Sidebar Action Buttons with High Vibrancy Primary Colors */
 QPushButton.sidebarActionBtn {{
