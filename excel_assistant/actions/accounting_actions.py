@@ -678,6 +678,7 @@ class AccountingActionHandler:
     def execute_depreciation(cls, action: DepreciationAction, ctx: ActionContext) -> ActionResult:
         """
         محاسبه جدول استهلاک دارایی‌ها (خط مستقیم و نزولی).
+        در صورت وجود تراز آزمایشی، دارایی‌های واقعی (ساختمان، تجهیزات و...) استخراج می‌شوند.
         """
         sheet_names = ctx.manager.get_sheet_names()
         target_name = "جدول_استهلاک_دارایی"
@@ -690,6 +691,155 @@ class AccountingActionHandler:
         ds = ctx.manager.create_sheet(name)
         if hasattr(ds, "_ws"):
             ds._ws.views.sheetView[0].rightToLeft = True
+
+        # بررسی وجود شیت تراز آزمایشی یا سرفصل‌های دارایی
+        source_sheet = None
+        sheet = ctx.sheet
+        if sheet and not sheet.name.startswith("جدول_استهلاک") and not sheet.name.startswith("صورت_سود_و_زیان"):
+            try:
+                min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                for r in range(min_r, min(min_r + 5, max_r + 1)):
+                    row_t = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1)).lower()
+                    if any(k in row_t for k in ["عنوان حساب", "نام حساب", "مانده بدهکار", "مانده بستانکار", "تراز"]):
+                        source_sheet = sheet
+                        break
+            except Exception:
+                pass
+
+        if not source_sheet and ctx.manager:
+            for sh_n in ctx.manager.get_sheet_names():
+                if not sh_n.startswith("جدول_استهلاک") and not sh_n.startswith("صورت_سود_و_زیان"):
+                    if any(k in sh_n.lower() for k in ["تراز آزمایشی", "تراز_آزمایشی", "تراز", "trial", "balance"]):
+                        try:
+                            cand = ctx.manager.get_sheet(sh_n)
+                            min_r, min_c, max_r, max_c = cand.get_used_range_bounds()
+                            if max_r > min_r:
+                                source_sheet = cand
+                                break
+                        except Exception:
+                            pass
+
+        fixed_assets = []
+        cur_dep_exp = 0.0
+        if source_sheet:
+            s_min_r, s_min_c, s_max_r, s_max_c = source_sheet.get_used_range_bounds()
+            hdr_r = s_min_r
+            for r in range(s_min_r, min(s_min_r + 10, s_max_r + 1)):
+                row_t = " ".join(str(source_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+                if any(k in row_t for k in ["عنوان حساب", "نام حساب", "حساب", "بدهکار", "بستانکار"]):
+                    hdr_r = r
+                    break
+
+            acc_col, deb_col, cred_col = None, None, None
+            for c in range(s_min_c, s_max_c + 1):
+                c_let = col_index_to_letter(c)
+                h = str(source_sheet.get_value(f"{c_let}{hdr_r}") or "").strip().lower()
+                if not h:
+                    continue
+                if not acc_col and any(k in h for k in ["عنوان حساب", "نام حساب", "سرفصل", "حساب"]):
+                    acc_col = c_let
+                elif not deb_col and any(k in h for k in ["مانده بدهکار", "بدهکار", "debit"]):
+                    deb_col = c_let
+                elif not cred_col and any(k in h for k in ["مانده بستانکار", "بستانکار", "credit"]):
+                    cred_col = c_let
+
+            if acc_col and (deb_col or cred_col):
+                accs: Dict[str, Dict[str, float]] = {}
+                for r in range(hdr_r + 1, s_max_r + 1):
+                    raw_a = source_sheet.get_value(f"{acc_col}{r}")
+                    if not raw_a or str(raw_a).strip() == "":
+                        continue
+                    acc_name = str(raw_a).strip()
+                    if any(kw in acc_name.lower() for kw in ["جمع", "مجموع", "تراز", "total"]):
+                        continue
+                    d_val = 0.0
+                    if deb_col:
+                        raw_d = source_sheet.get_value(f"{deb_col}{r}")
+                        try:
+                            d_val = float(str(raw_d).replace(",", "").strip()) if raw_d is not None and str(raw_d).strip() != "-" else 0.0
+                        except ValueError:
+                            d_val = 0.0
+                    c_val = 0.0
+                    if cred_col:
+                        raw_c = source_sheet.get_value(f"{cred_col}{r}")
+                        try:
+                            c_val = float(str(raw_c).replace(",", "").strip()) if raw_c is not None and str(raw_c).strip() != "-" else 0.0
+                        except ValueError:
+                            c_val = 0.0
+                    accs[acc_name] = {"debit": d_val, "credit": c_val}
+
+                for k, v in accs.items():
+                    if "هزینه استهلاک" in k:
+                        cur_dep_exp = v["debit"]
+                    if v["debit"] > 0 and any(kw in k for kw in ["ساختمان", "تجهیزات", "ماشین", "اثاثه", "وسایل نقلیه", "ابزار", "تاسیسات"]):
+                        if not any(ex in k for ex in ["استهلاک", "هزینه", "تعمیر"]):
+                            acc_dep = 0.0
+                            for dk, dv in accs.items():
+                                if "استهلاک انباشته" in dk and any(kw in dk for kw in k.split()):
+                                    acc_dep = dv["credit"]
+                                    break
+                            fixed_assets.append({
+                                "name": k,
+                                "cost": v["debit"],
+                                "accumulated_dep": acc_dep,
+                                "book_value": v["debit"] - acc_dep
+                            })
+
+        # اگر دارایی واقعی در تراز پیدا شد و کاربر مبلغ خاصی در پرامپت ننوشته بود
+        if fixed_assets and (action.cost == 100000000.0 or action.asset_name == "دارایی ثابت"):
+            ds.set_value("A1", "جدول استهلاک و وضعیت دارایی‌های ثابت (استخراج‌شده از تراز آزمایشی)")
+            ds.set_font("A1", bold=True, size=15)
+            ds.merge_cells("A1:E1")
+
+            ds.set_value("A2", f"مجموع هزینه استهلاک شناسایی‌شده دوره جاری در تراز: {cur_dep_exp:,.0f} ریال")
+            ds.merge_cells("A2:E2")
+
+            headers = [
+                ("A4", "سرفصل دارایی ثابت"),
+                ("B4", "بهای تمام شده تاریخی (ریال)"),
+                ("C4", "استهلاک انباشته (ریال)"),
+                ("D4", "ارزش دفتری فعلی (ریال)"),
+                ("E4", "درصد استهلاک تاکنون")
+            ]
+            for ref, text in headers:
+                ds.set_value(ref, text)
+            ds.set_font("A4:E4", bold=True)
+            ds.set_cell_color("A4:E4", "#0F766E")
+            ds.set_font("A4:E4", font_color="#FFFFFF")
+
+            r = 5
+            for fa in fixed_assets:
+                ds.set_value(f"A{r}", fa["name"])
+                ds.set_value(f"B{r}", fa["cost"])
+                ds.set_value(f"C{r}", fa["accumulated_dep"])
+                ds.set_formula(f"D{r}", f"=B{r}-C{r}")
+                ds.set_formula(f"E{r}", f'=IF(B{r}>0, C{r}/B{r}, 0)')
+                r += 1
+
+            # ردیف جمع کل
+            ds.set_value(f"A{r}", "جمع کل دارایی‌های استهلاک‌پذیر")
+            ds.set_formula(f"B{r}", f"=SUM(B5:B{r-1})")
+            ds.set_formula(f"C{r}", f"=SUM(C5:C{r-1})")
+            ds.set_formula(f"D{r}", f"=SUM(D5:D{r-1})")
+            ds.set_formula(f"E{r}", f'=IF(B{r}>0, C{r}/B{r}, 0)')
+            ds.set_font(f"A{r}:E{r}", bold=True)
+            ds.set_cell_color(f"A{r}:E{r}", "#CCFBF1")
+
+            ds.set_number_format(f"B5:D{r}", "#,##0")
+            ds.set_number_format(f"E5:E{r}", "0.0%")
+            ds.auto_fit_columns(["A", "B", "C", "D", "E"])
+
+            src_msg = f" از شیت «{source_sheet.name}»" if source_sheet else ""
+            assets_summary = "، ".join([f"{a['name']} ({a['cost']:,.0f} ریال)" for a in fixed_assets])
+            return ActionResult(
+                success=True,
+                message_persian=(
+                    f"🏢 **جدول استهلاک دارایی‌های ثابت{src_msg} با موفقیت در شیت «{name}» ایجاد شد:**\n\n"
+                    f"• دارایی‌های شناسایی‌شده: **{assets_summary}**\n"
+                    f"• استهلاک انباشته و ارزش دفتری هر دارایی به همراه درصد استهلاک محاسبه گردید.\n"
+                    f"• مجموع هزینه استهلاک دوره جاری در تراز: **{cur_dep_exp:,.0f} ریال** می‌باشد."
+                )
+            )
 
         cost = action.cost or 100000000.0
         salvage = action.salvage_value or 10000000.0

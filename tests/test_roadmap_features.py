@@ -1080,6 +1080,44 @@ def test_financial_statement_from_trial_balance(test_manager):
     assert inc_sheet.get_value("B7") == -540000000.0
 
 
+def test_depreciation_from_trial_balance(test_manager):
+    """Verify that execute_depreciation dynamically extracts fixed assets from trial balance."""
+    from excel_assistant.actions.accounting_actions import AccountingActionHandler
+    from excel_assistant.nlp.intent_models import DepreciationAction
+
+    tb = test_manager.create_sheet("تراز آزمایشی")
+    tb.set_value("A1", "عنوان حساب")
+    tb.set_value("B1", "مانده بدهکار (ریال)")
+    tb.set_value("C1", "مانده بستانکار (ریال)")
+
+    data = [
+        ("ساختمان", 900000000, 0),
+        ("استهلاک انباشته ساختمان", 0, 90000000),
+        ("تجهیزات", 350000000, 0),
+        ("استهلاک انباشته تجهیزات", 0, 70000000),
+        ("هزینه استهلاک", 45000000, 0),
+    ]
+    for idx, (acc, d, c) in enumerate(data, start=2):
+        tb.set_value(f"A{idx}", acc)
+        tb.set_value(f"B{idx}", d)
+        tb.set_value(f"C{idx}", c)
+
+    ctx = ActionContext(manager=test_manager, sheet=tb)
+    res = AccountingActionHandler.execute_depreciation(
+        DepreciationAction(), ctx
+    )
+    assert res.success is True
+    assert "ساختمان" in res.message_persian
+    assert "تجهیزات" in res.message_persian
+
+    dep_sheet = test_manager.get_sheet("جدول_استهلاک_دارایی")
+    assert dep_sheet.get_value("A5") == "ساختمان"
+    assert dep_sheet.get_value("B5") == 900000000.0
+    assert dep_sheet.get_value("C5") == 90000000.0
+    assert dep_sheet.get_formula("D5") == "=B5-C5"
+
+
+
 
 
 
