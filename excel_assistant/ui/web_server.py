@@ -24,6 +24,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&family=Sahel:wght@400;700&display=swap" rel="stylesheet">
     <style>
         @font-face {
+            font-family: 'Sahel';
+            src: url('/resources/Sahel.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Sahel';
+            src: url('/resources/Sahel-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+        @font-face {
             font-family: 'Vazirmatn';
             src: url('/resources/Vazirmatn-Regular.ttf') format('truetype');
             font-weight: 400;
@@ -55,7 +67,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'B Nazanin', 'Sahel', 'Vazirmatn', 'IRANSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, serif;
+            font-family: 'Sahel', 'Vazirmatn', 'B Nazanin', 'IRANSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, serif;
         }
 
         body {

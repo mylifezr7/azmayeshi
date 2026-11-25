@@ -22,26 +22,32 @@ RESOURCES_DIR = Path(__file__).parent / "resources"
 def setup_application_font(app):
     """Loads bundled classic Persian fonts and sets global typography."""
     if not app:
-        return
+        return "Tahoma"
     try:
         font_files = [
+            RESOURCES_DIR / "Sahel.ttf",
+            RESOURCES_DIR / "Sahel-Bold.ttf",
             RESOURCES_DIR / "Vazirmatn-Regular.ttf",
             RESOURCES_DIR / "Vazirmatn-Bold.ttf"
         ]
-        loaded_family = None
+        loaded_families = []
         for f in font_files:
             if f.exists():
-                font_id = QFontDatabase.addApplicationFont(str(f))
+                font_id = QFontDatabase.addApplicationFont(str(f.resolve()))
                 if font_id >= 0:
                     families = QFontDatabase.applicationFontFamilies(font_id)
-                    if families and not loaded_family:
-                        loaded_family = families[0]
+                    for fam in families:
+                        if fam not in loaded_families:
+                            loaded_families.append(fam)
 
-        app_font = QFont(loaded_family or "Vazirmatn", 10)
+        primary_font = "Sahel" if "Sahel" in loaded_families else ("Vazirmatn" if "Vazirmatn" in loaded_families else "Tahoma")
+        app_font = QFont(primary_font, 10)
         app_font.setStyleHint(QFont.SansSerif)
         app.setFont(app_font)
+        return primary_font
     except Exception as e:
         print(f"Font initialization note: {e}")
+        return "Tahoma"
 
 
 def run_gui(workbook_path: Optional[str] = None):

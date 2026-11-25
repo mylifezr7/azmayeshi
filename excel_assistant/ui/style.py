@@ -13,7 +13,7 @@ QSS_STYLE = f"""
 QMainWindow, QDialog, QWidget {{
     background-color: #031412;
     color: #F8FAFC;
-    font-family: 'Vazirmatn';
+    font-family: Sahel;
     font-size: 13px;
 }}
 

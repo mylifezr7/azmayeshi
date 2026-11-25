@@ -244,7 +244,7 @@ class ChatScrollArea(QScrollArea):
         if obj is self.viewport() and event.type() == QEvent.Paint:
             try:
                 painter = QPainter(self.viewport())
-                painter.fillRect(self.viewport().rect(), QColor("#020617"))
+                painter.fillRect(self.viewport().rect(), QColor("#031412"))
                 if self._bg_pixmap and not self._bg_pixmap.isNull():
                     vp_w = self.viewport().width()
                     vp_h = self.viewport().height()
@@ -254,7 +254,7 @@ class ChatScrollArea(QScrollArea):
                         Qt.SmoothTransformation
                     )
                     x = (vp_w - scaled.width()) // 2
-                    y = max(0, vp_h - scaled.height())
+                    y = (vp_h - scaled.height()) // 2
                     painter.drawPixmap(x, y, scaled)
                 painter.end()
             except Exception:
