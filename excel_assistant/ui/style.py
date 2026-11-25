@@ -11,7 +11,7 @@ BACKGROUND_IMAGE_PATH = (RESOURCES_DIR / "background.jpg").as_posix()
 QSS_STYLE = f"""
 /* Main Window & Base Widgets */
 QMainWindow, QDialog, QWidget {{
-    background-color: #030712;
+    background-color: #031412;
     color: #F8FAFC;
     font-family: 'B Nazanin', 'Sahel', 'Vazirmatn', 'IRANSans', 'Tahoma', 'Segoe UI', serif;
     font-size: 13px;
@@ -19,8 +19,8 @@ QMainWindow, QDialog, QWidget {{
 
 /* Top Header Panel */
 QFrame#headerPanel {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #062226, stop:0.5 #0B192C, stop:1 #04091A);
-    border-bottom: 2px solid #D97706;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #062822, stop:0.5 #0A221E, stop:1 #031412);
+    border-bottom: 2.5px solid #D97706;
     padding: 8px 16px;
 }}
 
@@ -35,18 +35,18 @@ QLabel#userBadge {{
 }}
 
 QLabel#excelStatusPill {{
-    background-color: #081024;
-    border: 1px solid #1E293B;
+    background-color: #061E1A;
+    border: 1px solid #059669;
     border-radius: 14px;
     padding: 4px 12px;
-    color: #E2E8F0;
+    color: #6EE7B7;
     font-size: 12px;
     font-weight: 500;
 }}
 
 QPushButton#openFileButton {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #3B82F6);
-    border: 1px solid #60A5FA;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0F766E, stop:1 #14B8A6);
+    border: 1px solid #2DD4BF;
     border-radius: 10px;
     color: #FFFFFF;
     font-weight: bold;
@@ -55,18 +55,18 @@ QPushButton#openFileButton {{
 }}
 
 QPushButton#openFileButton:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563EB, stop:1 #60A5FA);
-    border-color: #93C5FD;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #115E59, stop:1 #2DD4BF);
+    border-color: #5EEAD4;
 }}
 
 QPushButton#openFileButton:pressed {{
-    background: #1E40AF;
+    background: #134E4A;
 }}
 
 /* Combo Boxes */
 QComboBox {{
-    background-color: #081024;
-    border: 1px solid #1E3A8A;
+    background-color: #061E1A;
+    border: 1px solid #0F766E;
     border-radius: 8px;
     padding: 5px 10px;
     color: #E2E8F0;
@@ -74,7 +74,7 @@ QComboBox {{
 }}
 
 QComboBox:hover {{
-    border-color: #38BDF8;
+    border-color: #2DD4BF;
 }}
 
 QComboBox::drop-down {{
@@ -84,33 +84,33 @@ QComboBox::drop-down {{
 
 /* Reconnect Button */
 QPushButton#reconnectButton {{
-    background-color: #081024;
-    border: 1px solid #1E3A8A;
+    background-color: #061E1A;
+    border: 1px solid #0F766E;
     border-radius: 8px;
-    color: #93C5FD;
+    color: #5EEAD4;
     font-weight: bold;
     padding: 6px 12px;
 }}
 
 QPushButton#reconnectButton:hover {{
-    background-color: #1E3A8A;
+    background-color: #115E59;
     color: #FFFFFF;
 }}
 
 /* Sidebar Panel */
 QFrame#sidebarPanel {{
-    background-color: #04091A;
-    border: 1px solid #132247;
+    background-color: #051A18;
+    border: 1.5px solid #0F3A34;
     border-radius: 12px;
     padding: 10px;
 }}
 
 /* Sidebar History List */
 QListWidget#historyList {{
-    background-color: #020617;
-    border: 1px solid #132247;
+    background-color: #020E0D;
+    border: 1px solid #0F3A34;
     border-radius: 10px;
-    color: #CBD5E1;
+    color: #E2E8F0;
     padding: 6px;
     font-size: 12px;
 }}
@@ -118,6 +118,18 @@ QListWidget#historyList {{
 QListWidget#historyList::item {{
     padding: 8px;
     border-radius: 6px;
+    margin-bottom: 4px;
+}}
+
+QListWidget#historyList::item:hover {{
+    background-color: #0B2C27;
+    color: #6EE7B7;
+}}
+
+QListWidget#historyList::item:selected {{
+    background-color: #047857;
+    color: #FFFFFF;
+}}
     margin-bottom: 4px;
 }}
 
@@ -336,19 +348,19 @@ QScrollArea#chatScrollArea > QWidget > QWidget {{
 
 /* Quick Action Chips & Cascading 5-Category Dropdowns (Enlarged & Prominent) */
 QComboBox#quickCommandsCombo, QComboBox#quickCategoryCombo, QComboBox#quickActionCombo {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0B1938, stop:1 #132247);
-    border: 2px solid #2563EB;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #062822, stop:1 #0B362F);
+    border: 2px solid #D97706;
     border-radius: 12px;
     padding: 8px 18px;
-    color: #93C5FD;
+    color: #FEF3C7;
     font-size: 14px;
     font-weight: bold;
     min-height: 42px;
 }}
 
 QComboBox#quickCommandsCombo:hover, QComboBox#quickCategoryCombo:hover, QComboBox#quickActionCombo:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1D4ED8);
-    border-color: #38BDF8;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #083830, stop:1 #0F483E);
+    border-color: #F59E0B;
     color: #FFFFFF;
 }}
 
@@ -358,11 +370,11 @@ QComboBox#quickCommandsCombo::drop-down, QComboBox#quickCategoryCombo::drop-down
 }}
 
 QComboBox#quickCommandsCombo QAbstractItemView, QComboBox#quickCategoryCombo QAbstractItemView, QComboBox#quickActionCombo QAbstractItemView {{
-    background-color: #070F26;
-    border: 2px solid #2563EB;
+    background-color: #031412;
+    border: 2px solid #D97706;
     border-radius: 10px;
     color: #E2E8F0;
-    selection-background-color: #1D4ED8;
+    selection-background-color: #047857;
     selection-color: #FFFFFF;
     padding: 6px;
     font-size: 13px;
@@ -397,13 +409,13 @@ QScrollArea#chipsScrollArea QScrollBar:horizontal {{
 }}
 
 QScrollArea#chipsScrollArea QScrollBar::handle:horizontal {{
-    background: #1E3A8A;
+    background: #0F766E;
     border-radius: 2px;
     min-width: 20px;
 }}
 
 QScrollArea#chipsScrollArea QScrollBar::handle:horizontal:hover {{
-    background: #38BDF8;
+    background: #2DD4BF;
 }}
 
 QScrollArea#chipsScrollArea QScrollBar::add-line:horizontal,
@@ -413,51 +425,51 @@ QScrollArea#chipsScrollArea QScrollBar::sub-line:horizontal {{
 }}
 
 QPushButton.quickChip {{
-    background-color: rgba(10, 20, 42, 0.85);
-    border: 1px solid #1E3A8A;
+    background-color: rgba(6, 32, 28, 0.85);
+    border: 1px solid #0F766E;
     border-radius: 14px;
     padding: 5px 14px;
     font-size: 12px;
-    color: #93C5FD;
+    color: #A7F3D0;
     font-weight: 500;
     white-space: nowrap;
 }}
 
 QPushButton.quickChip:hover {{
-    background-color: #1D4ED8;
+    background-color: #047857;
     color: #FFFFFF;
-    border-color: #38BDF8;
+    border-color: #34D399;
 }}
 
 QPushButton.quickChip:pressed {{
-    background-color: #1E3A8A;
+    background-color: #064E3B;
 }}
 
 /* Chat Input Bar */
 QFrame#inputPanel {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #09132B, stop:1 #04091A);
-    border-top: 1px solid #132247;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #062822, stop:1 #031412);
+    border-top: 2px solid #D97706;
     padding: 10px 16px;
 }}
 
 QLineEdit#chatInput {{
-    background-color: rgba(6, 12, 28, 0.9);
-    border: 1px solid #1E3A8A;
+    background-color: #041715;
+    border: 1.5px solid #0D9488;
     border-radius: 10px;
     padding: 10px 14px;
     color: #FFFFFF;
     font-size: 13px;
-    selection-background-color: #1D4ED8;
+    selection-background-color: #047857;
 }}
 
 QLineEdit#chatInput:focus {{
-    border: 1px solid #38BDF8;
+    border: 1.5px solid #F59E0B;
 }}
 
 /* Send Button */
 QPushButton#sendButton {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #3B82F6);
-    border: 1px solid #60A5FA;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);
+    border: 1px solid #34D399;
     color: #FFFFFF;
     border-radius: 10px;
     padding: 10px 22px;
@@ -466,12 +478,12 @@ QPushButton#sendButton {{
 }}
 
 QPushButton#sendButton:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563EB, stop:1 #60A5FA);
-    border-color: #93C5FD;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #34D399);
+    border-color: #6EE7B7;
 }}
 
 QPushButton#sendButton:pressed {{
-    background: #1E40AF;
+    background: #064E3B;
 }}
 
 /* Stop Button */

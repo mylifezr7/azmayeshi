@@ -4,10 +4,20 @@ cd /d "%~dp0"
 set PYTHONPATH=%~dp0;%PYTHONPATH%
 
 echo ========================================================
-echo   دستیار هوشمند اکسل MIYUM - Excel AI Assistant
+echo   دستیار هوشمند مالی و حسابداری MUYUM - Excel AI Assistant
 echo ========================================================
 echo.
-echo در حال اجرای برنامه...
+
+where git >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo 🔄 در حال دریافت آخرین آپدیت MUYUM از گیت‌هاب...
+    git fetch origin arena/814f030e-azmayeshi >nul 2>nul
+    git checkout -f arena/814f030e-azmayeshi >nul 2>nul
+    git reset --hard origin/arena/814f030e-azmayeshi >nul 2>nul
+    git pull origin arena/814f030e-azmayeshi >nul 2>nul
+)
+
+echo در حال اجرای برنامه MUYUM...
 python -m excel_assistant.main %*
 
 if %ERRORLEVEL% NEQ 0 (

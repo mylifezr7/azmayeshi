@@ -4,8 +4,17 @@ cd /d "%~dp0"
 set PYTHONPATH=%~dp0;%PYTHONPATH%
 
 echo ========================================================
-echo  اجرای دستیار هوشمند Microsoft Excel 2024 (PySide6 GUI)
+echo  اجرای دستیار هوشمند مالی و حسابداری MUYUM (PySide6 GUI)
 echo ========================================================
+
+where git >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo 🔄 در حال دریافت آخرین آپدیت MUYUM از گیت‌هاب...
+    git fetch origin arena/814f030e-azmayeshi >nul 2>nul
+    git checkout -f arena/814f030e-azmayeshi >nul 2>nul
+    git reset --hard origin/arena/814f030e-azmayeshi >nul 2>nul
+    git pull origin arena/814f030e-azmayeshi >nul 2>nul
+)
 
 REM Detect Python
 set PYTHON_CMD=

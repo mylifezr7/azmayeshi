@@ -10,13 +10,16 @@ echo.
 REM 1. Check Git and Pull
 where git >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo [1/3] در حال دریافت آخرین تغییرات از گیت‌هاب...
+    echo [1/3] در حال دریافت آخرین تغییرات و برنچ MUYUM از گیت‌هاب...
+    git fetch origin arena/814f030e-azmayeshi
+    git checkout -f arena/814f030e-azmayeshi
+    git reset --hard origin/arena/814f030e-azmayeshi
     git pull origin arena/814f030e-azmayeshi
     if %ERRORLEVEL% NEQ 0 (
-        echo ⚠️ دریافت گیت با خطا مواجه شد (ممکن است آفلاین باشید یا تغییرات محلی تداخل داشته باشد).
+        echo ⚠️ دریافت گیت با خطا مواجه شد.
         echo در حال تلاش برای اجرای برنامه با فایل‌های موجود...
     ) else (
-        echo ✅ آخرین نسخه دریافت شد.
+        echo ✅ آخرین نسخه MUYUM دریافت شد.
     )
 ) else (
     echo ℹ️ گیت یافت نشد، اجرای برنامه با فایل‌های محلی...
