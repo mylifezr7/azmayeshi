@@ -408,4 +408,84 @@ def test_execute_profit_calculation_with_beginning_inventory_and_supplier_cols()
     manager.close()
 
 
+def test_execute_profit_calculation_autonomous_sheet_detection():
+    """
+    Test that the system autonomously detects sales, purchase, and expenses sheets
+    even when the user provides NO sheet names and is currently on an unrelated sheet ('بانک').
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # Active sheet is 'بانک'
+    ws_bank = manager.active_driver.get_sheet(manager.active_driver.get_sheet_names()[0])
+    # Rename or set bank headers
+    ws_bank.set_value("A1", "تاریخ")
+    ws_bank.set_value("B1", "واریز")
+    ws_bank.set_value("C1", "برداشت")
+    ws_bank.set_value("D1", "مانده")
+
+    # Sheet 'هزینه‌ها'
+    ws_exp = manager.active_driver.create_sheet("هزینه‌ها")
+    ws_exp.set_value("A1", "کد هزینه")
+    ws_exp.set_value("B1", "شرح هزینه")
+    ws_exp.set_value("C1", "مبلغ (ریال)")
+    ws_exp.set_value("A2", "E-101")
+    ws_exp.set_value("B2", "اجاره دفتر")
+    ws_exp.set_value("C2", 50000)
+
+    # Sheet 'خرید'
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    ws_purch.set_value("A1", "نام تامین کننده")
+    ws_purch.set_value("B1", "نام کالا")
+    ws_purch.set_value("C1", "تعداد")
+    ws_purch.set_value("D1", "قیمت خرید")
+    ws_purch.set_value("A2", "تامین گستر")
+    ws_purch.set_value("B2", "ماوس")
+    ws_purch.set_value("C2", 20)
+    ws_purch.set_value("D2", 10000)
+
+    # Sheet 'فروش'
+    ws_sales = manager.active_driver.create_sheet("فروش")
+    ws_sales.set_value("A1", "نام مشتری")
+    ws_sales.set_value("B1", "نام کالا")
+    ws_sales.set_value("C1", "تعداد")
+    ws_sales.set_value("D1", "قیمت فروش")
+    ws_sales.set_value("A2", "مشتری الف")
+    ws_sales.set_value("B2", "ماوس")
+    ws_sales.set_value("C2", 10)
+    ws_sales.set_value("D2", 25000)
+
+    # User initiates profit calculation without mentioning any sheet:
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=None,
+        purchase_sheet=None,
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_bank)
+
+    res = executor.execute(action, ctx)
+    assert res.success is True
+    # Fully autonomous sheet classification
+    assert res.data["matched_sheets"]["sales"] == "فروش"
+    assert res.data["matched_sheets"]["purchase"] == "خرید"
+    assert res.data["matched_sheets"]["expenses"] == "هزینه‌ها"
+
+    # Sales = 10 * 25000 = 250,000
+    assert res.data["total_sales"] == 250000.0
+    # COGS = 10 * 10000 = 100,000
+    assert res.data["total_purchase"] == 100000.0
+    # Gross Profit = 150,000
+    assert res.data["gross_profit"] == 150000.0
+    # Operating expenses = 50,000
+    assert res.data["operating_expenses"] == 50000.0
+    # Net Operating Profit = 100,000
+    assert res.data["net_profit"] == 100000.0
+
+    manager.close()
+
+
+
 

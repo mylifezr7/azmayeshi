@@ -364,7 +364,18 @@ class MathActionHandler:
 
     @classmethod
     def execute_sales_summary(cls, action: SalesSummaryAction, ctx: ActionContext) -> ActionResult:
+        driver = ctx.manager.active_driver if ctx.manager else None
         sheet = ctx.sheet
+        if driver:
+            sheet_names = driver.get_sheet_names()
+            smart = cls.classify_workbook_sheets(driver, sheet_names)
+            if smart.get("sales"):
+                curr_name = (sheet.name if sheet else "").lower()
+                if not any(k in curr_name for k in ["فروش", "sales", "sale"]):
+                    try:
+                        sheet = ctx.manager.get_sheet(smart["sales"])
+                    except Exception:
+                        pass
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
         # 1. Determine Amount & Date Columns
@@ -717,6 +728,130 @@ class MathActionHandler:
         )
 
     @classmethod
+    def classify_workbook_sheets(cls, driver, sheet_names):
+        """
+        Intelligently classifies all sheets in the workbook by examining both
+        their names and header row contents across columns.
+        Returns a mapping of categories ('sales', 'purchase', 'beginning_inventory', 'expenses', 'bank').
+        """
+        report_exclude = ["گزارش_سود", "گزارش سود", "خلاصه_فروش", "داشبورد", "dashboard", "report", "تحلیل"]
+        classified = {
+            "sales": None,
+            "purchase": None,
+            "beginning_inventory": None,
+            "expenses": None,
+            "bank": None
+        }
+        scores = {
+            "sales": {},
+            "purchase": {},
+            "beginning_inventory": {},
+            "expenses": {},
+            "bank": {}
+        }
+
+        for sn in sheet_names:
+            sn_l = sn.strip().lower()
+            if any(ex in sn_l for ex in report_exclude):
+                continue
+
+            hdrs = []
+            try:
+                ws = driver.get_sheet(sn)
+                min_r, min_c, max_r, max_c = ws.get_used_range_bounds()
+                if min_r > 0 and max_c >= min_c:
+                    for c in range(min_c, min(max_c + 1, min_c + 20)):
+                        c_let = col_index_to_letter(c)
+                        val = str(ws.get_value(f"{c_let}{min_r}") or "").strip().lower()
+                        if val:
+                            hdrs.append(val)
+            except Exception:
+                hdrs = []
+
+            hl = " ".join(hdrs)
+
+            # 1. Sales Score
+            s_score = 0
+            if sn_l in ["فروش", "sales", "sale"]:
+                s_score += 25
+            elif any(k in sn_l for k in ["فروش", "sales", "فاکتور فروش"]):
+                s_score += 15
+            elif any(k in sn_l for k in ["فاکتور", "invoice"]):
+                s_score += 5
+
+            if any(k in hl for k in ["نام مشتری", "کد مشتری", "مشتری", "customer", "client"]):
+                s_score += 12
+            if any(k in hl for k in ["قیمت فروش", "فی فروش", "نرخ فروش"]):
+                s_score += 10
+            if any(k in hl for k in ["تعداد فروش"]):
+                s_score += 10
+            if any(k in hl for k in ["تخفیف", "discount"]):
+                s_score += 5
+            if any(k in hl for k in ["تامین کننده", "تامین", "supplier", "vendor"]):
+                s_score -= 15
+            if any(k in sn_l for k in ["اول دوره", "opening", "موجودی اولیه"]) or "اول دوره" in hl:
+                s_score -= 25
+            if any(k in sn_l for k in ["هزینه", "expense"]) or "هزینه" in hl:
+                s_score -= 25
+
+            # 2. Purchase Score
+            p_score = 0
+            if any(k in sn_l for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "opening stock", "beginning inventory"]) or "اول دوره" in hl:
+                p_score -= 30
+            elif sn_l in ["خرید", "purchase", "buy"]:
+                p_score += 25
+            elif any(k in sn_l for k in ["خرید", "purchase", "فاکتور خرید"]):
+                p_score += 15
+            elif any(k in sn_l for k in ["موجودی", "انبار", "inventory", "stock"]):
+                p_score += 5
+
+            if any(k in hl for k in ["نام تامین کننده", "کد تامین کننده", "تامین کننده", "تامین‌کننده", "تامین", "supplier", "vendor"]):
+                p_score += 14
+            if any(k in hl for k in ["قیمت خرید", "فی خرید", "نرخ خرید", "بهای واحد خرید"]):
+                p_score += 10
+            if any(k in hl for k in ["تعداد خرید"]):
+                p_score += 10
+            if any(k in hl for k in ["مشتری", "customer"]):
+                p_score -= 15
+            if any(k in sn_l for k in ["هزینه", "expense"]):
+                p_score -= 25
+
+            # 3. Beginning Inventory Score
+            b_score = 0
+            if any(k in sn_l for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "موجودی پایه", "opening stock", "beginning inventory"]):
+                b_score += 30
+            if "اول دوره" in hl or "اول_دوره" in hl:
+                b_score += 15
+
+            # 4. Expenses Score
+            e_score = 0
+            if any(k in sn_l for k in ["هزینه", "هزینه‌ها", "expense", "expenses", "مخارج"]):
+                e_score += 30
+            if any(k in hl for k in ["شرح هزینه", "مبلغ هزینه", "مرکز هزینه", "نوع هزینه", "مبلغ (ریال)"]) and "هزینه" in hl:
+                e_score += 20
+
+            # 5. Bank Score
+            bk_score = 0
+            if any(k in sn_l for k in ["بانک", "صورتحساب بانک", "bank"]):
+                bk_score += 25
+            if any(k in hl for k in ["واریز", "برداشت", "مانده حساب"]):
+                bk_score += 15
+
+            scores["sales"][sn] = s_score
+            scores["purchase"][sn] = p_score
+            scores["beginning_inventory"][sn] = b_score
+            scores["expenses"][sn] = e_score
+            scores["bank"][sn] = bk_score
+
+        for cat in ["sales", "purchase", "beginning_inventory", "expenses", "bank"]:
+            if scores[cat]:
+                best_s = max(scores[cat].items(), key=lambda x: x[1])
+                if best_s[1] > 0:
+                    classified[cat] = best_s[0]
+
+        return classified
+
+    @classmethod
     def execute_profit_calculation(cls, action: ProfitCalculationAction, ctx: ActionContext) -> ActionResult:
         driver = ctx.manager.active_driver
         sheet_names = driver.get_sheet_names()
@@ -725,23 +860,18 @@ class MathActionHandler:
             return ActionResult(success=False, message_persian="⚠️ هیچ شیتی در ورک‌بوک یافت نشد.")
 
         # 1. Resolve Sales Sheet (Sheet 1) and Purchase Sheet (Sheet 2) with Smart Auto-Detection
-        auto_sales_sheet = None
-        auto_purch_sheet = None
-        sales_sheet_kws = ["فاکتورهای فروش", "فاکتورها", "فروش", "فاکتور", "sales", "invoice"]
-        purch_sheet_kws = ["خرید و موجودی", "موجودی کالا", "خرید", "موجودی", "انبار", "purchase", "inventory", "stock"]
+        smart_sheets = cls.classify_workbook_sheets(driver, sheet_names)
+        auto_sales_sheet = smart_sheets.get("sales")
+        auto_purch_sheet = smart_sheets.get("purchase")
 
-        for sn in sheet_names:
-            sn_l = sn.lower()
-            if not auto_sales_sheet and any(k in sn_l for k in sales_sheet_kws) and not any(k in sn_l for k in purch_sheet_kws):
-                auto_sales_sheet = sn
-            elif not auto_purch_sheet and any(k in sn_l for k in purch_sheet_kws) and not any(k in sn_l for k in sales_sheet_kws):
-                auto_purch_sheet = sn
-
-        def resolve_sheet_name(target_val, fallback):
+        def resolve_sheet_name(target_val, fallback, smart_detected=None):
             if not target_val:
-                return fallback
+                return smart_detected or fallback
             val_str = str(target_val).strip()
+            # If target_val is a generic number (e.g. "1", "2"), prefer smart detection if available
             if val_str.isdigit():
+                if smart_detected:
+                    return smart_detected
                 idx = int(val_str) - 1
                 if 0 <= idx < len(sheet_names):
                     return sheet_names[idx]
@@ -753,13 +883,13 @@ class MathActionHandler:
             for name in sheet_names:
                 if val_str.lower() in name.lower():
                     return name
-            return fallback
+            return smart_detected or fallback
 
         default_sales = auto_sales_sheet or (ctx.sheet.name if ctx.sheet and ctx.sheet.name in sheet_names else sheet_names[0])
         default_purch = auto_purch_sheet or (sheet_names[1] if len(sheet_names) >= 2 else default_sales)
 
-        sales_sheet_name = resolve_sheet_name(action.sales_sheet, default_sales)
-        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, default_purch)
+        sales_sheet_name = resolve_sheet_name(action.sales_sheet, default_sales, auto_sales_sheet)
+        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, default_purch, auto_purch_sheet)
 
         val_method = getattr(action, "valuation_method", "fifo") or "fifo"
         if val_method not in ["fifo", "lifo", "average"]:
@@ -1036,11 +1166,12 @@ class MathActionHandler:
         purchase_records = []
 
         # 2.5 Load Beginning Inventory Sheet if present
-        beg_sheet_name = None
-        for sn in sheet_names:
-            if any(k in sn.lower() for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "opening stock", "beginning inventory"]):
-                beg_sheet_name = sn
-                break
+        beg_sheet_name = smart_sheets.get("beginning_inventory")
+        if not beg_sheet_name:
+            for sn in sheet_names:
+                if any(k in sn.lower() for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "opening stock", "beginning inventory"]):
+                    beg_sheet_name = sn
+                    break
 
         if beg_sheet_name and ctx.manager:
             try:
@@ -1083,6 +1214,35 @@ class MathActionHandler:
                             "price": bp,
                             "total_purchase": bq * bp
                         })
+            except Exception:
+                pass
+
+        # 2.6 Load Expenses Sheet if present (هزینه‌ها)
+        exp_sheet_name = smart_sheets.get("expenses")
+        tot_expenses = 0.0
+        exp_count = 0
+        if exp_sheet_name and ctx.manager:
+            try:
+                exp_sheet = ctx.manager.get_sheet(exp_sheet_name)
+                e_min_r, e_min_c, e_max_r, e_max_c = exp_sheet.get_used_range_bounds()
+                e_amt_c = None
+                exp_exclude = ["کد", "شرح", "مرکز", "نوع", "عنوان", "نام", "تاریخ", "توضیحات", "code", "desc", "date"]
+                exp_amt_kws = ["مبلغ هزینه", "مبلغ کل", "مبلغ", "amount", "ریال", "تومان", "قیمت", "cost"]
+
+                for c in range(e_min_c, e_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(exp_sheet.get_value(f"{c_let}{e_min_r}") or "").strip().lower()
+                    if any(k in h for k in exp_amt_kws) and not any(k in h for k in exp_exclude):
+                        e_amt_c = c_let
+                        break
+                if not e_amt_c and e_max_c >= e_min_c:
+                    e_amt_c = col_index_to_letter(e_max_c)
+                if e_amt_c:
+                    for r in range(e_min_r + 1, e_max_r + 1):
+                        v = clean_val(exp_sheet.get_value(f"{e_amt_c}{r}"))
+                        if v > 0:
+                            tot_expenses += v
+                            exp_count += 1
             except Exception:
                 pass
 
@@ -1439,6 +1599,12 @@ class MathActionHandler:
             kpis.append(("🏆 پر سودترین کالا", f"{best_item['product']} ({best_item['profit']:,.0f} تومان)", "بیشترین سود ریالی"))
             kpis.append(("⚠️ تعداد اقلام زیان‌ده", f"{len(loss_items)} کالا", "اقلام با سود منفی"))
 
+            if tot_expenses > 0:
+                net_operating_profit = total_profit_all - tot_expenses
+                net_margin = (net_operating_profit / total_sales_all * 100) if total_sales_all > 0 else 0.0
+                kpis.append(("🧾 هزینه‌های جاری عملیاتی", f"{tot_expenses:,.0f} تومان", f"شیت: {exp_sheet_name} ({exp_count} قلم هزینه)"))
+                kpis.append(("🏆 سود خالص عملیاتی (پس از کسر هزینه‌ها)", f"{net_operating_profit:,.0f} تومان", f"حاشیه سود خالص عملیاتی: {net_margin:.1f}%"))
+
             for title, val, desc in kpis:
                 report_sheet.set_value(f"A{curr_r}", title)
                 report_sheet.set_value(f"B{curr_r}", val)
@@ -1649,9 +1815,14 @@ class MathActionHandler:
             f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد فروش: `{tot_sold_qty:,.0f}` عدد در `{len(matched_items)}` قلم)",
             f"🛒 **بهای تمام‌شده اقلام فروش‌رفته (COGS):** `{total_purchase_all:,.0f}` تومان (محاسبه‌شده بر مبنای روش {method_persian})",
             "───────────────────────────────",
-            f"✨ **سود خالص کل (فروش منهای بهای خرید اقلام فروخته‌شده):** **`{total_profit_all:,.0f}` تومان**",
-            f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**"
+            f"✨ **سود ناخالص کل (فروش منهای بهای خرید اقلام فروخته‌شده):** **`{total_profit_all:,.0f}` تومان**",
+            f"📈 **میانگین حاشیه سود ناخالص:** **`{overall_margin:.1f}%`**"
         ]
+        if tot_expenses > 0:
+            net_operating_profit = total_profit_all - tot_expenses
+            net_status = "🟢 سودآور" if net_operating_profit >= 0 else "🔴 زیان‌ده"
+            msg_lines.append(f"🧾 **کل هزینه‌های جاری عملیاتی ({exp_sheet_name}):** `{tot_expenses:,.0f}` تومان ({exp_count} قلم هزینه)")
+            msg_lines.append(f"🏆 **سود خالص عملیاتی (پس از کسر هزینه‌ها):** **`{net_operating_profit:,.0f}` تومان** ({net_status})")
         if tot_rem_stock > 0:
             msg_lines.append(f"📦 **موجودی باقیمانده در انبار:** `{tot_rem_stock:,.0f}` قلم به ارزش `{tot_stock_val:,.0f}` تومان (ارزیابی شده به روش {method_persian})")
         if has_dates and daily_map:
@@ -1677,12 +1848,21 @@ class MathActionHandler:
                 "total_sales": total_sales_all,
                 "total_purchase": total_purchase_all,
                 "total_profit": total_profit_all,
+                "gross_profit": total_profit_all,
+                "operating_expenses": tot_expenses,
+                "net_profit": total_profit_all - tot_expenses,
                 "margin_pct": overall_margin,
                 "remaining_stock": tot_rem_stock,
                 "stock_value": tot_stock_val,
                 "valuation_method": val_method,
                 "item_count": len(matched_items),
                 "daily_count": len(daily_map) if has_dates else 0,
-                "monthly_count": len(monthly_map) if has_dates else 0
+                "monthly_count": len(monthly_map) if has_dates else 0,
+                "matched_sheets": {
+                    "sales": sales_sheet_name,
+                    "purchase": purchase_sheet_name,
+                    "beginning_inventory": beg_sheet_name,
+                    "expenses": exp_sheet_name
+                }
             }
         )
