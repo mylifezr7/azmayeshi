@@ -1117,6 +1117,49 @@ def test_depreciation_from_trial_balance(test_manager):
     assert dep_sheet.get_formula("D5") == "=B5-C5"
 
 
+def test_profit_calculation_multibatch_fifo_with_discounts(test_manager):
+    """Verify profit calculation with multi-batch purchases and invoice discounts."""
+    from excel_assistant.actions.math_actions import MathActionHandler
+    from excel_assistant.nlp.intent_models import ProfitCalculationAction
+
+    ws_sales = test_manager.create_sheet("فاکتورهای فروش")
+    sales_rows = [
+        ["تاریخ", "شماره فاکتور", "نام مشتری", "شرح کالا", "تعداد", "قیمت واحد (ریال)", "تخفیف درصد"],
+        ["1405/01/05", "ف-1001", "شرکت آریا", "کالای A", 12, 18500000, 0],
+        ["1405/01/07", "ف-1002", "فروشگاه سپهر", "کالای B", 25, 7200000, 5],
+    ]
+    for r_idx, row in enumerate(sales_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    ws_purch = test_manager.create_sheet("خرید و موجودی کالا")
+    purch_rows = [
+        ["شرح کالا", "تاریخ", "نوع خرید", "تعداد خرید", "بهای واحد خرید (ریال)"],
+        ["کالای A", "1405/01/01", "خرید اول دوره", 30, 12500000],
+        ["کالای B", "1405/01/01", "خرید اول دوره", 60, 4800000],
+    ]
+    for r_idx, row in enumerate(purch_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    ctx = ActionContext(manager=test_manager, sheet=ws_sales)
+    action = ProfitCalculationAction(sales_sheet="فاکتورهای فروش", purchase_sheet="خرید و موجودی کالا")
+    res = MathActionHandler.execute_profit_calculation(action, ctx)
+
+    assert res.success is True
+    # کالای A: 12 * 18.5M = 222M
+    # کالای B: 25 * 7.2M * 0.95 = 171M
+    # Total sales: 222M + 171M = 393M
+    assert res.data["total_sales"] == 393000000.0
+    # COGS کالای A: 12 * 12.5M = 150M
+    # COGS کالای B: 25 * 4.8M = 120M
+    # Total COGS: 270M
+    assert res.data["total_purchase"] == 270000000.0
+    # Profit: 393M - 270M = 123M
+    assert res.data["total_profit"] == 123000000.0
+
+
+
 
 
 

@@ -277,15 +277,22 @@ class ProfitWizardDialog(QDialog):
             min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
             best_date_idx = 0
-            best_sales_idx = min(1, max_c - min_c)
+            best_sales_idx = 0
 
-            date_kws = ["تاریخ", "date", "روز", "زمان", "time"]
-            sales_kws = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "فی"]
+            cust_kws = ["مشتری", "خریدار", "طرف حساب", "customer", "client", "فروشنده"]
+            inv_kws = ["شماره فاکتور", "شماره سند", "فاکتور", "invoice", "doc"]
+            disc_kws = ["تخفیف", "discount", "off"]
+            date_kws = ["تاریخ", "date", "زمان", "time"]
+            qty_kws = ["تعداد", "مقدار", "qty", "quantity"]
+            sales_kws = ["مبلغ کل", "مبلغ فروش", "قیمت فروش", "قیمت واحد", "بهای واحد", "فی فروش", "فروش", "درآمد", "قیمت", "مبلغ", "فی", "price", "amount"]
 
             self.combo_date.blockSignals(True)
             self.combo_sales.blockSignals(True)
             self.combo_date.clear()
             self.combo_sales.clear()
+
+            found_date = False
+            found_sales = False
 
             for idx, c in enumerate(range(min_c, max_c + 1)):
                 c_let = col_index_to_letter(c)
@@ -295,8 +302,12 @@ class ProfitWizardDialog(QDialog):
                 self.combo_sales.addItem(label, c_let)
 
                 hdr_l = hdr.lower()
-                if any(k in hdr_l for k in date_kws): best_date_idx = idx
-                if any(k in hdr_l for k in sales_kws): best_sales_idx = idx
+                if not found_date and any(k in hdr_l for k in date_kws) and not any(k in hdr_l for k in qty_kws + disc_kws + inv_kws):
+                    best_date_idx = idx
+                    found_date = True
+                if not found_sales and any(k in hdr_l for k in sales_kws) and not any(k in hdr_l for k in qty_kws + disc_kws + cust_kws + inv_kws):
+                    best_sales_idx = idx
+                    found_sales = True
 
             if self.combo_date.count() > 0:
                 self.combo_date.setCurrentIndex(best_date_idx)
@@ -314,12 +325,14 @@ class ProfitWizardDialog(QDialog):
             sheet = self.manager.get_sheet(sheet_name)
             min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
-            best_purchase_idx = min(2, max_c - min_c)
-            purchase_kws = ["خرید", "هزینه", "بهای تمام شده", "قیمت تمام شده", "cost", "purchase", "قیمت", "مبلغ", "فی"]
+            best_purchase_idx = 0
+            purchase_kws = ["بهای واحد خرید", "قیمت واحد خرید", "بهای خرید", "قیمت خرید", "مبلغ خرید", "فی خرید", "بهای تمام شده", "قیمت تمام شده", "خرید", "بها", "قیمت", "مبلغ", "فی", "cost", "purchase"]
+            qty_kws = ["تعداد", "مقدار", "qty", "quantity"]
 
             self.combo_purchase.blockSignals(True)
             self.combo_purchase.clear()
 
+            found_purch = False
             for idx, c in enumerate(range(min_c, max_c + 1)):
                 c_let = col_index_to_letter(c)
                 hdr = str(sheet.get_value(f"{c_let}1") or "").strip()
@@ -327,7 +340,9 @@ class ProfitWizardDialog(QDialog):
                 self.combo_purchase.addItem(label, c_let)
 
                 hdr_l = hdr.lower()
-                if any(k in hdr_l for k in purchase_kws): best_purchase_idx = idx
+                if not found_purch and any(k in hdr_l for k in purchase_kws) and not any(k in hdr_l for k in qty_kws):
+                    best_purchase_idx = idx
+                    found_purch = True
 
             if self.combo_purchase.count() > 0:
                 self.combo_purchase.setCurrentIndex(best_purchase_idx)

@@ -701,35 +701,48 @@ class MathActionHandler:
         s_price_col = None
         s_prod_col = None
         s_date_col = None
+        s_disc_col = None
         s_explicit_profit_col = None
         s_explicit_cost_col = None
 
-        qty_keywords = ["تعداد", "مقدار", "تعداد فروش", "فروش", "qty", "quantity", "count"]
-        price_keywords = ["قیمت", "قیمت فروش", "مبلغ فروش", "فی فروش", "نرخ", "price", "unit price"]
-        prod_keywords = ["کالا", "محصول", "نام", "شرح", "کد", "item", "product", "name"]
-        date_keywords = ["تاریخ", "date", "زمان", "time", "روز"]
+        cust_keywords = ["مشتری", "خریدار", "طرف حساب", "customer", "client", "فروشنده", "نام مشتری"]
+        inv_keywords = ["شماره فاکتور", "شماره سند", "کد فاکتور", "فاکتور", "invoice", "doc"]
+        disc_keywords = ["تخفیف", "discount", "off"]
+        date_keywords = ["تاریخ", "date", "زمان", "time"]
+        qty_keywords = ["تعداد", "مقدار", "تعداد فروش", "qty", "quantity", "count"]
+        price_keywords = ["قیمت واحد", "فی فروش", "قیمت فروش", "مبلغ فروش", "بهای واحد", "قیمت", "فی", "بها", "نرخ", "price", "unit price"]
+        prod_keywords = ["شرح کالا", "نام کالا", "کالا", "محصول", "شرح", "نام", "item", "product"]
         profit_keywords = ["سود", "profit", "سود خالص", "درآمد خالص", "مارجین"]
-        cost_keywords = ["خرید", "هزینه", "بهای تمام شده", "قیمت تمام شده", "cost"]
+        cost_keywords = ["بهای تمام شده", "قیمت تمام شده", "خرید", "هزینه", "cost"]
 
         for c in range(s_min_c, s_max_c + 1):
             c_let = col_index_to_letter(c)
-            hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").lower()
-            if not s_prod_col and any(k in hdr for k in prod_keywords):
-                s_prod_col = c_let
-            elif not s_date_col and any(k in hdr for k in date_keywords):
+            hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").strip().lower()
+            if not hdr:
+                continue
+
+            if any(k in hdr for k in disc_keywords):
+                s_disc_col = c_let
+            elif not s_date_col and any(k in hdr for k in date_keywords) and not any(k in hdr for k in qty_keywords + inv_keywords + disc_keywords):
                 s_date_col = c_let
-            elif not s_qty_col and any(k in hdr for k in qty_keywords):
+            elif not s_prod_col and any(k in hdr for k in prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
+                s_prod_col = c_let
+            elif not s_qty_col and any(k in hdr for k in qty_keywords) and not any(k in hdr for k in price_keywords + date_keywords + disc_keywords):
                 s_qty_col = c_let
-            elif not s_price_col and any(k in hdr for k in price_keywords):
+            elif not s_price_col and any(k in hdr for k in price_keywords) and not any(k in hdr for k in qty_keywords + disc_keywords + date_keywords):
                 s_price_col = c_let
             elif not s_explicit_profit_col and any(k in hdr for k in profit_keywords):
                 s_explicit_profit_col = c_let
-            elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords):
+            elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords) and not any(k in hdr for k in cust_keywords):
                 s_explicit_cost_col = c_let
 
         if action.date_col:
             d_raw = str(action.date_col).strip().upper()
-            s_date_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+            d_cand = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+            # Verify if user-supplied date column is not accidentally quantity or price
+            d_hdr = str(s_sheet.get_value(f"{d_cand}{s_min_r}") or "").strip().lower()
+            if not any(k in d_hdr for k in qty_keywords + price_keywords):
+                s_date_col = d_cand
         if action.profit_col:
             p_raw = str(action.profit_col).strip().upper()
             s_explicit_profit_col = col_index_to_letter(int(p_raw)) if p_raw.isdigit() else p_raw
@@ -747,7 +760,8 @@ class MathActionHandler:
         if action.sales_col:
             sc_raw = str(action.sales_col).strip().upper()
             action.sales_col = col_index_to_letter(int(sc_raw)) if sc_raw.isdigit() else sc_raw
-            s_price_col = action.sales_col
+            if not s_price_col:
+                s_price_col = action.sales_col
 
         if action.purchase_col:
             pc_raw = str(action.purchase_col).strip().upper()
@@ -760,7 +774,8 @@ class MathActionHandler:
         if not s_prod_col:
             for c in range(s_min_c, s_max_c + 1):
                 c_let = col_index_to_letter(c)
-                if c_let not in [s_date_col, s_qty_col, s_price_col, s_explicit_cost_col, s_explicit_profit_col]:
+                hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").strip().lower()
+                if c_let not in [s_date_col, s_qty_col, s_price_col, s_explicit_cost_col, s_explicit_profit_col, s_disc_col] and not any(k in hdr for k in cust_keywords + inv_keywords):
                     s_prod_col = c_let
                     break
 
@@ -772,17 +787,19 @@ class MathActionHandler:
         p_price_col = None
         p_prod_col = None
 
-        p_qty_keywords = ["تعداد", "تعداد خرید", "مقدار", "qty", "quantity"]
-        p_price_keywords = ["قیمت", "قیمت خرید", "مبلغ خرید", "فی خرید", "هزینه", "خرید", "cost", "purchase price"]
+        p_qty_keywords = ["تعداد خرید", "تعداد", "مقدار", "qty", "quantity"]
+        p_price_keywords = ["بهای واحد خرید", "قیمت واحد خرید", "قیمت خرید", "بهای واحد", "فی خرید", "قیمت", "فی", "بها", "cost", "purchase price"]
 
         for c in range(p_min_c, p_max_c + 1):
             c_let = col_index_to_letter(c)
-            hdr = str(p_sheet.get_value(f"{c_let}{p_min_r}") or "").lower()
-            if not p_prod_col and any(k in hdr for k in prod_keywords):
+            hdr = str(p_sheet.get_value(f"{c_let}{p_min_r}") or "").strip().lower()
+            if not hdr:
+                continue
+            if not p_prod_col and any(k in hdr for k in prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
                 p_prod_col = c_let
-            elif not p_qty_col and any(k in hdr for k in p_qty_keywords):
+            elif not p_qty_col and any(k in hdr for k in p_qty_keywords) and not any(k in hdr for k in p_price_keywords):
                 p_qty_col = c_let
-            elif not p_price_col and any(k in hdr for k in p_price_keywords):
+            elif not p_price_col and any(k in hdr for k in p_price_keywords) and not any(k in hdr for k in p_qty_keywords):
                 p_price_col = c_let
 
         if action.purchase_qty_col:
@@ -800,8 +817,11 @@ class MathActionHandler:
         sales_records = []
         for r in range(s_min_r + 1, s_max_r + 1):
             prod = s_sheet.get_value(f"{s_prod_col}{r}")
-            qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}"))
-            price = clean_val(s_sheet.get_value(f"{s_price_col}{r}"))
+            qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}")) if s_qty_col else 1.0
+            price = clean_val(s_sheet.get_value(f"{s_price_col}{r}")) if s_price_col else 0.0
+
+            disc_val = clean_val(s_sheet.get_value(f"{s_disc_col}{r}")) if s_disc_col else 0.0
+            disc_pct = (disc_val / 100.0) if disc_val > 1.0 else (disc_val if disc_val >= 0.0 else 0.0)
 
             d_str = None
             if s_date_col:
@@ -813,16 +833,16 @@ class MathActionHandler:
                     m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', sd)
                     if m:
                         d_str = f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
-                    elif len(sd) >= 4:
+                    elif len(sd) >= 4 and ("/" in sd or "-" in sd):
                         d_str = sd
 
-            direct_sales = clean_val(s_sheet.get_value(f"{action.sales_col}{r}")) if action.sales_col else 0.0
+            direct_sales = clean_val(s_sheet.get_value(f"{action.sales_col}{r}")) if (action.sales_col and action.sales_col != s_price_col) else 0.0
             if direct_sales > 0:
-                tot_sales = direct_sales
+                tot_sales = direct_sales * (1.0 - disc_pct)
             elif qty > 0 and price > 0:
-                tot_sales = qty * price
+                tot_sales = (qty * price) * (1.0 - disc_pct)
             elif price > 0:
-                tot_sales = price
+                tot_sales = price * (1.0 - disc_pct)
             else:
                 tot_sales = 0.0
 
@@ -842,16 +862,20 @@ class MathActionHandler:
                     "date": d_str
                 })
 
+        # Collect purchase batches per product in order of arrival (supports multi-batch FIFO)
+        purchase_batches_by_prod = defaultdict(list)
         purchase_records = []
         if sales_sheet_name != purchase_sheet_name:
             for r in range(p_min_r + 1, p_max_r + 1):
                 prod = p_sheet.get_value(f"{p_prod_col}{r}")
                 qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
                 price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
-                if prod is not None or qty > 0 or price > 0:
+                if prod is not None and (qty > 0 or price > 0):
+                    p_name = str(prod).strip()
+                    purchase_batches_by_prod[p_name].append((qty, price))
                     purchase_records.append({
                         "row": r,
-                        "product": str(prod).strip() if prod is not None else f"ردیف {r}",
+                        "product": p_name,
                         "qty": qty,
                         "price": price,
                         "total_purchase": qty * price
@@ -862,6 +886,7 @@ class MathActionHandler:
 
         purchase_by_name = {pr["product"]: pr for pr in purchase_records}
         matched_items = []
+        consumed_stock_by_prod = defaultdict(float)
 
         if sales_sheet_name == purchase_sheet_name:
             # Single sheet profit calculation (e.g. Sales col - Cost col or explicit profit)
@@ -899,25 +924,46 @@ class MathActionHandler:
                 })
         elif has_named_products:
             for sr in sales_records:
-                pr = purchase_by_name.get(sr["product"])
+                prod = sr["product"]
                 s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
                 s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
 
-                p_total_bought = pr["qty"] if pr else 0.0
-                p_unit_price = pr["price"] if pr else 0.0
-                if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
-                    p_unit_price = pr["total_purchase"] / p_total_bought
+                batches = purchase_batches_by_prod.get(prod, [])
+                if batches:
+                    prior_consumed = consumed_stock_by_prod[prod]
+                    consumed_stock_by_prod[prod] += s_qty
 
-                # CRITICAL: Cost of Goods Sold (COGS) = sold quantity * unit purchase price!
-                # E.g. 4 pens sold * 10,000 purchase price = 40,000 COGS (NOT 30 pens * 10,000 = 300,000!)
-                cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
+                    # Allocate COGS in FIFO order across batches
+                    cogs = 0.0
+                    accum_b = 0.0
+                    sale_start = prior_consumed
+                    sale_end = prior_consumed + s_qty
+
+                    for b_qty, b_price in batches:
+                        b_start = accum_b
+                        b_end = accum_b + b_qty
+                        accum_b += b_qty
+
+                        overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                        if overlap > 0:
+                            cogs += overlap * b_price
+
+                    p_total_bought = sum(b[0] for b in batches)
+                    p_unit_price = (cogs / s_qty) if s_qty > 0 else 0.0
+                else:
+                    pr = purchase_by_name.get(prod)
+                    p_total_bought = pr["qty"] if pr else 0.0
+                    p_unit_price = pr["price"] if pr else 0.0
+                    if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
+                        p_unit_price = pr["total_purchase"] / p_total_bought
+                    cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
+
                 profit = sr["total_sales"] - cogs
                 margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
-                remaining_stock = max(0.0, p_total_bought - s_qty) if p_total_bought > 0 else 0.0
-                stock_value = remaining_stock * p_unit_price
+                remaining_stock = max(0.0, p_total_bought - consumed_stock_by_prod[prod]) if p_total_bought > 0 else 0.0
 
                 matched_items.append({
-                    "product": sr["product"],
+                    "product": prod,
                     "s_qty": s_qty,
                     "s_price": s_price,
                     "s_total": sr["total_sales"],
@@ -927,7 +973,7 @@ class MathActionHandler:
                     "profit": profit,
                     "margin": margin,
                     "remaining_stock": remaining_stock,
-                    "stock_value": stock_value,
+                    "stock_value": 0.0,
                     "date": sr["date"]
                 })
         else:
@@ -1045,8 +1091,26 @@ class MathActionHandler:
                 ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای بهای خرید اقلام فروش‌رفته"),
                 ("📈 میانگین حاشیه سود", f"{overall_margin:.1f}%", "درصد سود از کل فروش"),
             ]
-            tot_rem_stock = sum(it.get("remaining_stock", 0) for it in matched_items)
-            tot_stock_val = sum(it.get("stock_value", 0) for it in matched_items)
+            # Calculate true unique remaining stock and inventory valuation across products
+            product_remaining = {}
+            for it in matched_items:
+                product_remaining[it["product"]] = it.get("remaining_stock", 0.0)
+
+            tot_rem_stock = sum(product_remaining.values())
+
+            product_stock_val = {}
+            if purchase_batches_by_prod:
+                for p, rem_q in product_remaining.items():
+                    batches = purchase_batches_by_prod.get(p, [])
+                    to_val = rem_q
+                    val = 0.0
+                    for b_q, b_p in reversed(batches):
+                        take = min(to_val, b_q)
+                        val += take * b_p
+                        to_val -= take
+                    product_stock_val[p] = val
+            tot_stock_val = sum(product_stock_val.values())
+
             if tot_rem_stock > 0:
                 kpis.append(("📦 ارزش موجودی باقیمانده انبار", f"{tot_stock_val:,.0f} تومان", f"{tot_rem_stock:,.0f} عدد کالا در انبار"))
 
