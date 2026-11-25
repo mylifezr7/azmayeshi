@@ -66,22 +66,23 @@ set PYTHONPATH=%~dp0;%PYTHONPATH%
 %PYTHON_CMD% -m excel_assistant.main --gui %*
 set RUN_ERR=%ERRORLEVEL%
 
-if %RUN_ERR% NEQ 0 (
-    echo.
-    echo ========================================================
-    echo ⚠️ برنامه گرافیکی با خطا مواجه شد (کد خروج: %RUN_ERR%).
-    echo در صورت بروز خطای عدم وجود کتابخانه‌ها، دستور زیر را اجرا کنید:
-    echo     %PYTHON_CMD% -m pip install -r requirements.txt
-    echo.
-    echo آیا مایلید برنامه در مرورگر وب (Web UI) اجرا شود؟ (Y/N)
-    set /p CHOICE="انتخاب شما: "
-    if /i "%CHOICE%"=="Y" (
-        echo در حال باز کردن نسخه وب...
-        echo آدرس در مرورگر: http://localhost:8080
-        start http://localhost:8080
-        %PYTHON_CMD% -m excel_assistant.main --web --port 8080
-    )
+if %RUN_ERR% EQU 0 goto :DONE
+
+echo.
+echo ========================================================
+echo ⚠️ برنامه گرافیکی متوقف شد (کد خروج: %RUN_ERR%).
+echo در صورت بروز خطای عدم وجود کتابخانه‌ها، دستور زیر را اجرا کنید:
+echo     %PYTHON_CMD% -m pip install -r requirements.txt
+echo.
+set CHOICE=
+set /p CHOICE="آیا مایلید برنامه در مرورگر وب (Web UI) اجرا شود؟ (Y/N): "
+if /i "%CHOICE%"=="Y" (
+    echo در حال باز کردن نسخه وب...
+    echo آدرس در مرورگر: http://localhost:8080
+    start http://localhost:8080
+    %PYTHON_CMD% -m excel_assistant.main --web --port 8080
 )
 
+:DONE
 echo.
 pause
