@@ -1118,7 +1118,7 @@ class MathActionHandler:
             for idx, h in enumerate(headers_kpi):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
             curr_r += 1
 
@@ -1186,6 +1186,7 @@ class MathActionHandler:
                 report_sheet.set_font(f"B{curr_r}", bold=True)
                 if "سود خالص" in title:
                     report_sheet.set_cell_color(f"B{curr_r}", "#064E3B" if total_profit_all >= 0 else "#7F1D1D")
+                    report_sheet.set_font(f"B{curr_r}", bold=True, color_hex="#FFFFFF")
                 curr_r += 1
             curr_r += 2
 
@@ -1199,7 +1200,7 @@ class MathActionHandler:
                 for idx, h in enumerate(d_headers):
                     col_c = col_index_to_letter(idx + 1)
                     report_sheet.set_value(f"{col_c}{curr_r}", h)
-                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
                 curr_r += 1
 
@@ -1214,7 +1215,7 @@ class MathActionHandler:
                     report_sheet.set_formula(f"F{r_num}", f"=D{r_num}-E{r_num}")
                     report_sheet.set_formula(f"G{r_num}", f'=IF(D{r_num}>0, (F{r_num}/D{r_num})*100, 0)')
 
-                    report_sheet.set_font(f"F{r_num}", bold=True)
+                    report_sheet.set_font(f"F{r_num}", bold=True, color_hex="#FFFFFF")
                     if d_data["profit"] >= 0:
                         report_sheet.set_cell_color(f"F{r_num}", "#064E3B")
                     else:
@@ -1223,7 +1224,7 @@ class MathActionHandler:
 
                 last_d_r = curr_r
                 report_sheet.set_value(f"A{last_d_r}", "جمع کل روزانه")
-                report_sheet.set_font(f"A{last_d_r}", bold=True)
+                report_sheet.set_font(f"A{last_d_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_formula(f"C{last_d_r}", f"=SUM(C{start_d_r}:C{last_d_r-1})")
                 report_sheet.set_formula(f"D{last_d_r}", f"=SUM(D{start_d_r}:D{last_d_r-1})")
                 report_sheet.set_formula(f"E{last_d_r}", f"=SUM(E{start_d_r}:E{last_d_r-1})")
@@ -1231,8 +1232,14 @@ class MathActionHandler:
                 report_sheet.set_formula(f"G{last_d_r}", f'=IF(D{last_d_r}>0, (F{last_d_r}/D{last_d_r})*100, 0)')
                 for c_idx in range(1, 8):
                     col_c = col_index_to_letter(c_idx)
-                    report_sheet.set_font(f"{col_c}{last_d_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{last_d_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{last_d_r}", "#0B1938")
+
+                try:
+                    report_sheet.set_number_format(f"D{start_d_r}:F{last_d_r}", "#,##0")
+                    report_sheet.set_number_format(f"G{start_d_r}:G{last_d_r}", "0.0")
+                except Exception:
+                    pass
                 curr_r += 2
 
             # Section 3: Monthly Profit Breakdown (if dates exist and requested)
@@ -1245,7 +1252,7 @@ class MathActionHandler:
                 for idx, h in enumerate(m_headers):
                     col_c = col_index_to_letter(idx + 1)
                     report_sheet.set_value(f"{col_c}{curr_r}", h)
-                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{curr_r}", "#7C2D12")
                 curr_r += 1
 
@@ -1260,7 +1267,7 @@ class MathActionHandler:
                     report_sheet.set_formula(f"F{r_num}", f"=D{r_num}-E{r_num}")
                     report_sheet.set_formula(f"G{r_num}", f'=IF(D{r_num}>0, (F{r_num}/D{r_num})*100, 0)')
 
-                    report_sheet.set_font(f"F{r_num}", bold=True)
+                    report_sheet.set_font(f"F{r_num}", bold=True, color_hex="#FFFFFF")
                     if m_data["profit"] >= 0:
                         report_sheet.set_cell_color(f"F{r_num}", "#064E3B")
                     else:
@@ -1269,7 +1276,7 @@ class MathActionHandler:
 
                 last_m_r = curr_r
                 report_sheet.set_value(f"A{last_m_r}", "جمع کل ماهانه")
-                report_sheet.set_font(f"A{last_m_r}", bold=True)
+                report_sheet.set_font(f"A{last_m_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_formula(f"C{last_m_r}", f"=SUM(C{start_m_r}:C{last_m_r-1})")
                 report_sheet.set_formula(f"D{last_m_r}", f"=SUM(D{start_m_r}:D{last_m_r-1})")
                 report_sheet.set_formula(f"E{last_m_r}", f"=SUM(E{start_m_r}:E{last_m_r-1})")
@@ -1277,8 +1284,14 @@ class MathActionHandler:
                 report_sheet.set_formula(f"G{last_m_r}", f'=IF(D{last_m_r}>0, (F{last_m_r}/D{last_m_r})*100, 0)')
                 for c_idx in range(1, 8):
                     col_c = col_index_to_letter(c_idx)
-                    report_sheet.set_font(f"{col_c}{last_m_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{last_m_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{last_m_r}", "#0B1938")
+
+                try:
+                    report_sheet.set_number_format(f"D{start_m_r}:F{last_m_r}", "#,##0")
+                    report_sheet.set_number_format(f"G{start_m_r}:G{last_m_r}", "0.0")
+                except Exception:
+                    pass
                 curr_r += 2
 
             # Section 4: Detailed Profit Table by Item
@@ -1303,7 +1316,7 @@ class MathActionHandler:
             for idx, h in enumerate(table_headers):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#047857")
             curr_r += 1
 
@@ -1323,7 +1336,7 @@ class MathActionHandler:
                 report_sheet.set_formula(f"K{r_num}", f'=IF(J{r_num}>C{r_num}, J{r_num}-C{r_num}, 0)')
                 report_sheet.set_formula(f"L{r_num}", f'=K{r_num}*F{r_num}')
 
-                report_sheet.set_font(f"H{r_num}", bold=True)
+                report_sheet.set_font(f"H{r_num}", bold=True, color_hex="#FFFFFF")
                 if it["profit"] >= 0:
                     report_sheet.set_cell_color(f"H{r_num}", "#064E3B")
                 else:
@@ -1334,7 +1347,7 @@ class MathActionHandler:
             # Total Summary Row at bottom
             last_r = curr_r
             report_sheet.set_value(f"A{last_r}", "جمع کل")
-            report_sheet.set_font(f"A{last_r}", bold=True)
+            report_sheet.set_font(f"A{last_r}", bold=True, color_hex="#FFFFFF")
             report_sheet.set_formula(f"C{last_r}", f"=SUM(C{start_table_r}:C{last_r-1})")
             report_sheet.set_formula(f"E{last_r}", f"=SUM(E{start_table_r}:E{last_r-1})")
             report_sheet.set_formula(f"G{last_r}", f"=SUM(G{start_table_r}:G{last_r-1})")
@@ -1346,8 +1359,15 @@ class MathActionHandler:
 
             for c_idx in range(1, 13):
                 col_c = col_index_to_letter(c_idx)
-                report_sheet.set_font(f"{col_c}{last_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{last_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{last_r}", "#0B1938")
+
+            try:
+                report_sheet.set_number_format(f"D{start_table_r}:H{last_r}", "#,##0")
+                report_sheet.set_number_format(f"I{start_table_r}:I{last_r}", "0.0")
+                report_sheet.set_number_format(f"L{start_table_r}:L{last_r}", "#,##0")
+            except Exception:
+                pass
 
             report_sheet.auto_fit_columns()
             ctx.manager.activate_sheet(report_sheet_name)
