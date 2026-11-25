@@ -370,6 +370,10 @@ class MathActionHandler:
         # 1. Determine Amount & Date Columns
         date_col = None
         amount_col = None
+        qty_col = None
+        price_col = None
+        disc_col = None
+        computed_desc = None
 
         if action.date_col:
             d_raw = str(action.date_col).strip().upper()
@@ -380,11 +384,35 @@ class MathActionHandler:
 
         # Auto-detect if missing
         if not date_col or not amount_col:
+            explicit_total_col = None
+            total_kws = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش", "فروش کل", "مبلغ نهایی", "کل مبلغ", "total amount", "total sales"]
+            qty_kws = ["تعداد", "مقدار", "حجم", "qty", "quantity"]
+            price_kws = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
+            disc_kws = ["تخفیف", "درصد تخفیف", "discount"]
+
+            for c_idx in range(min_c, max_c + 1):
+                c_let = col_index_to_letter(c_idx)
+                hdr = str(sheet.get_value(f"{c_let}{min_r}") or "").lower()
+                if not explicit_total_col and any(k in hdr for k in total_kws):
+                    explicit_total_col = c_let
+                if not qty_col and any(k in hdr for k in qty_kws):
+                    qty_col = c_let
+                if not price_col and any(k in hdr for k in price_kws):
+                    price_col = c_let
+                if not disc_col and any(k in hdr for k in disc_kws):
+                    disc_col = c_let
+
+            if not action.amount_col:
+                if explicit_total_col:
+                    amount_col = explicit_total_col
+                elif qty_col and price_col:
+                    computed_desc = f"تعداد ({qty_col}) × قیمت واحد ({price_col}){' - تخفیف (' + disc_col + ')' if disc_col else ''}"
+
             col_scores_date = {}
             col_scores_amount = {}
 
             date_keywords = ["تاریخ", "date", "روز", "زمان", "time", "day", "month", "سال"]
-            amount_keywords = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع", "fee"]
+            amount_keywords = ["مبلغ", "فروش", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع", "fee"]
 
             for c_idx in range(min_c, max_c + 1):
                 c_let = col_index_to_letter(c_idx)
@@ -415,7 +443,7 @@ class MathActionHandler:
                 best_date = max(col_scores_date, key=col_scores_date.get) if col_scores_date else "A"
                 date_col = best_date if col_scores_date.get(best_date, 0) > 0 else "A"
 
-            if not amount_col:
+            if not amount_col and not computed_desc:
                 sorted_amounts = sorted(col_scores_amount.items(), key=lambda x: x[1], reverse=True)
                 for c_let, sc in sorted_amounts:
                     if c_let != date_col:
@@ -426,7 +454,32 @@ class MathActionHandler:
 
         # 2. Extract Data
         date_vals = sheet.get_column_values(date_col, include_header=False)
-        amount_vals = sheet.get_column_values(amount_col, include_header=False)
+        if computed_desc and qty_col and price_col:
+            qty_vals = sheet.get_column_values(qty_col, include_header=False)
+            price_vals = sheet.get_column_values(price_col, include_header=False)
+            disc_vals = sheet.get_column_values(disc_col, include_header=False) if disc_col else [0] * len(qty_vals)
+            amount_vals = []
+            for q_raw, p_raw, d_raw in zip(qty_vals, price_vals, disc_vals):
+                q = 0.0
+                p = 0.0
+                d = 0.0
+                try:
+                    q = float(str(q_raw or 0).replace(',', '').strip())
+                except ValueError:
+                    q = 0.0
+                try:
+                    p = float(str(p_raw or 0).replace(',', '').strip())
+                except ValueError:
+                    p = 0.0
+                try:
+                    d = float(str(d_raw or 0).replace('%', '').replace(',', '').strip())
+                    if d > 1.0:
+                        d = d / 100.0
+                except ValueError:
+                    d = 0.0
+                amount_vals.append(q * p * (1.0 - d))
+        else:
+            amount_vals = sheet.get_column_values(amount_col, include_header=False)
 
         records = []
         for d_raw, a_raw in zip(date_vals, amount_vals):
@@ -520,12 +573,13 @@ class MathActionHandler:
             for idx, h in enumerate(headers_s1):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
             curr_r += 1
 
+            kpi_basis = f"بر اساس {computed_desc}" if computed_desc else f"بر اساس ستون {amount_col}"
             kpis = [
-                ("💰 جمع کل فروش", f"{total_sales:,.0f} تومان", f"بر اساس ستون {amount_col}"),
+                ("💰 جمع کل فروش", f"{total_sales:,.0f} تومان", kpi_basis),
                 ("🔢 تعداد کل فاکتورها / تراکنش‌ها", f"{total_count:,}", "تعداد ردیف‌های ثبت شده"),
                 ("📈 میانگین ارزش هر فاکتور", f"{avg_sale:,.0f} تومان", "فروش کل تقسیم بر تعداد"),
                 ("🏆 بالاترین مبلغ ثبت‌شده در یک فاکتور", f"{max_sale:,.0f} تومان", "حداکثر مبلغ فروش"),
@@ -549,10 +603,11 @@ class MathActionHandler:
             for idx, h in enumerate(headers_yr):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0F766E")
             curr_r += 1
 
+            start_yr_r = curr_r
             for yr, data in sorted_yearly:
                 share_pct = (data["sum"] / total_sales * 100) if total_sales > 0 else 0
                 report_sheet.set_value(f"A{curr_r}", str(yr))
@@ -560,6 +615,10 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{curr_r}", data["count"])
                 report_sheet.set_value(f"D{curr_r}", f"{share_pct:.1f}%")
                 curr_r += 1
+            try:
+                report_sheet.set_number_format(f"B{start_yr_r}:B{curr_r-1}", "#,##0")
+            except Exception:
+                pass
             curr_r += 2
 
             # Section 3: Monthly Sales Table
@@ -571,10 +630,11 @@ class MathActionHandler:
             for idx, h in enumerate(headers_mo):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E40AF")
             curr_r += 1
 
+            start_mo_r = curr_r
             for mo, data in sorted_monthly:
                 mo_avg = data["sum"] / data["count"] if data["count"] > 0 else 0
                 report_sheet.set_value(f"A{curr_r}", str(mo))
@@ -582,6 +642,11 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{curr_r}", data["count"])
                 report_sheet.set_value(f"D{curr_r}", f"{mo_avg:,.0f}")
                 curr_r += 1
+            try:
+                report_sheet.set_number_format(f"B{start_mo_r}:B{curr_r-1}", "#,##0")
+                report_sheet.set_number_format(f"D{start_mo_r}:D{curr_r-1}", "#,##0")
+            except Exception:
+                pass
             curr_r += 2
 
             # Section 4: Daily Sales Table
@@ -593,10 +658,11 @@ class MathActionHandler:
             for idx, h in enumerate(headers_dy):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0369A1")
             curr_r += 1
 
+            start_dy_r = curr_r
             for dy, data in sorted_daily:
                 dy_avg = data["sum"] / data["count"] if data["count"] > 0 else 0
                 report_sheet.set_value(f"A{curr_r}", str(dy))
@@ -604,6 +670,11 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{curr_r}", data["count"])
                 report_sheet.set_value(f"D{curr_r}", f"{dy_avg:,.0f}")
                 curr_r += 1
+            try:
+                report_sheet.set_number_format(f"B{start_dy_r}:B{curr_r-1}", "#,##0")
+                report_sheet.set_number_format(f"D{start_dy_r}:D{curr_r-1}", "#,##0")
+            except Exception:
+                pass
 
             report_sheet.auto_fit_columns()
             ctx.manager.activate_sheet(report_sheet_name)
