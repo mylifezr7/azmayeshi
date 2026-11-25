@@ -679,3 +679,9 @@ class MainWindow(QMainWindow):
     def _on_cancel_destructive_action(self):
         self.pending_destructive_action = None
         self.chat_widget.add_assistant_message("عملیات به درخواست شما لغو شد.")
+
+
+if __name__ == "__main__":
+    from excel_assistant.ui.app import run_gui
+    sys.exit(run_gui())
+

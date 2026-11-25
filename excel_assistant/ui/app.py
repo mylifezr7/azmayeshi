@@ -22,3 +22,8 @@ def run_gui(workbook_path: Optional[str] = None):
     window = MainWindow(manager=manager)
     window.show()
     return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(run_gui())
+
