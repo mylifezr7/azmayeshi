@@ -64,11 +64,16 @@ class MainWindow(QMainWindow):
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setWindowTitle("Excel AI Assistant - MUYUM")
+        self.setWindowTitle("MUYUM | دستیار هوشمند مالی و حسابداری مایکروسافت اکسل")
         self.resize(1050, 720)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(QSS_STYLE)
         self.setAcceptDrops(True)
+
+        app = QApplication.instance()
+        if app:
+            from excel_assistant.ui.app import setup_application_font
+            setup_application_font(app)
 
         # Core components
         self.manager = manager or ExcelConnectionManager()

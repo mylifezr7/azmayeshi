@@ -23,6 +23,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <title>Excel AI Assistant - MUYUM</title>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&family=Sahel:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('/resources/Vazirmatn-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('/resources/Vazirmatn-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+
         :root {
             --bg-deep: #020617;
             --bg-card: #081026;
@@ -1606,6 +1619,22 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "public, max-age=86400")
                 self.end_headers()
                 with open(bg_path, "rb") as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_response(404)
+                self.end_headers()
+                return
+
+        if path.startswith("/resources/") and path.endswith(".ttf"):
+            font_filename = os.path.basename(path)
+            font_file_path = os.path.join(os.path.dirname(__file__), "resources", font_filename)
+            if os.path.exists(font_file_path):
+                self.send_response(200)
+                self.send_header("Content-Type", "font/ttf")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                with open(font_file_path, "rb") as f:
                     self.wfile.write(f.read())
                 return
             else:
