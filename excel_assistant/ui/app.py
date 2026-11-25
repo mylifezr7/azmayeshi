@@ -37,13 +37,8 @@ def setup_application_font(app):
                     if families and not loaded_family:
                         loaded_family = families[0]
 
-        app_font = QFont()
-        families = []
-        if loaded_family:
-            families.append(loaded_family)
-        families.extend(["Vazirmatn", "B Nazanin", "Sahel", "IRANSans", "Tahoma", "Segoe UI"])
-        app_font.setFamilies(families)
-        app_font.setPointSize(10)
+        app_font = QFont(loaded_family or "Vazirmatn", 10)
+        app_font.setStyleHint(QFont.SansSerif)
         app.setFont(app_font)
     except Exception as e:
         print(f"Font initialization note: {e}")

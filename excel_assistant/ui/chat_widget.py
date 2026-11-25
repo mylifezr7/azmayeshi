@@ -101,7 +101,7 @@ def highlight_accounting_terms(text: str) -> str:
     def _repl(m):
         kw = m.group(1)
         bg, fg, border = ACCOUNTING_KEYWORDS_MAP[kw]
-        return f'<span style="background-color: {bg}; color: {fg}; border: 1px solid {border}; padding: 1px 6px; border-radius: 4px; font-weight: bold; font-family: \'B Nazanin\', \'Sahel\', \'Vazirmatn\', sans-serif;">{kw}</span>'
+        return f'<span style="background-color: {bg}; color: {fg}; border: 1px solid {border}; padding: 1px 6px; border-radius: 4px; font-weight: bold; font-family: \'Vazirmatn\', sans-serif;">{kw}</span>'
     return _ACC_PATTERN.sub(_repl, text)
 
 
@@ -127,7 +127,7 @@ def format_markdown_to_rich_text(text: str) -> str:
 
     # Convert newlines to <br>
     escaped = escaped.replace('\n', '<br>')
-    return f"<div style='line-height: 1.7; font-family: \"B Nazanin\", \"Sahel\", \"Vazirmatn\", \"Tahoma\", serif; font-size: 13px; color: #FFFFFF;'>{escaped}</div>"
+    return f"<div style='line-height: 1.7; font-family: \"Vazirmatn\", sans-serif; font-size: 13px; color: #FFFFFF;'>{escaped}</div>"
 
 
 class MessageBubble(QFrame):
