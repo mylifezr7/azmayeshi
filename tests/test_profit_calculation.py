@@ -245,3 +245,88 @@ def test_execute_profit_calculation_cogs_and_inventory_accounting():
 
     manager.close()
 
+
+def test_execute_profit_calculation_with_discount_and_net_columns():
+    """
+    Test user's exact reported bug where sales sheet has columns:
+    [نام کالا, تعداد, قیمت, مبلغ, تخفیف, قیمت بعد از تخفیف, تاریخ]
+    and purchase sheet has:
+    [نام کالا, قیمت, تعداد, ضرب B و C, تاریخ, تعداد فروش (فروش), مانده موجودی انبار, ...]
+    Ensures 'قیمت بعد از تخفیف' is not falsely parsed as a discount percentage,
+    avoiding negative trillions in daily/monthly tables and KPI summary cards.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # Sheet 1: Sales
+    ws_sales = manager.get_active_sheet()
+    sales_rows = [
+        ["نام کالا", "تعداد", "قیمت", "مبلغ", "تخفیف", "قیمت بعد از تخفیف", "تاریخ"],
+        ["ماست", 3, 23000, 69000, 0.20, 55200, "1405/09/01"],
+        ["خودکار", 6, 14000, 84000, 0.03, 81480, "1405/09/01"],
+        ["بستنی", 3, 50000, 150000, 0.08, 138000, "1405/09/02"],
+    ]
+    for r_idx, row in enumerate(sales_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    # Sheet 2: Purchases
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    purch_rows = [
+        ["نام کالا", "قیمت", "تعداد", "ضرب B و C", "تاریخ", "تعداد فروش (فروش)", "مانده موجودی انبار", "وضعیت موجودی انبار", "ارزش ریالی موجودی"],
+        ["ماست", 18000, 10, 180000, "1405/08/25", 0, 10, "موجود", 180000],
+        ["خودکار", 10000, 20, 200000, "1405/08/25", 0, 20, "موجود", 200000],
+        ["بستنی", 35000, 15, 525000, "1405/08/25", 0, 15, "موجود", 525000],
+    ]
+    for r_idx, row in enumerate(purch_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Sales: 3*23000 + 6*14000 + 3*50000 = 69,000 + 84,000 + 150,000 = 303,000
+    assert res.data["total_sales"] == 303000.0
+    # COGS: 3*18000 + 6*10000 + 3*35000 = 54,000 + 60,000 + 105,000 = 219,000
+    assert res.data["total_purchase"] == 219000.0
+    # Profit: 303,000 - 219,000 = +84,000
+    assert res.data["total_profit"] == 84000.0
+    assert res.data["total_sales"] > 0
+    assert res.data["total_profit"] > 0
+
+    # Verify report sheet consistency
+    report_sheet = manager.active_driver.get_sheet("گزارش_سود")
+    # KPI Cards check
+    kpi_sales = report_sheet.get_value("B5")
+    assert "303,000" in str(kpi_sales)
+    kpi_cogs = report_sheet.get_value("B6")
+    assert "219,000" in str(kpi_cogs)
+    kpi_profit = report_sheet.get_value("B7")
+    assert "84,000" in str(kpi_profit)
+
+    # Daily aggregation checks
+    # Row 18: Day 1 (ماست + خودکار = 69000 + 84000 = 153000)
+    day1_sales = report_sheet.get_value("D18")
+    assert day1_sales == 153000.0
+    day1_cogs = report_sheet.get_value("E18")
+    assert day1_cogs == 114000.0  # 54000 + 60000
+
+    # Row 19: Day 2 (بستنی = 150000)
+    day2_sales = report_sheet.get_value("D19")
+    assert day2_sales == 150000.0
+    day2_cogs = report_sheet.get_value("E19")
+    assert day2_cogs == 105000.0
+
+    manager.close()
+
+

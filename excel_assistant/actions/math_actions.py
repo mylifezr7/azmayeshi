@@ -381,10 +381,11 @@ class MathActionHandler:
 
         # Scan sheet headers for structural detection
         explicit_total_col = None
-        total_kws = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش", "فروش کل", "مبلغ نهایی", "کل مبلغ", "total amount", "total sales"]
+        total_kws = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش", "فروش کل", "مبلغ نهایی", "کل مبلغ", "قیمت بعد از تخفیف", "مبلغ بعد از تخفیف", "مبلغ خالص", "total amount", "total sales"]
         qty_kws = ["تعداد", "مقدار", "حجم", "qty", "quantity"]
         price_kws = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
-        disc_kws = ["تخفیف", "درصد تخفیف", "discount"]
+        disc_kws = ["درصد تخفیف", "تخفیف درصد", "تخفیف", "discount"]
+        disc_exclude_kws = ["بعد از تخفیف", "پس از تخفیف", "با تخفیف", "بعد تخفیف", "قیمت بعد", "مبلغ بعد", "خالص پس از تخفیف"]
 
         for c_idx in range(min_c, max_c + 1):
             c_let = col_index_to_letter(c_idx)
@@ -395,7 +396,7 @@ class MathActionHandler:
                 qty_col = c_let
             if not price_col and any(k in hdr for k in price_kws):
                 price_col = c_let
-            if not disc_col and any(k in hdr for k in disc_kws):
+            if not disc_col and any(k in hdr for k in disc_kws) and not any(k in hdr for k in disc_exclude_kws):
                 disc_col = c_let
 
         if action.amount_col:
@@ -486,7 +487,8 @@ class MathActionHandler:
                         d = d / 100.0
                 except ValueError:
                     d = 0.0
-                amount_vals.append(q * p * (1.0 - d))
+                d = max(0.0, min(1.0, d))
+                amount_vals.append(max(0.0, q * p * (1.0 - d)))
         else:
             amount_vals = sheet.get_column_values(amount_col, include_header=False)
 
@@ -811,37 +813,77 @@ class MathActionHandler:
         s_disc_col = None
         s_explicit_profit_col = None
         s_explicit_cost_col = None
+        s_total_col = None
 
         cust_keywords = ["مشتری", "خریدار", "طرف حساب", "customer", "client", "فروشنده", "نام مشتری"]
         inv_keywords = ["شماره فاکتور", "شماره سند", "کد فاکتور", "فاکتور", "invoice", "doc"]
-        disc_keywords = ["تخفیف", "discount", "off"]
+        disc_keywords = ["درصد تخفیف", "تخفیف درصد", "تخفیف", "discount", "off"]
+        disc_exclude_keywords = [
+            "بعد از تخفیف", "پس از تخفیف", "با تخفیف", "بعد تخفیف",
+            "قیمت بعد", "مبلغ بعد", "خالص پس از تخفیف", "قیمت با تخفیف", "مبلغ با تخفیف"
+        ]
         date_keywords = ["تاریخ", "date", "زمان", "time"]
-        qty_keywords = ["تعداد", "مقدار", "تعداد فروش", "qty", "quantity", "count"]
+        qty_keywords = ["تعداد فروش", "تعداد", "مقدار", "حجم", "qty", "quantity", "count"]
+        qty_exclude_keywords = ["خرید", "مانده", "موجودی", "قیمت", "مبلغ"]
         price_keywords = ["قیمت واحد", "فی فروش", "قیمت فروش", "مبلغ فروش", "بهای واحد", "قیمت", "فی", "بها", "نرخ", "price", "unit price"]
+        price_exclude_keywords = ["خرید", "تمام شده", "بعد از تخفیف", "پس از تخفیف", "با تخفیف", "تخفیف"]
         prod_keywords = ["شرح کالا", "نام کالا", "کالا", "محصول", "شرح", "نام", "item", "product"]
-        profit_keywords = ["سود", "profit", "سود خالص", "درآمد خالص", "مارجین"]
+        profit_keywords = ["سود خالص", "سود", "profit", "درآمد خالص", "مارجین"]
         cost_keywords = ["بهای تمام شده", "قیمت تمام شده", "خرید", "هزینه", "cost"]
+        total_sales_keywords = [
+            "مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش",
+            "فروش کل", "مبلغ نهایی", "کل مبلغ", "مبلغ", "total amount", "total sales"
+        ]
 
+        all_s_hdrs = {}
         for c in range(s_min_c, s_max_c + 1):
             c_let = col_index_to_letter(c)
             hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").strip().lower()
             if not hdr:
                 continue
+            all_s_hdrs[c_let] = hdr
 
-            if any(k in hdr for k in disc_keywords):
+            # 1. Discount column: MUST NOT be a "price after discount" or "amount after discount"
+            if not s_disc_col and any(k in hdr for k in disc_keywords) and not any(k in hdr for k in disc_exclude_keywords):
                 s_disc_col = c_let
+            # 2. Date column
             elif not s_date_col and any(k in hdr for k in date_keywords) and not any(k in hdr for k in qty_keywords + inv_keywords + disc_keywords):
                 s_date_col = c_let
+            # 3. Product column
             elif not s_prod_col and any(k in hdr for k in prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
                 s_prod_col = c_let
-            elif not s_qty_col and any(k in hdr for k in qty_keywords) and not any(k in hdr for k in price_keywords + date_keywords + disc_keywords):
+            # 4. Quantity column
+            elif not s_qty_col and any(k in hdr for k in qty_keywords) and not any(k in hdr for k in qty_exclude_keywords + price_keywords + date_keywords + disc_keywords):
                 s_qty_col = c_let
-            elif not s_price_col and any(k in hdr for k in price_keywords) and not any(k in hdr for k in qty_keywords + disc_keywords + date_keywords):
+            # 5. Price column
+            elif not s_price_col and any(k in hdr for k in price_keywords) and not any(k in hdr for k in price_exclude_keywords + qty_keywords + disc_keywords + date_keywords):
                 s_price_col = c_let
+            # 6. Total sales column
+            elif not s_total_col and any(k in hdr for k in total_sales_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + disc_keywords):
+                s_total_col = c_let
+            # 7. Explicit profit column
             elif not s_explicit_profit_col and any(k in hdr for k in profit_keywords):
                 s_explicit_profit_col = c_let
+            # 8. Explicit cost column
             elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords) and not any(k in hdr for k in cust_keywords):
                 s_explicit_cost_col = c_let
+
+        # Determine whether discount should be subtracted from sales
+        apply_invoice_discount = False
+        if s_disc_col:
+            disc_hdr = all_s_hdrs.get(s_disc_col, "")
+            has_explicit_total = any(any(k in h for k in ["مبلغ کل", "جمع کل", "مبلغ فاکتور", "مبلغ فروش"]) or (h == "مبلغ") for h in all_s_hdrs.values())
+            has_explicit_net = any(any(k in h for k in ["بعد از تخفیف", "پس از تخفیف", "مبلغ خالص", "قیمت بعد"]) for h in all_s_hdrs.values())
+
+            if has_explicit_total and has_explicit_net:
+                # E.g. image-24.png with 'قیمت', 'مبلغ', 'تخفیف', 'قیمت بعد از تخفیف':
+                # The user's sales total is 'مبلغ' (91,078,000) and unit price is 'قیمت' (23,000).
+                apply_invoice_discount = False
+            elif any(k in disc_hdr for k in ["درصد", "%", "percent"]):
+                # E.g. test_roadmap with 'تخفیف درصد':
+                apply_invoice_discount = True
+            elif not has_explicit_total and not has_explicit_net:
+                apply_invoice_discount = True
 
         if action.date_col:
             d_raw = str(action.date_col).strip().upper()
@@ -895,7 +937,9 @@ class MathActionHandler:
         p_prod_col = None
 
         p_qty_keywords = ["تعداد خرید", "تعداد", "مقدار", "qty", "quantity"]
+        p_qty_exclude = ["فروش", "مانده", "موجودی"]
         p_price_keywords = ["بهای واحد خرید", "قیمت واحد خرید", "قیمت خرید", "بهای واحد", "فی خرید", "قیمت", "فی", "بها", "cost", "purchase price"]
+        p_price_exclude = ["فروش", "ارزش", "موجودی", "مانده", "ضرب"]
 
         for c in range(p_min_c, p_max_c + 1):
             c_let = col_index_to_letter(c)
@@ -904,9 +948,9 @@ class MathActionHandler:
                 continue
             if not p_prod_col and any(k in hdr for k in prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
                 p_prod_col = c_let
-            elif not p_qty_col and any(k in hdr for k in p_qty_keywords) and not any(k in hdr for k in p_price_keywords):
+            elif not p_qty_col and any(k in hdr for k in p_qty_keywords) and not any(k in hdr for k in p_qty_exclude + p_price_keywords):
                 p_qty_col = c_let
-            elif not p_price_col and any(k in hdr for k in p_price_keywords) and not any(k in hdr for k in p_qty_keywords):
+            elif not p_price_col and any(k in hdr for k in p_price_keywords) and not any(k in hdr for k in p_price_exclude + p_qty_keywords):
                 p_price_col = c_let
 
         if action.purchase_qty_col:
@@ -927,8 +971,20 @@ class MathActionHandler:
             qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}")) if s_qty_col else 1.0
             price = clean_val(s_sheet.get_value(f"{s_price_col}{r}")) if s_price_col else 0.0
 
-            disc_val = clean_val(s_sheet.get_value(f"{s_disc_col}{r}")) if s_disc_col else 0.0
-            disc_pct = (disc_val / 100.0) if disc_val > 1.0 else (disc_val if disc_val >= 0.0 else 0.0)
+            disc_val = clean_val(s_sheet.get_value(f"{s_disc_col}{r}")) if (s_disc_col and apply_invoice_discount) else 0.0
+            disc_pct = 0.0
+            if apply_invoice_discount and s_disc_col and disc_val > 0.0:
+                if disc_val <= 1.0:
+                    disc_pct = disc_val
+                elif disc_val <= 100.0:
+                    disc_pct = disc_val / 100.0
+                else:
+                    gross = (qty * price) if (qty > 0 and price > 0) else 0.0
+                    if gross > 0 and disc_val < gross:
+                        disc_pct = disc_val / gross
+                    else:
+                        disc_pct = 0.0
+            disc_pct = max(0.0, min(1.0, disc_pct))
 
             d_str = None
             if s_date_col:
@@ -945,11 +1001,11 @@ class MathActionHandler:
 
             direct_sales = clean_val(s_sheet.get_value(f"{action.sales_col}{r}")) if (action.sales_col and action.sales_col != s_price_col) else 0.0
             if direct_sales > 0:
-                tot_sales = direct_sales * (1.0 - disc_pct)
+                tot_sales = max(0.0, direct_sales * (1.0 - disc_pct))
             elif qty > 0 and price > 0:
-                tot_sales = (qty * price) * (1.0 - disc_pct)
+                tot_sales = max(0.0, (qty * price) * (1.0 - disc_pct))
             elif price > 0:
-                tot_sales = price * (1.0 - disc_pct)
+                tot_sales = max(0.0, price * (1.0 - disc_pct))
             else:
                 tot_sales = 0.0
 
@@ -958,11 +1014,12 @@ class MathActionHandler:
 
             if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str:
                 p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else f"ردیف {r}"
+                effective_unit_price = (tot_sales / qty) if (qty > 0 and tot_sales > 0 and disc_pct > 0) else price
                 sales_records.append({
                     "row": r,
                     "product": p_label,
                     "qty": qty if qty > 0 else 1.0,
-                    "price": price if price > 0 else tot_sales,
+                    "price": effective_unit_price if effective_unit_price > 0 else (tot_sales / (qty if qty > 0 else 1.0)),
                     "total_sales": tot_sales,
                     "direct_cost": direct_cost,
                     "direct_profit": direct_profit,
@@ -1000,26 +1057,27 @@ class MathActionHandler:
             for sr in sales_records:
                 s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
                 s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
+                s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
 
                 if sr["direct_profit"] is not None:
                     profit = sr["direct_profit"]
-                    cogs = sr["total_sales"] - profit if sr["total_sales"] > 0 else 0.0
+                    cogs = s_total - profit if s_total > 0 else 0.0
                     p_unit_price = cogs / s_qty if s_qty > 0 else cogs
                 elif sr["direct_cost"] > 0:
-                    cogs = sr["direct_cost"] * s_qty if (sr["direct_cost"] < sr["price"] and sr["qty"] > 1) else sr["direct_cost"]
+                    cogs = sr["direct_cost"] * s_qty if (sr["direct_cost"] < s_price and s_qty > 1) else sr["direct_cost"]
                     p_unit_price = cogs / s_qty if s_qty > 0 else cogs
-                    profit = sr["total_sales"] - cogs
+                    profit = s_total - cogs
                 else:
                     cogs = 0.0
                     p_unit_price = 0.0
-                    profit = sr["total_sales"]
+                    profit = s_total
 
-                margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
+                margin = (profit / s_total * 100) if s_total > 0 else 0.0
                 matched_items.append({
                     "product": sr["product"],
                     "s_qty": s_qty,
                     "s_price": s_price,
-                    "s_total": sr["total_sales"],
+                    "s_total": s_total,
                     "p_qty": s_qty,
                     "p_price": p_unit_price,
                     "p_total": cogs,
@@ -1081,15 +1139,16 @@ class MathActionHandler:
                         p_unit_price = pr["total_purchase"] / p_total_bought
                     cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
 
-                profit = sr["total_sales"] - cogs
-                margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
+                s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
+                profit = s_total - cogs
+                margin = (profit / s_total * 100) if s_total > 0 else 0.0
                 remaining_stock = max(0.0, p_total_bought - consumed_stock_by_prod[prod]) if p_total_bought > 0 else 0.0
 
                 matched_items.append({
                     "product": prod,
                     "s_qty": s_qty,
                     "s_price": s_price,
-                    "s_total": sr["total_sales"],
+                    "s_total": s_total,
                     "p_qty": p_total_bought,
                     "p_price": p_unit_price,
                     "p_total": cogs,
@@ -1108,7 +1167,7 @@ class MathActionHandler:
                 prod = sr["product"] if sr else (pr["product"] if pr else f"آیتم {i+1}")
                 s_qty = sr["qty"] if (sr and sr["qty"] > 0) else 1.0
                 s_price = sr["price"] if sr else 0.0
-                s_total = sr["total_sales"] if sr else 0.0
+                s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else (sr["total_sales"] if sr else 0.0)
 
                 p_total_bought = pr["qty"] if pr else 0.0
                 p_unit_price = pr["price"] if pr else 0.0
