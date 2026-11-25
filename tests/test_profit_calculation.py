@@ -330,3 +330,82 @@ def test_execute_profit_calculation_with_discount_and_net_columns():
     manager.close()
 
 
+def test_execute_profit_calculation_with_beginning_inventory_and_supplier_cols():
+    """
+    Test scenario matching user sheets (image-32 to image-41):
+    1. Beginning inventory sheet ('موجودی اول دوره')
+    2. Purchase sheet with supplier column ('نام تامین کننده') which must NOT be confused with product
+    3. Dual code and product name matching
+    4. Accurate FIFO depletion, COGS and stock valuation
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # 1. Beginning inventory
+    ws_beg = manager.active_driver.create_sheet("موجودی اول دوره")
+    beg_data = [
+        ["کد کالا", "شرح کالا", "تعداد", "قیمت واحد"],
+        ["P001", "لپ‌تاپ", 8, 300000000],
+        ["P002", "پرینتر", 10, 120000000],
+    ]
+    for r_idx, row in enumerate(beg_data, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_beg.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    # 2. Purchase sheet with supplier column
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    purch_data = [
+        ["شماره فاکتور", "تاریخ", "کد تامین کننده", "نام تامین کننده", "کد کالا", "شرح کالا", "تعداد", "قیمت واحد"],
+        ["P-2001", "1405/01/01", "V001", "تامین گستر", "P001", "لپ‌تاپ", 10, 310000000],
+        ["P-2002", "1405/01/04", "V002", "فناوران جنوب", "P002", "پرینتر", 12, 125000000],
+    ]
+    for r_idx, row in enumerate(purch_data, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    # 3. Sales sheet
+    ws_sales = manager.active_driver.get_sheet(manager.active_driver.get_sheet_names()[0])
+    sales_data = [
+        ["شماره فاکتور", "تاریخ", "کد مشتری", "نام مشتری", "کد کالا", "شرح کالا", "تعداد", "قیمت واحد", "درصد تخفیف"],
+        ["S-1001", "1405/01/03", "C001", "شرکت آلفا", "P001", "لپ‌تاپ", 5, 420000000, 10],  # 5 * 420M * 0.9 = 1,890M
+        ["S-1002", "1405/01/06", "C002", "بازرگانی بتا", "P002", "پرینتر", 4, 190000000, 5],   # 4 * 190M * 0.95 = 722M
+    ]
+    for r_idx, row in enumerate(sales_data, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+
+    res = executor.execute(action, ctx)
+    assert res.success is True
+
+    # Sales: 1,890,000,000 + 722,000,000 = 2,612,000,000
+    assert res.data["total_sales"] == 2612000000.0
+    # COGS under FIFO:
+    # P001: 5 units from beginning inventory @ 300,000,000 = 1,500,000,000
+    # P002: 4 units from beginning inventory @ 120,000,000 = 480,000,000
+    # Total COGS = 1,980,000,000
+    assert res.data["total_purchase"] == 1980000000.0
+    # Profit = 2,612,000,000 - 1,980,000,000 = 632,000,000
+    assert res.data["total_profit"] == 632000000.0
+
+    # Remaining inventory:
+    # P001: (8 beg + 10 purch) - 5 sold = 13 units (3 @ 300M + 10 @ 310M) = 4,000,000,000
+    # P002: (10 beg + 12 purch) - 4 sold = 18 units (6 @ 120M + 12 @ 125M) = 2,220,000,000
+    # Total remaining stock = 31 units, value = 6,220,000,000
+    report_sheet = manager.active_driver.get_sheet("گزارش_سود")
+    kpi_rem_stock = report_sheet.get_value("B9")
+    assert "6,220,000,000" in str(kpi_rem_stock)
+
+    manager.close()
+
+
+

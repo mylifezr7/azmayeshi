@@ -792,7 +792,11 @@ class MathActionHandler:
         s_explicit_cost_col = None
         s_total_col = None
 
-        cust_keywords = ["مشتری", "خریدار", "طرف حساب", "customer", "client", "فروشنده", "نام مشتری"]
+        cust_keywords = [
+            "مشتری", "خریدار", "طرف حساب", "customer", "client",
+            "فروشنده", "تامین کننده", "تامین‌کننده", "تامین", "supplier", "vendor",
+            "نام مشتری", "کد مشتری", "نام تامین کننده", "کد تامین کننده"
+        ]
         inv_keywords = ["شماره فاکتور", "شماره سند", "کد فاکتور", "فاکتور", "invoice", "doc"]
         disc_keywords = ["درصد تخفیف", "تخفیف درصد", "تخفیف", "discount", "off"]
         disc_exclude_keywords = [
@@ -804,7 +808,9 @@ class MathActionHandler:
         qty_exclude_keywords = ["خرید", "مانده", "موجودی", "قیمت", "مبلغ"]
         price_keywords = ["قیمت واحد", "فی فروش", "قیمت فروش", "مبلغ فروش", "بهای واحد", "قیمت", "فی", "بها", "نرخ", "price", "unit price"]
         price_exclude_keywords = ["خرید", "تمام شده", "بعد از تخفیف", "پس از تخفیف", "با تخفیف", "تخفیف"]
-        prod_keywords = ["شرح کالا", "نام کالا", "کالا", "محصول", "شرح", "نام", "item", "product"]
+        prod_code_keywords = ["کد کالا", "کد محصول", "کد آیتم", "کد جنس", "item code", "product code"]
+        prod_name_keywords = ["شرح کالا", "نام کالا", "عنوان کالا", "شرح محصول", "نام محصول", "شرح", "item", "product"]
+        general_prod_keywords = ["کالا", "محصول", "نام"]
         profit_keywords = ["سود خالص", "سود", "profit", "درآمد خالص", "مارجین"]
         cost_keywords = ["بهای تمام شده", "قیمت تمام شده", "خرید", "هزینه", "cost"]
         total_sales_keywords = [
@@ -813,6 +819,9 @@ class MathActionHandler:
         ]
 
         all_s_hdrs = {}
+        s_prod_code_col = None
+        s_prod_name_col = None
+
         for c in range(s_min_c, s_max_c + 1):
             c_let = col_index_to_letter(c)
             hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").strip().lower()
@@ -826,24 +835,31 @@ class MathActionHandler:
             # 2. Date column
             elif not s_date_col and any(k in hdr for k in date_keywords) and not any(k in hdr for k in qty_keywords + inv_keywords + disc_keywords):
                 s_date_col = c_let
-            # 3. Product column
-            elif not s_prod_col and any(k in hdr for k in prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
-                s_prod_col = c_let
-            # 4. Quantity column
+            # 3. Product code column
+            elif not s_prod_code_col and any(k in hdr for k in prod_code_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords):
+                s_prod_code_col = c_let
+            # 4. Product name column
+            elif not s_prod_name_col and any(k in hdr for k in prod_name_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
+                s_prod_name_col = c_let
+            elif not s_prod_name_col and any(k in hdr for k in general_prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
+                s_prod_name_col = c_let
+            # 5. Quantity column
             elif not s_qty_col and any(k in hdr for k in qty_keywords) and not any(k in hdr for k in qty_exclude_keywords + price_keywords + date_keywords + disc_keywords):
                 s_qty_col = c_let
-            # 5. Price column
+            # 6. Price column
             elif not s_price_col and any(k in hdr for k in price_keywords) and not any(k in hdr for k in price_exclude_keywords + qty_keywords + disc_keywords + date_keywords):
                 s_price_col = c_let
-            # 6. Total sales column
+            # 7. Total sales column
             elif not s_total_col and any(k in hdr for k in total_sales_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + disc_keywords):
                 s_total_col = c_let
-            # 7. Explicit profit column
+            # 8. Explicit profit column
             elif not s_explicit_profit_col and any(k in hdr for k in profit_keywords):
                 s_explicit_profit_col = c_let
-            # 8. Explicit cost column
+            # 9. Explicit cost column
             elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords) and not any(k in hdr for k in cust_keywords):
                 s_explicit_cost_col = c_let
+
+        s_prod_col = s_prod_name_col or s_prod_code_col
 
         # Determine whether discount should be subtracted from sales
         apply_invoice_discount = False
@@ -911,7 +927,8 @@ class MathActionHandler:
         # Auto-detect columns in Purchase Sheet
         p_qty_col = None
         p_price_col = None
-        p_prod_col = None
+        p_prod_code_col = None
+        p_prod_name_col = None
 
         p_qty_keywords = ["تعداد خرید", "تعداد", "مقدار", "qty", "quantity"]
         p_qty_exclude = ["فروش", "مانده", "موجودی"]
@@ -923,13 +940,18 @@ class MathActionHandler:
             hdr = str(p_sheet.get_value(f"{c_let}{p_min_r}") or "").strip().lower()
             if not hdr:
                 continue
-            if not p_prod_col and any(k in hdr for k in prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
-                p_prod_col = c_let
+            if not p_prod_code_col and any(k in hdr for k in prod_code_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords):
+                p_prod_code_col = c_let
+            elif not p_prod_name_col and any(k in hdr for k in prod_name_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
+                p_prod_name_col = c_let
+            elif not p_prod_name_col and any(k in hdr for k in general_prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
+                p_prod_name_col = c_let
             elif not p_qty_col and any(k in hdr for k in p_qty_keywords) and not any(k in hdr for k in p_qty_exclude + p_price_keywords):
                 p_qty_col = c_let
             elif not p_price_col and any(k in hdr for k in p_price_keywords) and not any(k in hdr for k in p_price_exclude + p_qty_keywords):
                 p_price_col = c_let
 
+        p_prod_col = p_prod_name_col or p_prod_code_col
         if action.purchase_qty_col:
             pq_raw = str(action.purchase_qty_col).strip().upper()
             p_qty_col = col_index_to_letter(int(pq_raw)) if pq_raw.isdigit() else pq_raw
@@ -942,6 +964,7 @@ class MathActionHandler:
         if not p_price_col: p_price_col = "C" if p_qty_col != "C" and p_prod_col != "C" else "D"
 
         # 3. Read Data and Match
+        prod_display_names = {}
         sales_records = []
         for r in range(s_min_r + 1, s_max_r + 1):
             prod = s_sheet.get_value(f"{s_prod_col}{r}")
@@ -989,12 +1012,17 @@ class MathActionHandler:
             direct_cost = clean_val(s_sheet.get_value(f"{s_explicit_cost_col}{r}")) if s_explicit_cost_col else 0.0
             direct_profit = clean_val(s_sheet.get_value(f"{s_explicit_profit_col}{r}")) if s_explicit_profit_col else None
 
-            if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str:
-                p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else f"ردیف {r}"
+            sc = str(s_sheet.get_value(f"{s_prod_code_col}{r}") or "").strip() if s_prod_code_col else ""
+            sn = str(s_sheet.get_value(f"{s_prod_name_col}{r}") or "").strip() if s_prod_name_col else ""
+
+            if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str or sc or sn:
+                p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else (sn or sc or f"ردیف {r}")
                 effective_unit_price = (tot_sales / qty) if (qty > 0 and tot_sales > 0 and disc_pct > 0) else price
                 sales_records.append({
                     "row": r,
                     "product": p_label,
+                    "code": sc,
+                    "name": sn,
                     "qty": qty if qty > 0 else 1.0,
                     "price": effective_unit_price if effective_unit_price > 0 else (tot_sales / (qty if qty > 0 else 1.0)),
                     "total_sales": tot_sales,
@@ -1006,24 +1034,91 @@ class MathActionHandler:
         # Collect purchase batches per product in order of arrival (supports multi-batch FIFO)
         purchase_batches_by_prod = defaultdict(list)
         purchase_records = []
+
+        # 2.5 Load Beginning Inventory Sheet if present
+        beg_sheet_name = None
+        for sn in sheet_names:
+            if any(k in sn.lower() for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "opening stock", "beginning inventory"]):
+                beg_sheet_name = sn
+                break
+
+        if beg_sheet_name and ctx.manager:
+            try:
+                beg_sheet = ctx.manager.get_sheet(beg_sheet_name)
+                b_min_r, b_min_c, b_max_r, b_max_c = beg_sheet.get_used_range_bounds()
+                b_code_c, b_name_c, b_qty_c, b_price_c = None, None, None, None
+                for c in range(b_min_c, b_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(beg_sheet.get_value(f"{c_let}{b_min_r}") or "").strip().lower()
+                    if not b_code_c and any(k in h for k in prod_code_keywords):
+                        b_code_c = c_let
+                    elif not b_name_c and any(k in h for k in prod_name_keywords + general_prod_keywords):
+                        b_name_c = c_let
+                    elif not b_qty_c and any(k in h for k in ["تعداد", "مقدار", "qty"]):
+                        b_qty_c = c_let
+                    elif not b_price_c and any(k in h for k in ["قیمت", "بها", "فی", "price", "cost"]):
+                        b_price_c = c_let
+                b_prod_col = b_name_c or b_code_c
+                for r in range(b_min_r + 1, b_max_r + 1):
+                    bc = str(beg_sheet.get_value(f"{b_code_c}{r}") or "").strip() if b_code_c else ""
+                    bn = str(beg_sheet.get_value(f"{b_name_c}{r}") or "").strip() if b_name_c else ""
+                    bq = clean_val(beg_sheet.get_value(f"{b_qty_c}{r}")) if b_qty_c else 0.0
+                    bp = clean_val(beg_sheet.get_value(f"{b_price_c}{r}")) if b_price_c else 0.0
+                    if (bc or bn) and (bq > 0 or bp > 0):
+                        blbl = f"{bn} ({bc})" if (bc and bn and bc != bn) else (bn or bc)
+                        if bc:
+                            purchase_batches_by_prod[bc].append((bq, bp))
+                            prod_display_names[bc] = blbl
+                        if bn and bn != bc:
+                            purchase_batches_by_prod[bn].append((bq, bp))
+                            prod_display_names[bn] = blbl
+                        if blbl and blbl not in (bc, bn):
+                            purchase_batches_by_prod[blbl].append((bq, bp))
+                        purchase_records.append({
+                            "row": r,
+                            "product": blbl,
+                            "code": bc,
+                            "name": bn,
+                            "qty": bq,
+                            "price": bp,
+                            "total_purchase": bq * bp
+                        })
+            except Exception:
+                pass
+
         if sales_sheet_name != purchase_sheet_name:
             for r in range(p_min_r + 1, p_max_r + 1):
+                pc = str(p_sheet.get_value(f"{p_prod_code_col}{r}") or "").strip() if p_prod_code_col else ""
+                pn = str(p_sheet.get_value(f"{p_prod_name_col}{r}") or "").strip() if p_prod_name_col else ""
                 prod = p_sheet.get_value(f"{p_prod_col}{r}")
                 qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
                 price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
-                if prod is not None and (qty > 0 or price > 0):
-                    p_name = str(prod).strip()
-                    purchase_batches_by_prod[p_name].append((qty, price))
+                if (pc or pn or prod is not None) and (qty > 0 or price > 0):
+                    p_name = str(prod).strip() if prod is not None else (pn or pc)
+                    plbl = f"{pn} ({pc})" if (pc and pn and pc != pn) else (pn or pc or p_name)
+                    if pc:
+                        purchase_batches_by_prod[pc].append((qty, price))
+                        if pc not in prod_display_names: prod_display_names[pc] = plbl
+                    if pn and pn != pc:
+                        purchase_batches_by_prod[pn].append((qty, price))
+                        if pn not in prod_display_names: prod_display_names[pn] = plbl
+                    if plbl and plbl not in (pc, pn):
+                        purchase_batches_by_prod[plbl].append((qty, price))
+                    if not pc and not pn:
+                        purchase_batches_by_prod[p_name].append((qty, price))
+                        if p_name not in prod_display_names: prod_display_names[p_name] = plbl
                     purchase_records.append({
                         "row": r,
-                        "product": p_name,
+                        "product": plbl,
+                        "code": pc,
+                        "name": pn,
                         "qty": qty,
                         "price": price,
                         "total_purchase": qty * price
                     })
 
         has_named_products = any(sr["product"] and not sr["product"].startswith("ردیف ") for sr in sales_records) and \
-                             any(pr["product"] and not pr["product"].startswith("ردیف ") for pr in purchase_records)
+                             (any(pr["product"] and not pr["product"].startswith("ردیف ") for pr in purchase_records) or len(purchase_batches_by_prod) > 0)
 
         purchase_by_name = {pr["product"]: pr for pr in purchase_records}
         matched_items = []
@@ -1070,10 +1165,25 @@ class MathActionHandler:
                 s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
                 s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
 
-                batches = purchase_batches_by_prod.get(prod, [])
+                b_key = None
+                if sr.get("code") and sr.get("code") in purchase_batches_by_prod:
+                    b_key = sr.get("code")
+                elif sr.get("name") and sr.get("name") in purchase_batches_by_prod:
+                    b_key = sr.get("name")
+                elif prod in purchase_batches_by_prod:
+                    b_key = prod
+                else:
+                    for k in purchase_batches_by_prod:
+                        if (sr.get("code") and sr.get("code") == k) or (sr.get("name") and sr.get("name") == k):
+                            b_key = k
+                            break
+
+                batches = purchase_batches_by_prod.get(b_key, []) if b_key else []
+                disp_label = prod_display_names.get(sr.get("code")) or prod_display_names.get(sr.get("name")) or prod
+
                 if batches:
-                    prior_consumed = consumed_stock_by_prod[prod]
-                    consumed_stock_by_prod[prod] += s_qty
+                    prior_consumed = consumed_stock_by_prod[b_key]
+                    consumed_stock_by_prod[b_key] += s_qty
 
                     cogs = 0.0
                     if val_method == "average":
@@ -1109,7 +1219,7 @@ class MathActionHandler:
                     p_total_bought = sum(b[0] for b in batches)
                     p_unit_price = (cogs / s_qty) if s_qty > 0 else 0.0
                 else:
-                    pr = purchase_by_name.get(prod)
+                    pr = purchase_by_name.get(prod) or purchase_by_name.get(sr.get("code")) or purchase_by_name.get(sr.get("name"))
                     p_total_bought = pr["qty"] if pr else 0.0
                     p_unit_price = pr["price"] if pr else 0.0
                     if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
@@ -1119,10 +1229,11 @@ class MathActionHandler:
                 s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
                 profit = s_total - cogs
                 margin = (profit / s_total * 100) if s_total > 0 else 0.0
-                remaining_stock = max(0.0, p_total_bought - consumed_stock_by_prod[prod]) if p_total_bought > 0 else 0.0
+                rem_key = b_key or prod
+                remaining_stock = max(0.0, p_total_bought - consumed_stock_by_prod[rem_key]) if p_total_bought > 0 else 0.0
 
                 matched_items.append({
-                    "product": prod,
+                    "product": disp_label,
                     "s_qty": s_qty,
                     "s_price": s_price,
                     "s_total": s_total,
@@ -1132,7 +1243,7 @@ class MathActionHandler:
                     "profit": profit,
                     "margin": margin,
                     "remaining_stock": remaining_stock,
-                    "stock_value": 0.0,
+                    "stock_value": remaining_stock * p_unit_price,
                     "date": sr["date"]
                 })
         else:
@@ -1267,12 +1378,27 @@ class MathActionHandler:
             for it in matched_items:
                 product_remaining[it["product"]] = it.get("remaining_stock", 0.0)
 
+            # Also include purchased / opening stock items with 0 sales
+            for pr in purchase_records:
+                plbl = pr["product"]
+                if plbl not in product_remaining:
+                    b_key = pr.get("code") or pr.get("name") or plbl
+                    tot_b = sum(b[0] for b in purchase_batches_by_prod.get(b_key, []))
+                    if tot_b > 0:
+                        product_remaining[plbl] = tot_b
+
             tot_rem_stock = sum(product_remaining.values())
 
             product_stock_val = {}
             if purchase_batches_by_prod:
                 for p, rem_q in product_remaining.items():
-                    batches = purchase_batches_by_prod.get(p, [])
+                    batches = purchase_batches_by_prod.get(p)
+                    if not batches:
+                        for k, b_list in purchase_batches_by_prod.items():
+                            if k and (k in p or p in k):
+                                batches = b_list
+                                break
+                    batches = batches or []
                     val = 0.0
                     if val_method == "average":
                         tot_b_cost = sum(q * pr for q, pr in batches)
