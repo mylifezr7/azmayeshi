@@ -135,7 +135,10 @@ class MainWindow(QMainWindow):
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    ("💵 محاسبه هوشمند سود و زیان (تشخیص خودکار شیت‌ها و ستون‌ها)", "محاسبه سود"),
+                    ("🟢 ۱. محاسبه سود به روش فایفو (FIFO)", "محاسبه سود به روش فایفو"),
+                    ("🔵 ۲. محاسبه سود به روش لایفو (LIFO)", "محاسبه سود به روش لایفو"),
+                    ("🟣 ۳. محاسبه سود با میانگین موزون (Average)", "محاسبه سود با میانگین موزون"),
+                    ("🏷️ انتخاب سریع روش محاسبه سود (فایفو/لایفو/میانگین)...", "روش سود"),
                     ("💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", "محاسبه فروش"),
                     ("💼 لیست حقوق و دستمزد، بیمه و مالیات (تشخیص خودکار)", "محاسبه حقوق و دستمزد"),
                     ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
@@ -152,11 +155,14 @@ class MainWindow(QMainWindow):
             "sales_inventory": {
                 "title": "🛒 ۳. قابلیت‌های فروش و انبارداری",
                 "commands": [
+                    ("🟢 ارزش‌گذاری موجودی انبار به روش فایفو (FIFO)", "ارزش‌گذاری انبار به روش فایفو"),
+                    ("🔵 ارزش‌گذاری موجودی انبار به روش لایفو (LIFO)", "ارزش‌گذاری انبار به روش لایفو"),
+                    ("🟣 ارزش‌گذاری انبار به روش میانگین موزون (Average)", "ارزش‌گذاری انبار به روش میانگین موزون"),
+                    ("📑 مقایسه همزمان هر ۳ روش ارزش‌گذاری در انبار", "مقایسه روش‌های فایفو و لایفو و میانگین در انبار"),
                     ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
                     ("🧾 صدور و ثبت فاکتور رسمی فروش", "ثبت فاکتور فروش"),
                     ("🛒 صدور و ثبت فاکتور رسمی خرید", "ثبت فاکتور خرید"),
                     ("📦 کنترل موجودی و هشدار کمبود انبار", "موجودی انبار و هشدار کمبود موجودی"),
-                    ("📊 ارزش‌گذاری انبار (فایفو، لایفو و میانگین)", "ارزش‌گذاری انبار به روش‌های فایفو، لایفو و میانگین موزون"),
                     ("💰 محاسبه ارزش ریالی کل موجودی انبار", "ارزش کل موجودی انبار"),
                     ("👥 محاسبه بدهی و طلب مشتریان", "محاسبه بدهی و طلب مشتریان"),
                     ("🏆 گزارش پرفروش‌ترین کالاها", "گزارش پرفروش‌ترین کالاها"),
@@ -264,16 +270,16 @@ class MainWindow(QMainWindow):
         self.history_panel.date_requested.connect(self._open_date_dialog)
         self.history_panel.unique_col_requested.connect(self._open_unique_col_dialog)
         self.history_panel.sales_requested.connect(lambda: self._on_message_submitted("محاسبه فروش"))
-        self.history_panel.profit_requested.connect(lambda: self._on_message_submitted("محاسبه سود"))
+        self.history_panel.profit_requested.connect(self._open_profit_method_dialog)
 
         # Keyboard shortcuts (میانبرهای کیبورد)
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self._on_save_clicked)
 
-        # Ctrl+P: تشخیص و محاسبه خودکار سود (مانند حقوق و دستمزد)
+        # Ctrl+P: انتخاب سریع روش سود (فایفو / لایفو / میانگین) و اجرای خودکار
         self.shortcut_profit = QShortcut(QKeySequence("Ctrl+P"), self)
-        self.shortcut_profit.activated.connect(lambda: self._on_message_submitted("محاسبه سود"))
-        # Ctrl+Shift+P: باز کردن ویزارد تنظیمات دستی
+        self.shortcut_profit.activated.connect(self._open_profit_method_dialog)
+        # Ctrl+Shift+P: باز کردن ویزارد تنظیمات دستی ستون‌ها
         self.shortcut_profit_shift = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
         self.shortcut_profit_shift.activated.connect(self._open_profit_dialog)
 
@@ -430,7 +436,9 @@ class MainWindow(QMainWindow):
         self.quick_combo.blockSignals(False)
 
     def _on_quick_chip_clicked(self, command: str):
-        if any(w in command for w in ["تنظیمات دستی ستون‌های محاسبه سود", "تنظیمات سود", "ویزارد سود", "دستی ستون سود"]):
+        if command in ["روش سود", "انتخاب روش سود", "روش محاسبه سود"]:
+            self._open_profit_method_dialog()
+        elif any(w in command for w in ["تنظیمات دستی ستون‌های محاسبه سود", "تنظیمات سود", "ویزارد سود", "دستی ستون سود"]):
             self._open_profit_dialog()
         elif any(w in command for w in ["تنظیمات دستی ستون‌های گزارش فروش", "تنظیمات فروش", "ویزارد فروش", "دستی ستون فروش"]):
             self._open_sales_dialog()
@@ -473,6 +481,22 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_user_message(action.description_persian)
             self.history_panel.add_command(action.description_persian)
             self._execute_action_pipeline(action)
+
+    def _open_profit_method_dialog(self):
+        """Opens quick 1-click method selector for FIFO, LIFO, or Weighted Average."""
+        from excel_assistant.ui.profit_dialog import ProfitMethodSelectorDialog
+        dialog = ProfitMethodSelectorDialog(parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            if dialog.open_advanced:
+                self._open_profit_dialog()
+            else:
+                method_names = {
+                    "fifo": "فایفو (FIFO)",
+                    "lifo": "لایفو (LIFO)",
+                    "average": "میانگین موزون (Average)"
+                }
+                m_str = method_names.get(dialog.selected_method, "فایفو (FIFO)")
+                self._on_message_submitted(f"محاسبه سود به روش {m_str}")
 
     def _open_profit_dialog(self):
         """Opens interactive wizard dialog for calculating profit by subtracting purchase from sales."""
@@ -551,6 +575,10 @@ class MainWindow(QMainWindow):
 
         if any(k in lower for k in ["تنظیمات سود", "ویزارد سود", "پنجره سود", "دستی سود", "تنظیمات محاسبه سود"]):
             self._open_profit_dialog()
+            return
+
+        if any(k in lower for k in ["روش سود", "روش محاسبه سود", "انتخاب روش سود", "انتخاب روش محاسبه سود"]) or lower in ["محاسبه سود", "سود", "محاسبه سود و زیان"]:
+            self._open_profit_method_dialog()
             return
 
         if any(k in lower for k in ["تنظیمات فروش", "ویزارد فروش", "پنجره فروش", "دستی فروش", "تنظیمات گزارش فروش"]):

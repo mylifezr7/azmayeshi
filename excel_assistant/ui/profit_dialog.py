@@ -513,3 +513,99 @@ class ProfitWizardDialog(QDialog):
             create_report_sheet=self.chk_create_sheet.isChecked(),
             description_persian=f"محاسبه سود {period_fa} با روش {val_method} (فروش {s_sheet} ستون {s_col} منهای خرید {p_sheet} ستون {p_col} بر اساس تاریخ {d_col})"
         )
+
+
+class ProfitMethodSelectorDialog(QDialog):
+    """Fast, modern RTL dialog for selecting FIFO, LIFO, or Weighted Average valuation method with 1 click."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setWindowTitle("🏷️ انتخاب روش محاسبه بهای تمام‌شده و سود")
+        self.resize(500, 360)
+        self.setMinimumSize(440, 320)
+        self.setLayoutDirection(Qt.RightToLeft)
+        self.selected_method = "fifo"
+        self.open_advanced = False
+
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(12)
+
+        title = QLabel("🏷️ انتخاب روش محاسبه بهای تمام‌شده و سود")
+        title.setStyleSheet("font-size: 15px; font-weight: bold; color: #10B981;")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "سیستم به صورت خودکار ستون‌های فروش، خرید، تعداد، فی و تخفیفات را تشخیص می‌دهد.\n"
+            "لطفاً روش مورد نظر برای ارزش‌گذاری اقلام فروش‌رفته (COGS) و انبار را انتخاب کنید:"
+        )
+        desc.setStyleSheet("font-size: 12px; color: #CBD5E1; line-height: 1.5;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # 1. FIFO button
+        self.btn_fifo = QPushButton("🟢 ۱. روش فایفو (FIFO) - اولین وارده، اولین صادره\n   (استاندارد رسمی حسابداری - خریدهای قدیمی‌تر ابتدا فروخته می‌شوند)")
+        self.btn_fifo.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #064E3B, stop:1 #047857);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #10B981; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #059669; border-color: #34D399; }"
+        )
+        self.btn_fifo.clicked.connect(lambda: self._choose("fifo"))
+        layout.addWidget(self.btn_fifo)
+
+        # 2. LIFO button
+        self.btn_lifo = QPushButton("🔵 ۲. روش لایفو (LIFO) - آخرین وارده، اولین صادره\n   (مناسب شرایط تورمی - آخرین خریدهای گران‌تر ابتدا منظور می‌شوند)")
+        self.btn_lifo.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1D4ED8);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #3B82F6; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #2563EB; border-color: #60A5FA; }"
+        )
+        self.btn_lifo.clicked.connect(lambda: self._choose("lifo"))
+        layout.addWidget(self.btn_lifo)
+
+        # 3. Average button
+        self.btn_avg = QPushButton("🟣 ۳. روش میانگین موزون (Weighted Average)\n   (محاسبه میانگین موزون قیمت تمام خریدهای انبار)")
+        self.btn_avg.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #581C87, stop:1 #7E22CE);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #A855F7; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #9333EA; border-color: #C084FC; }"
+        )
+        self.btn_avg.clicked.connect(lambda: self._choose("average"))
+        layout.addWidget(self.btn_avg)
+
+        # Footer
+        footer_layout = QHBoxLayout()
+        self.btn_advanced = QPushButton("⚙️ تنظیمات دستی ستون‌ها...")
+        self.btn_advanced.setStyleSheet("background: transparent; color: #94A3B8; text-decoration: underline; border: none; font-size: 11.5px;")
+        self.btn_advanced.clicked.connect(self._on_advanced)
+
+        self.btn_cancel = QPushButton("انصراف")
+        self.btn_cancel.setStyleSheet("background: #1E293B; color: #E2E8F0; padding: 7px 16px; border-radius: 7px; font-size: 12px;")
+        self.btn_cancel.clicked.connect(self.reject)
+
+        footer_layout.addWidget(self.btn_advanced)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.btn_cancel)
+        layout.addLayout(footer_layout)
+
+    def _choose(self, method: str):
+        self.selected_method = method
+        self.open_advanced = False
+        self.accept()
+
+    def _on_advanced(self):
+        self.open_advanced = True
+        self.accept()
+
