@@ -1,5 +1,5 @@
 """
-Deep File Auditor for MIYUM Excel Assistant.
+Deep File Auditor for MUYUM Excel Assistant.
 Performs smart multi-dimensional health check:
 - Empty cells (سلول‌های خالی)
 - Duplicate information (اطلاعات تکراری)
@@ -232,7 +232,7 @@ class DeepFileAuditor:
         if calculation_errors:
             lines.append(f"⚠️ **خطاهای محاسباتی:** {len(calculation_errors)} مورد اختلاف محاسباتی مقادیر شناسایی شد.")
 
-        lines.append("\n💡 **پیشنهاد هوشمند MIYUM:** می‌توانید با یک کلیک یا دستور، سطرهای تکراری را حذف، سلول‌های خالی را پر، یا فرمت ستون‌ها را استانداردسازی کنید.")
+        lines.append("\n💡 **پیشنهاد هوشمند MUYUM:** می‌توانید با یک کلیک یا دستور، سطرهای تکراری را حذف، سلول‌های خالی را پر، یا فرمت ستون‌ها را استانداردسازی کنید.")
 
         summary_persian = "\n".join(lines)
 

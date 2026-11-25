@@ -1,5 +1,5 @@
 """
-Business, Sales, Inventory and Management Actions for MIYUM Excel Assistant.
+Business, Sales, Inventory and Management Actions for MUYUM Excel Assistant.
 Implements:
 - Sales & Purchase Invoice Generator (صدور و ثبت فاکتور رسمی فروش و خرید)
 - Inventory Management, Low Stock Alerts & Total Valuation (کنترل موجودی انبار، هشدار کسری و ارزش کل)

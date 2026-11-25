@@ -20,8 +20,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel AI Assistant - MIYUM</title>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <title>Excel AI Assistant - MUYUM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&family=Sahel:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-deep: #020617;
@@ -30,17 +30,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             --border-subtle: #132247;
             --text-light: #F8FAFC;
             --text-muted: #94A3B8;
-            --user-bubble: rgba(14, 30, 68, 0.92);
-            --ai-bubble: rgba(8, 16, 38, 0.88);
+            --user-bubble: rgba(6, 32, 44, 0.92);
+            --ai-bubble: rgba(4, 21, 31, 0.90);
             --accent-cyan: #38BDF8;
             --accent-blue: #2563EB;
+            --accent-gold: #F59E0B;
+            --accent-emerald: #10B981;
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'B Nazanin', 'Sahel', 'Vazirmatn', 'IRANSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, serif;
         }
 
         body {
@@ -54,8 +56,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         /* Top Header */
         header {
-            background: linear-gradient(90deg, #09132B, #04091A);
-            border-bottom: 2px solid var(--border-blue);
+            background: linear-gradient(180deg, #062226 0%, #0B192C 50%, #030A16 100%);
+            border-bottom: 2px solid #D97706;
             padding: 10px 20px;
             display: flex;
             justify-content: space-between;
@@ -71,9 +73,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .user-badge {
-            background: linear-gradient(135deg, #08132B, #0E224F);
-            color: var(--accent-cyan);
-            border: 1.5px solid var(--accent-blue);
+            background: linear-gradient(135deg, #78350F, #B45309, #D97706);
+            color: #FEF3C7;
+            border: 1.5px solid #F59E0B;
             font-weight: 800;
             padding: 5px 16px;
             border-radius: 14px;
@@ -82,7 +84,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             gap: 6px;
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
         }
 
         .status-pill {
@@ -828,7 +830,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Top Header -->
     <header>
         <div class="header-right">
-            <span class="user-badge">M MIYUM</span>
+            <span class="user-badge">M MUYUM</span>
             <div class="status-pill" id="statusPill"><span class="dot">🟢</span> Microsoft Excel 2024 (COM)</div>
             <button class="btn-open-file" onclick="promptOpenFile()">📂 باز کردن فایل اکسل...</button>
         </div>
@@ -1073,6 +1075,75 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        const ACCOUNTING_KEYWORDS_MAP = {
+            'صورت سود و زیان جامع': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'صورت سود و زیان': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود و زیان': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود ناخالص': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود خالص': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود عملیاتی': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'پرسودترین': 'background: rgba(6, 78, 59, 0.35); color: #34D399; border: 1px solid #10B981;',
+            'سود': 'background: rgba(6, 78, 59, 0.4); color: #34D399; border: 1px solid #10B981;',
+            'زیان': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
+            'ترازنامه': 'background: rgba(120, 53, 15, 0.45); color: #FDE68A; border: 1px solid #D97706;',
+            'صورت وضعیت مالی': 'background: rgba(120, 53, 15, 0.45); color: #FDE68A; border: 1px solid #D97706;',
+            'تراز آزمایشی': 'background: rgba(120, 53, 15, 0.4); color: #FDE68A; border: 1px solid #D97706;',
+            'تراز است': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'تراز': 'background: rgba(120, 53, 15, 0.35); color: #FDE68A; border: 1px solid #B45309;',
+            'فروش خالص': 'background: rgba(4, 120, 87, 0.4); color: #A7F3D0; border: 1px solid #059669;',
+            'برگشت از فروش': 'background: rgba(159, 18, 57, 0.4); color: #FECDD3; border: 1px solid #BE123C;',
+            'پرفروش‌ترین': 'background: rgba(4, 120, 87, 0.35); color: #6EE7B7; border: 1px solid #047857;',
+            'فروش': 'background: rgba(4, 120, 87, 0.4); color: #6EE7B7; border: 1px solid #059669;',
+            'بهای تمام شده': 'background: rgba(146, 64, 14, 0.45); color: #FDE047; border: 1px solid #D97706;',
+            'بهای تمام‌شده': 'background: rgba(146, 64, 14, 0.45); color: #FDE047; border: 1px solid #D97706;',
+            'COGS': 'background: rgba(146, 64, 14, 0.45); color: #FDE047; border: 1px solid #D97706;',
+            'برگشت از خرید': 'background: rgba(194, 65, 12, 0.4); color: #FED7AA; border: 1px solid #C2410C;',
+            'خرید': 'background: rgba(194, 65, 12, 0.4); color: #FED7AA; border: 1px solid #EA580C;',
+            'کاردکس انبار': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'موجودی انبار': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'انبارگردانی': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'کاردکس': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'موجودی کالا': 'background: rgba(91, 33, 182, 0.35); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'انبار': 'background: rgba(91, 33, 182, 0.35); color: #C4B5FD; border: 1px solid #6D28D9;',
+            'حقوق و دستمزد': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'فیش حقوقی': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'حقوق': 'background: rgba(3, 105, 161, 0.35); color: #BAE6FD; border: 1px solid #0284C7;',
+            'دستمزد': 'background: rgba(3, 105, 161, 0.35); color: #BAE6FD; border: 1px solid #0284C7;',
+            'استهلاک انباشته': 'background: rgba(161, 98, 7, 0.4); color: #FEF08A; border: 1px solid #CA8A04;',
+            'استهلاک': 'background: rgba(161, 98, 7, 0.4); color: #FEF08A; border: 1px solid #CA8A04;',
+            'دارایی ثابت': 'background: rgba(15, 118, 110, 0.4); color: #99F6E4; border: 1px solid #0D9488;',
+            'دارایی': 'background: rgba(15, 118, 110, 0.35); color: #99F6E4; border: 1px solid #0D9488;',
+            'بدهی': 'background: rgba(185, 28, 28, 0.35); color: #FECACA; border: 1px solid #DC2626;',
+            'سرمایه': 'background: rgba(180, 83, 9, 0.4); color: #FDE68A; border: 1px solid #D97706;',
+            'صورت مغایرت': 'background: rgba(2, 132, 199, 0.4); color: #7DD3FC; border: 1px solid #0284C7;',
+            'مغایرت بانکی': 'background: rgba(2, 132, 199, 0.4); color: #7DD3FC; border: 1px solid #0284C7;',
+            'بانک': 'background: rgba(2, 132, 199, 0.35); color: #7DD3FC; border: 1px solid #0284C7;',
+            'ارزش افزوده': 'background: rgba(30, 64, 175, 0.4); color: #BFDBFE; border: 1px solid #2563EB;',
+            'مالیات': 'background: rgba(30, 64, 175, 0.4); color: #BFDBFE; border: 1px solid #2563EB;',
+            'بیمه': 'background: rgba(6, 95, 70, 0.4); color: #A7F3D0; border: 1px solid #059669;'
+        };
+
+        function formatAccountingText(text) {
+            if (!text) return "";
+            let escaped = String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+            const sortedKeys = Object.keys(ACCOUNTING_KEYWORDS_MAP).sort((a, b) => b.length - a.length);
+            const pat = new RegExp('(?<![<\\\\w/])(' + sortedKeys.map(k => k.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&')).join('|') + ')(?![>\\\\w])', 'g');
+
+            escaped = escaped.replace(pat, (match) => {
+                const style = ACCOUNTING_KEYWORDS_MAP[match];
+                return `<span class="acc-pill" style="${style} padding: 1px 6px; border-radius: 4px; font-weight: bold; margin: 0 2px; display: inline-block;">${match}</span>`;
+            });
+
+            escaped = escaped.replace(/\\*\\*(.+?)\\*\\*/g, '<b>$1</b>');
+            escaped = escaped.replace(/`(.+?)`/g, '<code style="background: rgba(6, 78, 59, 0.5); color: #FCD34D; border: 1px solid #D97706; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace;">$1</code>');
+            escaped = escaped.replace(/\\n/g, '<br>');
+            return escaped;
+        }
+
         function appendMessage(sender, text, isConfirm = false) {
             const feed = document.getElementById('chatFeed');
             const bubble = document.createElement('div');
@@ -1080,11 +1151,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const tag = document.createElement('div');
             tag.className = 'sender-tag';
-            tag.innerText = sender === 'user' ? '👤 MIYUM' : '🤖 دستیار هوشمند Microsoft Excel';
+            tag.innerText = sender === 'user' ? '👤 MUYUM' : '🤖 دستیار هوشمند Microsoft Excel';
             bubble.appendChild(tag);
 
             const content = document.createElement('div');
-            content.innerText = text;
+            content.innerHTML = formatAccountingText(text);
             bubble.appendChild(content);
 
             if (isConfirm) {

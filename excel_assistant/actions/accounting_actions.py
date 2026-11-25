@@ -1,5 +1,5 @@
 """
-Accounting Actions for MIYUM Excel Assistant.
+Accounting Actions for MUYUM Excel Assistant.
 Implements:
 - Double-entry bookkeeping & vouchers (ثبت سند دوبل بدهکار و بستانکار)
 - Trial Balance (تراز آزمایشی ۴ و ۶ ستونه)

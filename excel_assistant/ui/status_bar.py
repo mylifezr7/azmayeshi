@@ -27,12 +27,12 @@ class ExcelStatusBar(QFrame):
         layout.setSpacing(12)
 
         # 1. User Profile Badge (Rightmost in RTL)
-        self.user_badge = QLabel("M  MIYUM")
+        self.user_badge = QLabel("💎 MUYUM")
         self.user_badge.setObjectName("userBadge")
         self.user_badge.setStyleSheet(
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #08132B, stop:1 #0E224F); "
-            "color: #38BDF8; font-weight: bold; font-size: 13px; "
-            "padding: 5px 14px; border: 1.5px solid #2563EB; border-radius: 14px;"
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #78350F, stop:0.5 #B45309, stop:1 #D97706); "
+            "color: #FEF3C7; font-weight: bold; font-size: 13px; "
+            "padding: 5px 14px; border: 1.5px solid #F59E0B; border-radius: 14px;"
         )
         layout.addWidget(self.user_badge)
 

@@ -64,7 +64,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setWindowTitle("Excel AI Assistant - MIYUM")
+        self.setWindowTitle("Excel AI Assistant - MUYUM")
         self.resize(1050, 720)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(QSS_STYLE)
@@ -304,14 +304,14 @@ class MainWindow(QMainWindow):
 
             if self.manager.driver_type == "xlwings":
                 self.chat_widget.add_assistant_message(
-                    f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                    f"سلام **MUYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
                     f"🟢 **اتصال زنده به نرم‌افزار Microsoft Excel برقرار شد.**\n"
                     f"فایل فعال: **`{info.name}`** | شیت: **`{info.active_sheet}`**\n"
                     f"💡 هر دستوری بدهید، تغییرات مستقیماً و به صورت زنده در نرم‌افزار اکسل شما اعمال خواهد شد."
                 )
             else:
                 warn_text = (
-                    f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                    f"سلام **MUYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
                     f"📌 برنامه در حال حاضر با **موتور مستقل اکسل (آفلاین)** به فایل **`{info.name}`** متصل است.\n"
                 )
                 if sys.platform == "win32":

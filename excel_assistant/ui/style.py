@@ -13,24 +13,24 @@ QSS_STYLE = f"""
 QMainWindow, QDialog, QWidget {{
     background-color: #030712;
     color: #F8FAFC;
-    font-family: 'Segoe UI', 'Vazirmatn', 'Tahoma', sans-serif;
+    font-family: 'B Nazanin', 'Sahel', 'Vazirmatn', 'IRANSans', 'Tahoma', 'Segoe UI', serif;
     font-size: 13px;
 }}
 
 /* Top Header Panel */
 QFrame#headerPanel {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #09132B, stop:1 #04091A);
-    border-bottom: 2px solid #1D4ED8;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #062226, stop:0.5 #0B192C, stop:1 #04091A);
+    border-bottom: 2px solid #D97706;
     padding: 8px 16px;
 }}
 
 QLabel#userBadge {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #08132B, stop:1 #0E224F);
-    color: #38BDF8;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #78350F, stop:0.5 #B45309, stop:1 #D97706);
+    color: #FEF3C7;
     font-weight: bold;
     font-size: 13px;
     padding: 4px 14px;
-    border: 1.5px solid #2563EB;
+    border: 1.5px solid #F59E0B;
     border-radius: 14px;
 }}
 

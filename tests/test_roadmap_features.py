@@ -1,5 +1,5 @@
 """
-Comprehensive Test Suite for MIYUM Next Version Features:
+Comprehensive Test Suite for MUYUM Next Version Features:
 1. Accounting (قابلیت‌های حسابداری):
    - مغایرت‌گیری دو ستون (Reconciliation)
    - تراز آزمایشی (Trial Balance)

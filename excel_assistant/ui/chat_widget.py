@@ -9,24 +9,111 @@ import re
 import time
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, Signal, QEvent
-from PySide6.QtGui import QPainter, QPixmap, QColor
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QScrollArea
-)
+try:
+    from PySide6.QtCore import Qt, Signal, QEvent
+    from PySide6.QtGui import QPainter, QPixmap, QColor
+    from PySide6.QtWidgets import (
+        QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+        QPushButton, QFrame, QScrollArea
+    )
+except ImportError:
+    Qt = QEvent = None
+    Signal = lambda *args, **kwargs: None
+    QPainter = QPixmap = QColor = None
+    QWidget = QVBoxLayout = QHBoxLayout = QLabel = object
+    QPushButton = QFrame = QScrollArea = object
 
 # Resolve background wallpaper path
 RESOURCES_DIR = Path(__file__).parent / "resources"
 BACKGROUND_IMAGE_PATH = (RESOURCES_DIR / "background.jpg").as_posix()
 
+ACCOUNTING_KEYWORDS_MAP = {
+    # Financial Statements & Profit/Loss
+    "صورت سود و زیان جامع": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "صورت سود و زیان": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "سود و زیان": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "سود ناخالص": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "سود خالص": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "سود عملیاتی": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "پرسودترین": ("rgba(6, 78, 59, 0.35)", "#34D399", "#10B981"),
+    "سود": ("rgba(6, 78, 59, 0.4)", "#34D399", "#10B981"),
+    "زیان": ("rgba(159, 18, 57, 0.4)", "#FDA4AF", "#E11D48"),
+
+    # Balance Sheet & Trial Balance
+    "ترازنامه": ("rgba(120, 53, 15, 0.45)", "#FDE68A", "#D97706"),
+    "صورت وضعیت مالی": ("rgba(120, 53, 15, 0.45)", "#FDE68A", "#D97706"),
+    "تراز آزمایشی": ("rgba(120, 53, 15, 0.4)", "#FDE68A", "#D97706"),
+    "تراز است": ("rgba(6, 78, 59, 0.45)", "#6EE7B7", "#059669"),
+    "تراز": ("rgba(120, 53, 15, 0.35)", "#FDE68A", "#B45309"),
+
+    # Sales & Revenue
+    "فروش خالص": ("rgba(4, 120, 87, 0.4)", "#A7F3D0", "#059669"),
+    "برگشت از فروش": ("rgba(159, 18, 57, 0.4)", "#FECDD3", "#BE123C"),
+    "پرفروش‌ترین": ("rgba(4, 120, 87, 0.35)", "#6EE7B7", "#047857"),
+    "فروش": ("rgba(4, 120, 87, 0.4)", "#6EE7B7", "#059669"),
+
+    # Purchases & COGS
+    "بهای تمام شده": ("rgba(146, 64, 14, 0.45)", "#FDE047", "#D97706"),
+    "بهای تمام‌شده": ("rgba(146, 64, 14, 0.45)", "#FDE047", "#D97706"),
+    "COGS": ("rgba(146, 64, 14, 0.45)", "#FDE047", "#D97706"),
+    "برگشت از خرید": ("rgba(194, 65, 12, 0.4)", "#FED7AA", "#C2410C"),
+    "خرید": ("rgba(194, 65, 12, 0.4)", "#FED7AA", "#EA580C"),
+
+    # Inventory & Cardex
+    "کاردکس انبار": ("rgba(91, 33, 182, 0.4)", "#DDD6FE", "#7C3AED"),
+    "موجودی انبار": ("rgba(91, 33, 182, 0.4)", "#DDD6FE", "#7C3AED"),
+    "انبارگردانی": ("rgba(91, 33, 182, 0.4)", "#DDD6FE", "#7C3AED"),
+    "کاردکس": ("rgba(91, 33, 182, 0.4)", "#DDD6FE", "#7C3AED"),
+    "موجودی کالا": ("rgba(91, 33, 182, 0.35)", "#DDD6FE", "#7C3AED"),
+    "انبار": ("rgba(91, 33, 182, 0.35)", "#C4B5FD", "#6D28D9"),
+
+    # Payroll & Personnel
+    "حقوق و دستمزد": ("rgba(3, 105, 161, 0.4)", "#BAE6FD", "#0284C7"),
+    "فیش حقوقی": ("rgba(3, 105, 161, 0.4)", "#BAE6FD", "#0284C7"),
+    "حقوق": ("rgba(3, 105, 161, 0.35)", "#BAE6FD", "#0284C7"),
+    "دستمزد": ("rgba(3, 105, 161, 0.35)", "#BAE6FD", "#0284C7"),
+
+    # Depreciation & Fixed Assets
+    "استهلاک انباشته": ("rgba(161, 98, 7, 0.4)", "#FEF08A", "#CA8A04"),
+    "استهلاک": ("rgba(161, 98, 7, 0.4)", "#FEF08A", "#CA8A04"),
+    "دارایی ثابت": ("rgba(15, 118, 110, 0.4)", "#99F6E4", "#0D9488"),
+    "دارایی": ("rgba(15, 118, 110, 0.35)", "#99F6E4", "#0D9488"),
+    "بدهی": ("rgba(185, 28, 28, 0.35)", "#FECACA", "#DC2626"),
+    "سرمایه": ("rgba(180, 83, 9, 0.4)", "#FDE68A", "#D97706"),
+
+    # Banking & Reconciliation
+    "صورت مغایرت": ("rgba(2, 132, 199, 0.4)", "#7DD3FC", "#0284C7"),
+    "مغایرت بانکی": ("rgba(2, 132, 199, 0.4)", "#7DD3FC", "#0284C7"),
+    "بانک": ("rgba(2, 132, 199, 0.35)", "#7DD3FC", "#0284C7"),
+
+    # Tax & Insurance
+    "ارزش افزوده": ("rgba(30, 64, 175, 0.4)", "#BFDBFE", "#2563EB"),
+    "مالیات": ("rgba(30, 64, 175, 0.4)", "#BFDBFE", "#2563EB"),
+    "بیمه": ("rgba(6, 95, 70, 0.4)", "#A7F3D0", "#059669"),
+}
+
+_SORTED_ACC_KWS = sorted(ACCOUNTING_KEYWORDS_MAP.keys(), key=len, reverse=True)
+_ACC_PATTERN = re.compile(r'(?<![<\w/])(' + '|'.join(re.escape(k) for k in _SORTED_ACC_KWS) + r')(?![>\w])')
+
+
+def highlight_accounting_terms(text: str) -> str:
+    """Highlights key accounting terms with classic executive badge formatting."""
+    def _repl(m):
+        kw = m.group(1)
+        bg, fg, border = ACCOUNTING_KEYWORDS_MAP[kw]
+        return f'<span style="background-color: {bg}; color: {fg}; border: 1px solid {border}; padding: 1px 6px; border-radius: 4px; font-weight: bold; font-family: \'B Nazanin\', \'Sahel\', \'Vazirmatn\', sans-serif;">{kw}</span>'
+    return _ACC_PATTERN.sub(_repl, text)
+
 
 def format_markdown_to_rich_text(text: str) -> str:
-    """Converts basic markdown (bold, code, line breaks) to clean Qt HTML."""
+    """Converts basic markdown (bold, code, line breaks) to clean Qt HTML with accounting highlights."""
     if not text:
         return ""
     # Escape HTML special chars first
     escaped = html.escape(text)
+
+    # Highlight classic accounting keywords
+    escaped = highlight_accounting_terms(escaped)
 
     # Convert **bold** to <b>bold</b>
     escaped = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', escaped)
@@ -34,13 +121,13 @@ def format_markdown_to_rich_text(text: str) -> str:
     # Convert `code` to formatted span
     escaped = re.sub(
         r'`(.+?)`',
-        r'<span style="background-color: rgba(30, 58, 138, 0.4); color: #38BDF8; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; border: 1px solid #1D4ED8;">\1</span>',
+        r'<span style="background-color: rgba(6, 78, 59, 0.5); color: #FCD34D; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; border: 1px solid #D97706;">\1</span>',
         escaped
     )
 
     # Convert newlines to <br>
     escaped = escaped.replace('\n', '<br>')
-    return f"<div style='line-height: 1.6; font-size: 13px; color: #FFFFFF;'>{escaped}</div>"
+    return f"<div style='line-height: 1.7; font-family: \"B Nazanin\", \"Sahel\", \"Vazirmatn\", \"Tahoma\", serif; font-size: 13px; color: #FFFFFF;'>{escaped}</div>"
 
 
 class MessageBubble(QFrame):
@@ -215,7 +302,7 @@ class ChatWidget(QWidget):
         main_layout.addWidget(self.scroll_area)
 
     def add_user_message(self, text: str):
-        bubble = MessageBubble(sender="MIYUM", text=text, is_user=True)
+        bubble = MessageBubble(sender="MUYUM", text=text, is_user=True)
         self._append_bubble(bubble)
 
     def add_assistant_message(self, text: str):
