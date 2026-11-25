@@ -401,26 +401,46 @@ class AccountingActionHandler:
     def execute_account_balance(cls, action: AccountBalanceAction, ctx: ActionContext) -> ActionResult:
         """
         محاسبه مانده حساب جاری بدهکار و بستانکار (Running Account Balance).
+        تشخیص خودکار ردیف هدر واقعی و اجتناب از اعمال فرمول روی ردیف‌های عنوان یا جمع کل.
         """
         sheet = ctx.sheet
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
-        # Find debit and credit columns
+        # Find debit and credit columns and real header row
+        header_row = min_r
         dr_col = None
         cr_col = None
 
-        for c in range(min_c, max_c + 1):
-            letter = col_index_to_letter(c)
-            val = str(sheet.get_value(f"{letter}{min_r}") or "").lower()
-            if any(k in val for k in ["بدهکار", "debit", "dr", "واریز", "خرید"]):
-                dr_col = letter
-            elif any(k in val for k in ["بستانکار", "credit", "cr", "برداشت", "فروش"]):
-                cr_col = letter
+        # Search up to 15 rows for the table header row
+        for r in range(min_r, min(min_r + 15, max_r + 1)):
+            found_dr = None
+            found_cr = None
+            for c in range(min_c, max_c + 1):
+                letter = col_index_to_letter(c)
+                val = str(sheet.get_value(f"{letter}{r}") or "").lower().strip()
+                if not val:
+                    continue
+                if not found_dr and any(k in val for k in ["گردش بدهکار", "بدهکار", "debit", "dr", "واریز"]):
+                    if "مانده" not in val or "گردش" in val:
+                        found_dr = letter
+                elif not found_cr and any(k in val for k in ["گردش بستانکار", "بستانکار", "credit", "cr", "برداشت"]):
+                    if "مانده" not in val or "گردش" in val:
+                        found_cr = letter
+            if found_dr and found_cr:
+                header_row = r
+                dr_col = found_dr
+                cr_col = found_cr
+                break
 
         if not dr_col or not cr_col:
-            # Fallback to col1=C, col2=D
             dr_col = action.debit_col or "C"
             cr_col = action.credit_col or "D"
+            # Find any row with column titles
+            for r in range(min_r, min(min_r + 15, max_r + 1)):
+                row_vals = [str(sheet.get_value(f"{col_index_to_letter(c)}{r}") or "").strip() for c in range(min_c, max_c + 1)]
+                if any("کد" in v or "شرح" in v or "حساب" in v or "تاریخ" in v for v in row_vals):
+                    header_row = r
+                    break
 
         dr_idx = col_letter_to_index(dr_col)
         cr_idx = col_letter_to_index(cr_col)
@@ -429,13 +449,23 @@ class AccountingActionHandler:
         bal_col = col_index_to_letter(bal_col_idx)
         status_col = col_index_to_letter(bal_col_idx + 1)
 
-        sheet.set_value(f"{bal_col}{min_r}", "مانده حساب")
-        sheet.set_value(f"{status_col}{min_r}", "تشخیص")
-        sheet.set_font(f"{bal_col}{min_r}:{status_col}{min_r}", bold=True)
-        sheet.set_cell_color(f"{bal_col}{min_r}:{status_col}{min_r}", "#FEF08A")
+        # Place headers on the actual header row
+        sheet.set_value(f"{bal_col}{header_row}", "مانده حساب")
+        sheet.set_value(f"{status_col}{header_row}", "تشخیص")
+        sheet.set_font(f"{bal_col}{header_row}:{status_col}{header_row}", bold=True)
+        sheet.set_cell_color(f"{bal_col}{header_row}:{status_col}{header_row}", "#FEF08A")
 
-        start_row = min_r + 1
-        for r in range(start_row, max_r + 1):
+        # Exclude summary/total rows at the bottom
+        end_row = max_r
+        for r in range(max_r, header_row, -1):
+            cell_a = str(sheet.get_value(f"A{r}") or "").strip().lower()
+            cell_b = str(sheet.get_value(f"B{r}") or "").strip().lower()
+            if any(k in cell_a or k in cell_b for k in ["جمع کل", "جمع", "مجموع", "تراز است", "total", "sum"]):
+                end_row = r - 1
+                break
+
+        start_row = header_row + 1
+        for r in range(start_row, end_row + 1):
             if r == start_row:
                 # First row balance = Dr - Cr
                 sheet.set_formula(f"{bal_col}{r}", f"={dr_col}{r}-{cr_col}{r}")
@@ -446,7 +476,8 @@ class AccountingActionHandler:
             # Diagnostic column: بدهکار if > 0, بستانکار if < 0, تسویه if = 0
             sheet.set_formula(f"{status_col}{r}", f'=IF({bal_col}{r}>0, "بد", IF({bal_col}{r}<0, "بس", "تسویه"))')
 
-        sheet.set_number_format(f"{bal_col}{start_row}:{bal_col}{max_r}", "#,##0")
+        if end_row >= start_row:
+            sheet.set_number_format(f"{bal_col}{start_row}:{bal_col}{end_row}", "#,##0")
         sheet.auto_fit_columns([bal_col, status_col])
 
         return ActionResult(

@@ -1509,7 +1509,7 @@ class MathActionHandler:
 
             curr_r = 1
             # Banner
-            report_sheet.set_value(f"A{curr_r}", f"📊 داشبورد و گزارش جامع سود و زیان (روش {method_persian})")
+            report_sheet.set_value(f"A{curr_r}", f"📊 داشبورد و گزارش جامع سود و زیان | روش ارزیابی: {method_persian}")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=14, color_hex="#38BDF8")
             report_sheet.set_cell_color(f"A{curr_r}", "#09132B")
             curr_r += 2
@@ -1720,8 +1720,8 @@ class MathActionHandler:
                     pass
                 curr_r += 2
 
-            # Section 4: Detailed Profit Table by Item
-            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان و موجودی به ازای هر کالا")
+            # Section 4: Detailed Profit Table by Sales Transaction
+            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان معاملات فروش")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
             curr_r += 1
 
@@ -1733,11 +1733,8 @@ class MathActionHandler:
                 "مبلغ کل فروش",
                 f"قیمت خرید هر واحد ({purchase_sheet_name})",
                 "بهای تمام‌شده اقلام فروش‌رفته (COGS)",
-                "سود خالص (تومان)",
-                "درصد حاشیه سود",
-                f"کل خرید اولیه ({purchase_sheet_name})",
-                "موجودی باقیمانده انبار",
-                "ارزش موجودی انبار"
+                "سود ناخالص (تومان)",
+                "درصد حاشیه سود"
             ]
             for idx, h in enumerate(table_headers):
                 col_c = col_index_to_letter(idx + 1)
@@ -1758,9 +1755,6 @@ class MathActionHandler:
                 report_sheet.set_formula(f"G{r_num}", f"=C{r_num}*F{r_num}")
                 report_sheet.set_formula(f"H{r_num}", f"=E{r_num}-G{r_num}")
                 report_sheet.set_formula(f"I{r_num}", f'=IF(E{r_num}>0, (H{r_num}/E{r_num})*100, 0)')
-                report_sheet.set_value(f"J{r_num}", it["p_qty"])
-                report_sheet.set_formula(f"K{r_num}", f'=IF(J{r_num}>C{r_num}, J{r_num}-C{r_num}, 0)')
-                report_sheet.set_formula(f"L{r_num}", f'=K{r_num}*F{r_num}')
 
                 report_sheet.set_font(f"H{r_num}", bold=True, color_hex="#FFFFFF")
                 if it["profit"] >= 0:
@@ -1770,20 +1764,17 @@ class MathActionHandler:
 
                 curr_r += 1
 
-            # Total Summary Row at bottom
+            # Total Summary Row at bottom of transactions table
             last_r = curr_r
-            report_sheet.set_value(f"A{last_r}", "جمع کل")
+            report_sheet.set_value(f"A{last_r}", "جمع کل معاملات")
             report_sheet.set_font(f"A{last_r}", bold=True, color_hex="#FFFFFF")
             report_sheet.set_formula(f"C{last_r}", f"=SUM(C{start_table_r}:C{last_r-1})")
             report_sheet.set_formula(f"E{last_r}", f"=SUM(E{start_table_r}:E{last_r-1})")
             report_sheet.set_formula(f"G{last_r}", f"=SUM(G{start_table_r}:G{last_r-1})")
             report_sheet.set_formula(f"H{last_r}", f"=E{last_r}-G{last_r}")
             report_sheet.set_formula(f"I{last_r}", f'=IF(E{last_r}>0, (H{last_r}/E{last_r})*100, 0)')
-            report_sheet.set_formula(f"J{last_r}", f"=SUM(J{start_table_r}:J{last_r-1})")
-            report_sheet.set_formula(f"K{last_r}", f"=SUM(K{start_table_r}:K{last_r-1})")
-            report_sheet.set_formula(f"L{last_r}", f"=SUM(L{start_table_r}:L{last_r-1})")
 
-            for c_idx in range(1, 13):
+            for c_idx in range(1, 10):
                 col_c = col_index_to_letter(c_idx)
                 report_sheet.set_font(f"{col_c}{last_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{last_r}", "#0B1938")
@@ -1791,9 +1782,69 @@ class MathActionHandler:
             try:
                 report_sheet.set_number_format(f"D{start_table_r}:H{last_r}", "#,##0")
                 report_sheet.set_number_format(f"I{start_table_r}:I{last_r}", "0.0")
-                report_sheet.set_number_format(f"L{start_table_r}:L{last_r}", "#,##0")
             except Exception:
                 pass
+            curr_r += 2
+
+            # Section 5: Unique Inventory Stock Status & Valuation by Product
+            if tot_rem_stock > 0 and product_remaining:
+                report_sheet.set_value(f"A{curr_r}", "📦 جدول کاردکس و وضعیت موجودی انبار به ازای هر کالا")
+                report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+                curr_r += 1
+
+                inv_headers = [
+                    "ردیف",
+                    "نام و شرح کالا",
+                    "کل ورودی انبار (تعداد)",
+                    "کل فروش دوره (تعداد)",
+                    "موجودی پایان دوره (تعداد)",
+                    "ارزش ریالی موجودی انبار (تومان)"
+                ]
+                for idx, h in enumerate(inv_headers):
+                    col_c = col_index_to_letter(idx + 1)
+                    report_sheet.set_value(f"{col_c}{curr_r}", h)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
+                    report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0E7490")
+                curr_r += 1
+
+                product_sold_qty = defaultdict(float)
+                for it in matched_items:
+                    product_sold_qty[it["product"]] += it["s_qty"]
+
+                start_inv_r = curr_r
+                for idx, (p_name, rem_qty) in enumerate(sorted(product_remaining.items())):
+                    r_num = curr_r
+                    sold_q = product_sold_qty.get(p_name, 0.0)
+                    total_in = rem_qty + sold_q
+                    p_val = product_stock_val.get(p_name, 0.0)
+
+                    report_sheet.set_value(f"A{r_num}", idx + 1)
+                    report_sheet.set_value(f"B{r_num}", p_name)
+                    report_sheet.set_value(f"C{r_num}", total_in)
+                    report_sheet.set_value(f"D{r_num}", sold_q)
+                    report_sheet.set_formula(f"E{r_num}", f"=C{r_num}-D{r_num}")
+                    report_sheet.set_value(f"F{r_num}", p_val)
+
+                    curr_r += 1
+
+                last_inv_r = curr_r
+                report_sheet.set_value(f"A{last_inv_r}", "جمع کل موجودی انبار")
+                report_sheet.set_font(f"A{last_inv_r}", bold=True, color_hex="#FFFFFF")
+                report_sheet.set_formula(f"C{last_inv_r}", f"=SUM(C{start_inv_r}:C{last_inv_r-1})")
+                report_sheet.set_formula(f"D{last_inv_r}", f"=SUM(D{start_inv_r}:D{last_inv_r-1})")
+                report_sheet.set_formula(f"E{last_inv_r}", f"=SUM(E{start_inv_r}:E{last_inv_r-1})")
+                report_sheet.set_formula(f"F{last_inv_r}", f"=SUM(F{start_inv_r}:F{last_inv_r-1})")
+
+                for c_idx in range(1, 7):
+                    col_c = col_index_to_letter(c_idx)
+                    report_sheet.set_font(f"{col_c}{last_inv_r}", bold=True, color_hex="#FFFFFF")
+                    report_sheet.set_cell_color(f"{col_c}{last_inv_r}", "#083344")
+
+                try:
+                    report_sheet.set_number_format(f"C{start_inv_r}:E{last_inv_r}", "#,##0")
+                    report_sheet.set_number_format(f"F{start_inv_r}:F{last_inv_r}", "#,##0")
+                except Exception:
+                    pass
 
             report_sheet.auto_fit_columns()
             ctx.manager.activate_sheet(report_sheet_name)

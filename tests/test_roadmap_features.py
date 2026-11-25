@@ -134,6 +134,51 @@ def test_account_balance_action(test_manager):
     assert "IF(E2>0" in str(sheet.get_formula("F2"))
 
 
+def test_account_balance_with_title_banner_rows(test_manager):
+    """
+    Test running account balance on a sheet with title rows at the top (like trial balance)
+    to ensure headers are placed on the real header row and no #VALUE! errors occur.
+    """
+    sheet = test_manager.active_driver.create_sheet("آزمایش_مانده")
+    sheet.set_value("A1", "تراز آزمایشی چهار ستونه حساب‌ها")
+    sheet.set_value("A2", "تاریخ گزارش: 1405/01/01")
+    # Row 4 is the real header
+    sheet.set_value("A4", "کد حساب")
+    sheet.set_value("B4", "نام حساب")
+    sheet.set_value("C4", "گردش بدهکار")
+    sheet.set_value("D4", "گردش بستانکار")
+
+    sheet.set_value("A5", "101")
+    sheet.set_value("B5", "بانک")
+    sheet.set_value("C5", 450000000)
+    sheet.set_value("D5", 120000000)
+
+    sheet.set_value("A6", "102")
+    sheet.set_value("B6", "مشتریان")
+    sheet.set_value("C6", 280000000)
+    sheet.set_value("D6", 95000000)
+
+    sheet.set_value("A7", "جمع کل گردش‌ها")
+    sheet.set_value("C7", 730000000)
+    sheet.set_value("D7", 215000000)
+
+    action = AccountBalanceAction()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_account_balance(action, ctx)
+
+    assert res.success is True
+    # Real header was at row 4, so balance headers must be placed on row 4, not row 1!
+    assert sheet.get_value("E4") == "مانده حساب"
+    assert sheet.get_value("F4") == "تشخیص"
+    # Row 1 and 2 must remain intact
+    assert sheet.get_value("A1") == "تراز آزمایشی چهار ستونه حساب‌ها"
+    assert sheet.get_value("E1") is None
+    # Formulas must start at row 5 (first data row)
+    assert str(sheet.get_formula("E5")) == "=C5-D5"
+    assert str(sheet.get_formula("E6")) == "=E5+C6-D6"
+    assert "IF(E5>0" in str(sheet.get_formula("F5"))
+
+
 # 4. Payroll Test (محاسبه حقوق و مزایا، اضافه‌کاری، بیمه و مالیات)
 def test_payroll_action(test_manager):
     sheet = test_manager.get_active_sheet()
