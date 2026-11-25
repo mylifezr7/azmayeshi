@@ -17,6 +17,44 @@ from excel_assistant.core.utils import (
 )
 
 
+def parse_date_smart(d_val: Any, default_year: str = "1405") -> tuple:
+    """
+    Parses date into (display_date, month_key, year_key).
+    Prevents MM/DD from being converted to Gregorian format by Excel (e.g. '03/02' -> '1405/03/02').
+    Accurately groups months into e.g. 'ماه ۰۳' or '1405/03'.
+    """
+    if d_val is None:
+        return ("نامشخص", "نامشخص", "نامشخص")
+    if hasattr(d_val, 'strftime'):
+        sd = d_val.strftime("%Y/%m/%d")
+    else:
+        sd = str(d_val).strip()
+
+    if not sd or sd == "نامشخص":
+        return ("نامشخص", "نامشخص", "نامشخص")
+
+    m_full = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', sd)
+    if m_full:
+        yr = m_full.group(1)
+        mo = f"{int(m_full.group(2)):02d}"
+        day = f"{int(m_full.group(3)):02d}"
+        return (f"{yr}/{mo}/{day}", f"ماه {mo}", yr)
+
+    m_short = re.search(r'^(\d{1,2})[/-](\d{1,2})$', sd)
+    if m_short:
+        mo = f"{int(m_short.group(1)):02d}"
+        day = f"{int(m_short.group(2)):02d}"
+        yr = default_year
+        return (f"{yr}/{mo}/{day}", f"ماه {mo}", yr)
+
+    parts = re.split(r'[/-]', sd)
+    if len(parts) >= 2 and parts[0].isdigit():
+        mo = f"{int(parts[0]):02d}" if len(parts[0]) <= 2 else parts[0]
+        return (sd, f"ماه {mo}", default_year)
+
+    return (sd, sd, default_year)
+
+
 class MathActionHandler:
     """Executes mathematical formulas and statistical calculations on Excel sheets."""
 
@@ -491,28 +529,28 @@ class MathActionHandler:
         else:
             amount_vals = sheet.get_column_values(amount_col, include_header=False)
 
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
         records = []
-        for d_raw, a_raw in zip(date_vals, amount_vals):
+        for idx, (d_raw, a_raw) in enumerate(zip(date_vals, amount_vals)):
             if d_raw is None and a_raw is None:
                 continue
             amt = to_float_safe(a_raw) if a_raw is not None else 0.0
+            r_num = min_r + 1 + idx
 
-            d_str = None
-            if d_raw is not None:
-                if hasattr(d_raw, 'strftime'):
-                    d_str = d_raw.strftime("%Y/%m/%d")
-                else:
-                    s_d = str(d_raw).strip()
-                    m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', s_d)
-                    if m:
-                        d_str = f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
-                    elif len(s_d) >= 4:
-                        d_str = s_d
+            row_str = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r_num}") or "") for c in range(min_c, max_c + 1)).lower()
+            is_sales_return = any(rk in row_str for rk in ["برگشت از فروش", "برگشت از", "مرجوعی فروش", "مرجوعی", "برگشت"]) or bool(re.search(r'\bsr\d+', row_str))
+            if is_sales_return:
+                amt = -abs(amt)
 
-            if amt > 0 or d_str:
+            d_disp, mo_key, yr_key = parse_date_smart(d_raw)
+
+            if amt != 0 or d_disp != "نامشخص":
                 records.append({
-                    "date": d_str or "نامشخص",
-                    "amount": amt
+                    "date": d_disp,
+                    "month": mo_key,
+                    "year": yr_key,
+                    "amount": amt,
+                    "is_return": is_sales_return
                 })
 
         if not records:
@@ -523,9 +561,10 @@ class MathActionHandler:
 
         # 3. Aggregate
         total_sales = sum(r["amount"] for r in records)
+        sales_records_only = [r for r in records if not r.get("is_return")]
         total_count = len(records)
-        avg_sale = total_sales / total_count if total_count > 0 else 0.0
-        max_sale = max(r["amount"] for r in records) if records else 0.0
+        avg_sale = (sum(r["amount"] for r in sales_records_only) / len(sales_records_only)) if sales_records_only else (total_sales / total_count if total_count > 0 else 0.0)
+        max_sale = max((r["amount"] for r in sales_records_only), default=0.0)
 
         daily_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
         monthly_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
@@ -533,17 +572,17 @@ class MathActionHandler:
 
         for r in records:
             dt = r["date"]
+            mo = r["month"]
+            yr = r["year"]
             amt = r["amount"]
             daily_map[dt]["sum"] += amt
-            daily_map[dt]["count"] += 1
+            daily_map[dt]["count"] += (1 if not r.get("is_return") else 0)
 
-            mo_key = dt[:7] if len(dt) >= 7 and dt[4] in ('/', '-') else dt
-            monthly_map[mo_key]["sum"] += amt
-            monthly_map[mo_key]["count"] += 1
+            monthly_map[mo]["sum"] += amt
+            monthly_map[mo]["count"] += (1 if not r.get("is_return") else 0)
 
-            yr_key = dt[:4] if len(dt) >= 4 and dt[:4].isdigit() else "نامشخص"
-            yearly_map[yr_key]["sum"] += amt
-            yearly_map[yr_key]["count"] += 1
+            yearly_map[yr]["sum"] += amt
+            yearly_map[yr]["count"] += (1 if not r.get("is_return") else 0)
 
         sorted_daily = sorted(daily_map.items(), key=lambda x: str(x[0]))
         sorted_monthly = sorted(monthly_map.items(), key=lambda x: str(x[0]))
@@ -1142,23 +1181,33 @@ class MathActionHandler:
             direct_cost = clean_val(s_sheet.get_value(f"{s_explicit_cost_col}{r}")) if s_explicit_cost_col else 0.0
             direct_profit = clean_val(s_sheet.get_value(f"{s_explicit_profit_col}{r}")) if s_explicit_profit_col else None
 
+            # Check for Sales Return (برگشت از فروش)
+            row_s_str = " ".join(str(s_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+            is_sales_return = any(rk in row_s_str for rk in ["برگشت از فروش", "برگشت از", "مرجوعی فروش", "مرجوعی", "برگشت"]) or bool(re.search(r'\bsr\d+', row_s_str))
+            if is_sales_return:
+                qty = -abs(qty if qty != 0 else 1.0)
+                tot_sales = -abs(tot_sales)
+
             sc = str(s_sheet.get_value(f"{s_prod_code_col}{r}") or "").strip() if s_prod_code_col else ""
             sn = str(s_sheet.get_value(f"{s_prod_name_col}{r}") or "").strip() if s_prod_name_col else ""
 
-            if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str or sc or sn:
+            if prod is not None or tot_sales != 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str or sc or sn:
                 p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else (sn or sc or f"ردیف {r}")
-                effective_unit_price = (tot_sales / qty) if (qty > 0 and tot_sales > 0 and disc_pct > 0) else price
+                if is_sales_return and not any(k in p_label for k in ["برگشت", "مرجوع"]):
+                    p_label = f"{p_label} (برگشت)"
+                effective_unit_price = abs(tot_sales / qty) if (qty != 0 and tot_sales != 0) else price
                 sales_records.append({
                     "row": r,
                     "product": p_label,
                     "code": sc,
                     "name": sn,
-                    "qty": qty if qty > 0 else 1.0,
-                    "price": effective_unit_price if effective_unit_price > 0 else (tot_sales / (qty if qty > 0 else 1.0)),
+                    "qty": qty,
+                    "price": effective_unit_price,
                     "total_sales": tot_sales,
                     "direct_cost": direct_cost,
                     "direct_profit": direct_profit,
-                    "date": d_str
+                    "date": d_str,
+                    "is_return": is_sales_return
                 })
 
         # Collect purchase batches per product in order of arrival (supports multi-batch FIFO)
@@ -1239,6 +1288,10 @@ class MathActionHandler:
                     e_amt_c = col_index_to_letter(e_max_c)
                 if e_amt_c:
                     for r in range(e_min_r + 1, e_max_r + 1):
+                        row_vals_str = " ".join(str(exp_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(e_min_c, e_max_c + 1)).lower()
+                        # Skip capital asset purchases / fixed assets (دارایی ثابت / عمر مفید / اسقاط / capex)
+                        if any(ck in row_vals_str for ck in ["دارایی ثابت", "داراییهای ثابت", "سرمایه ای", "سرمایه‌ای", "عمر مفید", "اسقاط", "capex", "fixed asset"]):
+                            continue
                         v = clean_val(exp_sheet.get_value(f"{e_amt_c}{r}"))
                         if v > 0:
                             tot_expenses += v
@@ -1253,20 +1306,42 @@ class MathActionHandler:
                 prod = p_sheet.get_value(f"{p_prod_col}{r}")
                 qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
                 price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
-                if (pc or pn or prod is not None) and (qty > 0 or price > 0):
+
+                # Check for Purchase Return (برگشت از خرید)
+                row_p_str = " ".join(str(p_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(p_min_c, p_max_c + 1)).lower()
+                is_purch_ret = any(k in row_p_str for k in ["برگشت از خرید", "برگشت به", "مرجوعی خرید", "مرجوعی", "برگشت"]) or bool(re.search(r'\bpr\d+', row_p_str))
+                if is_purch_ret:
+                    qty = -abs(qty)
+
+                if (pc or pn or prod is not None) and (qty != 0 or price > 0):
                     p_name = str(prod).strip() if prod is not None else (pn or pc)
                     plbl = f"{pn} ({pc})" if (pc and pn and pc != pn) else (pn or pc or p_name)
-                    if pc:
-                        purchase_batches_by_prod[pc].append((qty, price))
-                        if pc not in prod_display_names: prod_display_names[pc] = plbl
-                    if pn and pn != pc:
-                        purchase_batches_by_prod[pn].append((qty, price))
-                        if pn not in prod_display_names: prod_display_names[pn] = plbl
-                    if plbl and plbl not in (pc, pn):
-                        purchase_batches_by_prod[plbl].append((qty, price))
-                    if not pc and not pn:
-                        purchase_batches_by_prod[p_name].append((qty, price))
-                        if p_name not in prod_display_names: prod_display_names[p_name] = plbl
+                    if is_purch_ret:
+                        rem_ret = abs(qty)
+                        for target_k in [pc, pn, plbl, p_name]:
+                            if target_k and target_k in purchase_batches_by_prod:
+                                blist = purchase_batches_by_prod[target_k]
+                                for b_idx in range(len(blist) - 1, -1, -1):
+                                    bq, bp = blist[b_idx]
+                                    if bq >= rem_ret:
+                                        blist[b_idx] = (bq - rem_ret, bp)
+                                        rem_ret = 0
+                                        break
+                                    else:
+                                        rem_ret -= bq
+                                        blist[b_idx] = (0.0, bp)
+                    else:
+                        if pc:
+                            purchase_batches_by_prod[pc].append((qty, price))
+                            if pc not in prod_display_names: prod_display_names[pc] = plbl
+                        if pn and pn != pc:
+                            purchase_batches_by_prod[pn].append((qty, price))
+                            if pn not in prod_display_names: prod_display_names[pn] = plbl
+                        if plbl and plbl not in (pc, pn):
+                            purchase_batches_by_prod[plbl].append((qty, price))
+                        if not pc and not pn:
+                            purchase_batches_by_prod[p_name].append((qty, price))
+                            if p_name not in prod_display_names: prod_display_names[p_name] = plbl
                     purchase_records.append({
                         "row": r,
                         "product": plbl,
@@ -1274,7 +1349,8 @@ class MathActionHandler:
                         "name": pn,
                         "qty": qty,
                         "price": price,
-                        "total_purchase": qty * price
+                        "total_purchase": qty * price,
+                        "is_return": is_purch_ret
                     })
 
         has_named_products = any(sr["product"] and not sr["product"].startswith("ردیف ") for sr in sales_records) and \
@@ -1287,9 +1363,14 @@ class MathActionHandler:
         if sales_sheet_name == purchase_sheet_name:
             # Single sheet profit calculation (e.g. Sales col - Cost col or explicit profit)
             for sr in sales_records:
-                s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
-                s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
-                s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
+                if sr.get("is_return"):
+                    s_qty = -abs(sr["qty"] if sr["qty"] != 0 else 1.0)
+                    s_total = -abs(sr["total_sales"])
+                    s_price = abs(sr["price"])
+                else:
+                    s_qty = sr["qty"] if sr["qty"] != 0 else 1.0
+                    s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty != 0 else 0.0)
+                    s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
 
                 if sr["direct_profit"] is not None:
                     profit = sr["direct_profit"]
@@ -1304,7 +1385,7 @@ class MathActionHandler:
                     p_unit_price = 0.0
                     profit = s_total
 
-                margin = (profit / s_total * 100) if s_total > 0 else 0.0
+                margin = (profit / s_total * 100) if s_total != 0 else 0.0
                 matched_items.append({
                     "product": sr["product"],
                     "s_qty": s_qty,
@@ -1322,8 +1403,14 @@ class MathActionHandler:
         elif has_named_products:
             for sr in sales_records:
                 prod = sr["product"]
-                s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
-                s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
+                if sr.get("is_return"):
+                    s_qty = -abs(sr["qty"] if sr["qty"] != 0 else 1.0)
+                    s_total = -abs(sr["total_sales"])
+                    s_price = abs(sr["price"])
+                else:
+                    s_qty = sr["qty"] if sr["qty"] != 0 else 1.0
+                    s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty != 0 else 0.0)
+                    s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
 
                 b_key = None
                 if sr.get("code") and sr.get("code") in purchase_batches_by_prod:
@@ -1343,41 +1430,47 @@ class MathActionHandler:
 
                 if batches:
                     prior_consumed = consumed_stock_by_prod[b_key]
-                    consumed_stock_by_prod[b_key] += s_qty
-
-                    cogs = 0.0
-                    if val_method == "average":
-                        tot_b_cost = sum(q * p for q, p in batches)
-                        tot_b_qty = sum(q for q, _ in batches)
-                        unit_cost = (tot_b_cost / tot_b_qty) if tot_b_qty > 0 else 0.0
-                        cogs = s_qty * unit_cost
-                    elif val_method == "lifo":
-                        # Allocate COGS in LIFO order (latest purchases consumed first)
-                        accum_b = 0.0
-                        sale_start = prior_consumed
-                        sale_end = prior_consumed + s_qty
-                        for b_qty, b_price in reversed(batches):
-                            b_start = accum_b
-                            b_end = accum_b + b_qty
-                            accum_b += b_qty
-                            overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
-                            if overlap > 0:
-                                cogs += overlap * b_price
+                    if s_qty < 0:
+                        ret_qty = abs(s_qty)
+                        consumed_stock_by_prod[b_key] = max(0.0, prior_consumed - ret_qty)
+                        unit_cost = batches[0][1] if batches else 0.0
+                        cogs = -abs(ret_qty * unit_cost)
+                        p_unit_price = unit_cost
                     else:
-                        # Allocate COGS in FIFO order (earliest purchases consumed first)
-                        accum_b = 0.0
-                        sale_start = prior_consumed
-                        sale_end = prior_consumed + s_qty
-                        for b_qty, b_price in batches:
-                            b_start = accum_b
-                            b_end = accum_b + b_qty
-                            accum_b += b_qty
-                            overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
-                            if overlap > 0:
-                                cogs += overlap * b_price
+                        consumed_stock_by_prod[b_key] += s_qty
+                        cogs = 0.0
+                        if val_method == "average":
+                            tot_b_cost = sum(q * p for q, p in batches)
+                            tot_b_qty = sum(q for q, _ in batches)
+                            unit_cost = (tot_b_cost / tot_b_qty) if tot_b_qty > 0 else 0.0
+                            cogs = s_qty * unit_cost
+                        elif val_method == "lifo":
+                            # Allocate COGS in LIFO order (latest purchases consumed first)
+                            accum_b = 0.0
+                            sale_start = prior_consumed
+                            sale_end = prior_consumed + s_qty
+                            for b_qty, b_price in reversed(batches):
+                                b_start = accum_b
+                                b_end = accum_b + b_qty
+                                accum_b += b_qty
+                                overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                                if overlap > 0:
+                                    cogs += overlap * b_price
+                        else:
+                            # Allocate COGS in FIFO order (earliest purchases consumed first)
+                            accum_b = 0.0
+                            sale_start = prior_consumed
+                            sale_end = prior_consumed + s_qty
+                            for b_qty, b_price in batches:
+                                b_start = accum_b
+                                b_end = accum_b + b_qty
+                                accum_b += b_qty
+                                overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                                if overlap > 0:
+                                    cogs += overlap * b_price
+                        p_unit_price = (cogs / s_qty) if s_qty > 0 else 0.0
 
                     p_total_bought = sum(b[0] for b in batches)
-                    p_unit_price = (cogs / s_qty) if s_qty > 0 else 0.0
                 else:
                     pr = purchase_by_name.get(prod) or purchase_by_name.get(sr.get("code")) or purchase_by_name.get(sr.get("name"))
                     p_total_bought = pr["qty"] if pr else 0.0
@@ -1386,9 +1479,9 @@ class MathActionHandler:
                         p_unit_price = pr["total_purchase"] / p_total_bought
                     cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
 
-                s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
+                s_total = s_qty * s_price if (s_qty != 0 and s_price > 0) else sr["total_sales"]
                 profit = s_total - cogs
-                margin = (profit / s_total * 100) if s_total > 0 else 0.0
+                margin = (profit / s_total * 100) if s_total != 0 else 0.0
                 rem_key = b_key or prod
                 remaining_stock = max(0.0, p_total_bought - consumed_stock_by_prod[rem_key]) if p_total_bought > 0 else 0.0
 
@@ -1413,9 +1506,14 @@ class MathActionHandler:
                 pr = purchase_records[i] if i < len(purchase_records) else None
 
                 prod = sr["product"] if sr else (pr["product"] if pr else f"آیتم {i+1}")
-                s_qty = sr["qty"] if (sr and sr["qty"] > 0) else 1.0
-                s_price = sr["price"] if sr else 0.0
-                s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else (sr["total_sales"] if sr else 0.0)
+                if sr and sr.get("is_return"):
+                    s_qty = -abs(sr["qty"] if sr["qty"] != 0 else 1.0)
+                    s_total = -abs(sr["total_sales"])
+                    s_price = abs(sr["price"])
+                else:
+                    s_qty = sr["qty"] if (sr and sr["qty"] != 0) else 1.0
+                    s_price = sr["price"] if sr else 0.0
+                    s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else (sr["total_sales"] if sr else 0.0)
 
                 p_total_bought = pr["qty"] if pr else 0.0
                 p_unit_price = pr["price"] if pr else 0.0
@@ -1424,7 +1522,7 @@ class MathActionHandler:
 
                 cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
                 profit = s_total - cogs
-                margin = (profit / s_total * 100) if s_total > 0 else 0.0
+                margin = (profit / s_total * 100) if s_total != 0 else 0.0
                 remaining_stock = max(0.0, p_total_bought - s_qty) if p_total_bought > 0 else 0.0
                 stock_value = remaining_stock * p_unit_price
 
@@ -1466,22 +1564,22 @@ class MathActionHandler:
                 p_tot = it["p_total"]
                 prof = it["profit"]
 
-                daily_map[dt]["sales"] += s_tot
-                daily_map[dt]["purchase"] += p_tot
-                daily_map[dt]["profit"] += prof
-                daily_map[dt]["count"] += 1
+                d_disp, mo_key, yr_key = parse_date_smart(dt, default_year="1405")
 
-                mo_key = dt[:7] if len(dt) >= 7 and dt[4] in ('/', '-') else dt
+                daily_map[d_disp]["sales"] += s_tot
+                daily_map[d_disp]["purchase"] += p_tot
+                daily_map[d_disp]["profit"] += prof
+                daily_map[d_disp]["count"] += (1 if it["s_qty"] > 0 else 0)
+
                 monthly_map[mo_key]["sales"] += s_tot
                 monthly_map[mo_key]["purchase"] += p_tot
                 monthly_map[mo_key]["profit"] += prof
-                monthly_map[mo_key]["count"] += 1
+                monthly_map[mo_key]["count"] += (1 if it["s_qty"] > 0 else 0)
 
-                yr_key = dt[:4] if len(dt) >= 4 and dt[:4].isdigit() else "نامشخص"
                 yearly_map[yr_key]["sales"] += s_tot
                 yearly_map[yr_key]["purchase"] += p_tot
                 yearly_map[yr_key]["profit"] += prof
-                yearly_map[yr_key]["count"] += 1
+                yearly_map[yr_key]["count"] += (1 if it["s_qty"] > 0 else 0)
 
         best_item = max(matched_items, key=lambda x: x["profit"]) if matched_items else {"product": "-", "profit": 0}
         loss_items = [it for it in matched_items if it["profit"] < 0]

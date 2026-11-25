@@ -615,7 +615,9 @@ class AccountingActionHandler:
                     if emp_n is None or str(emp_n).strip() == "":
                         continue
                     emp_name = str(emp_n).strip()
-                    if any(kw in emp_name.lower() for kw in ["مجموع", "جمع", "کل", "تراز", "میانگین", "total"]):
+                    clean_n = emp_name.lower().strip()
+                    summary_exact = ["مجموع", "جمع", "کل", "جمع کل", "سرجمع", "تراز", "میانگین", "total", "sum", "average", "grand total"]
+                    if clean_n in summary_exact or clean_n.startswith("جمع ") or clean_n.startswith("مجموع ") or clean_n.startswith("سرجمع ") or clean_n.startswith("total "):
                         continue
 
                     raw_b = source_sheet.get_value(f"{base_c}{r}")

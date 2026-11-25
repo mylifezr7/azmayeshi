@@ -401,7 +401,7 @@ class BusinessActionHandler:
                     except Exception:
                         pass
 
-        SUMMARY_KEYWORDS = ["مجموع", "جمع", "کل", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
+        SUMMARY_KEYWORDS = ["مجموع", "جمع", "جمع کل", "سرجمع", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
 
         def norm_key(s: Any) -> str:
             if s is None:
@@ -995,7 +995,7 @@ class BusinessActionHandler:
         if not purchase_sheet:
             purchase_sheet = sheet
 
-        SUMMARY_KEYWORDS = ["مجموع", "جمع", "کل", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
+        SUMMARY_KEYWORDS = ["مجموع", "جمع", "جمع کل", "سرجمع", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
 
         def norm_key(s: Any) -> str:
             if s is None:

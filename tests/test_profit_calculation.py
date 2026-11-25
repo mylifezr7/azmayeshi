@@ -487,5 +487,109 @@ def test_execute_profit_calculation_autonomous_sheet_detection():
     manager.close()
 
 
+def test_sales_and_purchase_returns_netted_out():
+    """
+    Test Note N6: Sales returns (SR) and purchase returns (PR) must be netted out
+    from gross sales, COGS, and inventory quantity.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    ws_sales = manager.get_active_sheet()
+    sales_rows = [
+        ["سند", "تاریخ", "کد مشتری", "شرح", "تعداد", "قیمت واحد", "تخفیف٪", "تسویه/توضیح"],
+        ["SI01", "03/02", "CU01", "سوئیچ", 8, 100000, 0, "نقد"],
+        ["SR01", "03/24", "CU01", "سوئیچ", 1, 100000, 0, "برگشت از SI01"],
+    ]
+    for r_idx, row in enumerate(sales_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    purch_rows = [
+        ["سند", "تاریخ", "شرح", "تعداد", "قیمت واحد"],
+        ["PI01", "03/01", "سوئیچ", 20, 60000],
+        ["PR01", "03/27", "سوئیچ", 2, 60000],
+    ]
+    for r_idx, row in enumerate(purch_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Net sales: (8 * 100,000) - (1 * 100,000) = 700,000
+    assert res.data["total_sales"] == 700000.0
+    # Net COGS: (8 * 60,000) - (1 * 60,000) = 420,000
+    assert res.data["total_purchase"] == 420000.0
+    # Gross profit: 700,000 - 420,000 = 280,000
+    assert res.data["gross_profit"] == 280000.0
+
+    manager.close()
+
+
+def test_expenses_exclude_capital_fixed_assets():
+    """
+    Test Note N2: Capital expenditures on fixed assets (دارایی ثابت / عمر مفید)
+    must not be counted as current period operating expenses.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    ws_sales = manager.get_active_sheet()
+    ws_sales.set_value("A1", "کالا")
+    ws_sales.set_value("B1", "تعداد")
+    ws_sales.set_value("C1", "قیمت")
+    ws_sales.set_value("A2", "ماوس")
+    ws_sales.set_value("B2", 10)
+    ws_sales.set_value("C2", 50000)
+
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    ws_purch.set_value("A1", "کالا")
+    ws_purch.set_value("B1", "تعداد")
+    ws_purch.set_value("C1", "قیمت")
+    ws_purch.set_value("A2", "ماوس")
+    ws_purch.set_value("B2", 20)
+    ws_purch.set_value("C2", 20000)
+
+    ws_exp = manager.active_driver.create_sheet("هزینه")
+    exp_rows = [
+        ["سند", "شرح", "نوع/مرکز", "مبلغ", "توضیح"],
+        ["EX01", "اجاره دفتر", "اداری", 68000000, "هزینه"],
+        ["EX02", "سرور اداری", "دارایی ثابت", 480000000, "عمر مفید 4 سال، اسقاط صفر"],
+        ["EX03", "قبوض", "عمومی", 18500000, "هزینه"],
+    ]
+    for r_idx, row in enumerate(exp_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_exp.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Only EX01 (68M) + EX03 (18.5M) = 86,500,000. EX02 (480M fixed asset) excluded!
+    assert res.data["operating_expenses"] == 86500000.0
+
+    manager.close()
+
+
+
 
 

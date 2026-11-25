@@ -1311,6 +1311,42 @@ def test_payroll_with_overtime_amount_and_personnel_code(test_manager):
     assert ps.get_value('K4') == 2500000.0
 
 
+def test_payroll_employee_name_with_tavakoli_not_skipped(test_manager):
+    """
+    Ensure Persian names containing substrings like 'کل' (e.g. 'مریم توکلی')
+    are never falsely treated as summary rows ('کل' / 'جمع کل') in payroll.
+    """
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "کد")
+    sheet.set_value("B1", "نام")
+    sheet.set_value("C1", "حقوق پایه")
+    sheet.set_value("D1", "اضافه کاری")
+
+    sheet.set_value("A2", "W04")
+    sheet.set_value("B2", "مریم توکلی")
+    sheet.set_value("C2", 155000000)
+    sheet.set_value("D2", 22000000)
+
+    sheet.set_value("A3", "")
+    sheet.set_value("B3", "جمع کل")
+    sheet.set_value("C3", 155000000)
+    sheet.set_value("D3", 22000000)
+
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    action = PayrollAction()
+    res = AccountingActionHandler.execute_payroll(action, ctx)
+
+    assert res.success is True
+    ps = test_manager.get_sheet([s for s in test_manager.get_sheet_names() if s.startswith("فیش_حقوق_و_دستمزد")][-1])
+    # W04 Maryam Tavakoli must be included in row 4
+    assert ps.get_value('A4') == 'W04'
+    assert ps.get_value('B4') == 'مریم توکلی'
+    assert ps.get_value('C4') == 155000000
+    # Row 5 is the generated total row
+    assert ps.get_value('A5') == 'جمع کل لیست حقوق:'
+
+
+
 
 
 
