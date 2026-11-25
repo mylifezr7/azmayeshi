@@ -566,6 +566,20 @@ class XlwingsDriver(IExcelDriver):
         s = self._book.sheets.add(name=name, after=self._book.sheets[-1])
         return XlwingsSheet(s)
 
+    def delete_sheet(self, name: str) -> bool:
+        if not self.is_connected():
+            raise WorkbookNotFoundError("No active workbook connected.")
+        try:
+            for s in self._book.sheets:
+                if s.name == name:
+                    if len(self._book.sheets) <= 1:
+                        self._book.sheets.add(name="Sheet_Temp")
+                    s.delete()
+                    return True
+        except Exception:
+            pass
+        return False
+
     def save(self, path: Optional[str] = None) -> str:
         if not self.is_connected():
             raise WorkbookNotFoundError("No active workbook connected.")

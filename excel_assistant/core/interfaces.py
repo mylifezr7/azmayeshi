@@ -222,6 +222,10 @@ class IExcelDriver(ABC):
         """Create new sheet with given name."""
         pass
 
+    def delete_sheet(self, name: str) -> bool:
+        """Delete sheet by name. Returns True if deleted, False otherwise."""
+        pass
+
     @abstractmethod
     def save(self, path: Optional[str] = None) -> str:
         """Save workbook to path or current file. Returns saved path."""

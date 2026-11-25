@@ -482,6 +482,18 @@ class OpenpyxlDriver(IExcelDriver):
         self._active_sheet_name = name
         return OpenpyxlSheet(ws)
 
+    def delete_sheet(self, name: str) -> bool:
+        if not self._wb:
+            raise WorkbookNotFoundError("No workbook is open.")
+        if name in self._wb.sheetnames:
+            if len(self._wb.sheetnames) <= 1:
+                self._wb.create_sheet("Sheet_Temp")
+            del self._wb[name]
+            if self._active_sheet_name == name:
+                self._active_sheet_name = self._wb.sheetnames[0]
+            return True
+        return False
+
     def save(self, path: Optional[str] = None) -> str:
         if not self._wb:
             raise WorkbookNotFoundError("No workbook is open.")
