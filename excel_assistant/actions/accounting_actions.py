@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from excel_assistant.actions.base import ActionResult, ActionContext
 from excel_assistant.core.utils import (
-    col_letter_to_index, col_index_to_letter, bounds_to_range_str
+    col_letter_to_index, col_index_to_letter, bounds_to_range_str, to_float_safe
 )
 from excel_assistant.nlp.intent_models import (
     ReconciliationAction,
@@ -517,11 +517,13 @@ class AccountingActionHandler:
                     hdr_r = r
                     break
 
+            code_c = None
             name_c = None
             role_c = None
             days_c = None
             base_c = None
             ot_hours_c = None
+            ot_amount_c = None
             ot_rate_c = None
             allowance_cols = []
             deduction_cols = []
@@ -531,18 +533,31 @@ class AccountingActionHandler:
                 h = str(source_sheet.get_value(f"{c_let}{hdr_r}") or "").strip().lower()
                 if not h:
                     continue
-                if not name_c and any(k in h for k in ["نام و نام خانوادگی", "نام خانوادگی", "نام پرسنل", "نام کارمند", "نام"]):
+                h_norm = h.replace("\u200c", "").replace(" ", "").replace("_", "")
+                if not code_c and any(k in h for k in ["کد پرسنلی", "کد کارمندی", "کد کارمند", "شماره پرسنلی", "کد"]):
+                    code_c = c_let
+                elif not name_c and any(k in h for k in ["نام و نام خانوادگی", "نام خانوادگی", "نام پرسنل", "نام کارمند", "نام"]):
                     name_c = c_let
-                elif not role_c and any(k in h for k in ["سمت", "شغل", "پست", "عنوان"]):
+                elif not role_c and any(k in h for k in ["سمت", "شغل", "پست", "عنوان", "واحد", "بخش"]):
                     role_c = c_let
                 elif not days_c and any(k in h for k in ["روز کارکرد", "کارکرد", "روزهای کارکرد"]):
                     days_c = c_let
                 elif not base_c and any(k in h for k in ["حقوق پایه ماهانه", "حقوق پایه", "پایه حقوق", "حقوق ماهانه", "حقوق", "پایه"]):
                     base_c = c_let
-                elif not ot_hours_c and any(k in h for k in ["ساعت اضافه کاری", "ساعت اضافه", "اضافه کاری"]):
-                    ot_hours_c = c_let
                 elif not ot_rate_c and any(k in h for k in ["ضریب اضافه کاری", "ضریب اضافه", "ضریب"]):
                     ot_rate_c = c_let
+                elif any(k in h_norm for k in ["اضافهکاری", "اضافه", "overtime", "ot"]):
+                    if any(k in h for k in ["ساعت", "hour", "hrs"]):
+                        ot_hours_c = c_let
+                    elif any(k in h for k in ["ریال", "تومان", "مبلغ", "ارزش", "حقوق"]):
+                        ot_amount_c = c_let
+                    else:
+                        val_sample = source_sheet.get_value(f"{c_let}{hdr_r+1}")
+                        val_num = to_float_safe(val_sample)
+                        if val_num > 500:
+                            ot_amount_c = c_let
+                        else:
+                            ot_hours_c = c_let
                 elif any(k in h for k in ["مسکن", "جذب", "پاداش", "اولاد", "مزایا", "بن", "خواروبار", "ایاب و ذهاب"]):
                     allowance_cols.append(c_let)
                 elif any(k in h for k in ["کسورات", "سایر کسورات", "کسر", "مساعده", "وام"]):
@@ -594,14 +609,6 @@ class AccountingActionHandler:
                     else:
                         adjusted_base = round(base_val)
 
-                    ot_hrs = 0.0
-                    if ot_hours_c:
-                        raw_ot = source_sheet.get_value(f"{ot_hours_c}{r}")
-                        try:
-                            ot_hrs = float(str(raw_ot).replace(",", "").strip()) if raw_ot is not None else 0.0
-                        except ValueError:
-                            ot_hrs = 0.0
-
                     ot_r = 1.4
                     if ot_rate_c:
                         raw_rate = source_sheet.get_value(f"{ot_rate_c}{r}")
@@ -610,6 +617,30 @@ class AccountingActionHandler:
                         except ValueError:
                             ot_r = 1.4
                     ot_rates.append(ot_r)
+
+                    ot_hrs = 0.0
+                    ot_amt = 0.0
+                    ot_is_direct_amt = False
+
+                    if ot_hours_c:
+                        raw_ot = source_sheet.get_value(f"{ot_hours_c}{r}")
+                        ot_val = to_float_safe(raw_ot)
+                        if ot_val > 500:
+                            ot_is_direct_amt = True
+                            ot_amt = ot_val
+                            hourly_rate = (adjusted_base / 220.0) * ot_r if adjusted_base > 0 else 1.0
+                            ot_hrs = round(ot_amt / hourly_rate, 1) if hourly_rate > 0 else 0.0
+                        else:
+                            ot_hrs = ot_val
+                            hourly_rate = (adjusted_base / 220.0) * ot_r if adjusted_base > 0 else 0.0
+                            ot_amt = round(hourly_rate * ot_hrs)
+                    elif ot_amount_c:
+                        raw_ot = source_sheet.get_value(f"{ot_amount_c}{r}")
+                        ot_val = to_float_safe(raw_ot)
+                        ot_is_direct_amt = True
+                        ot_amt = ot_val
+                        hourly_rate = (adjusted_base / 220.0) * ot_r if adjusted_base > 0 else 1.0
+                        ot_hrs = round(ot_amt / hourly_rate, 1) if hourly_rate > 0 else 0.0
 
                     tot_allow = 0.0
                     for ac in allowance_cols:
@@ -629,7 +660,14 @@ class AccountingActionHandler:
                         except ValueError:
                             pass
 
-                    emp_id = str(100 + len(real_employees) + 1)
+                    emp_id = None
+                    if code_c:
+                        raw_c = source_sheet.get_value(f"{code_c}{r}")
+                        if raw_c and str(raw_c).strip():
+                            emp_id = str(raw_c).strip()
+                    if not emp_id:
+                        emp_id = str(100 + len(real_employees) + 1)
+
                     real_employees.append({
                         "id": emp_id,
                         "name": emp_name,
@@ -638,6 +676,8 @@ class AccountingActionHandler:
                         "ot_hrs": ot_hrs,
                         "ot_rate": ot_r,
                         "deduct": tot_deduct,
+                        "ot_amt": ot_amt,
+                        "ot_is_direct_amt": ot_is_direct_amt,
                     })
 
                 if ot_rates:
@@ -696,32 +736,39 @@ class AccountingActionHandler:
         # اگر کارمندان واقعی پیدا شدند استفاده کن، در غیر این صورت از کارمندان نمونه استفاده کن
         if real_employees:
             employees_data = [
-                (e["id"], e["name"], e["base"], e["allow"], e["ot_hrs"], e["ot_rate"], e["deduct"])
+                (e["id"], e["name"], e["base"], e["allow"], e["ot_hrs"], e["ot_rate"], e["deduct"], e.get("ot_amt", 0.0), e.get("ot_is_direct_amt", False))
                 for e in real_employees
             ]
         else:
             employees_data = [
-                ("101", "علی رضایی", 150000000, 35000000, 24, 1.4, 0),
-                ("102", "سارا احمدی", 185000000, 40000000, 18, 1.4, 0),
-                ("103", "محمد محمدی", 120000000, 30000000, 35, 1.4, 0),
-                ("104", "مریم کاظمی", 210000000, 50000000, 12, 1.4, 0),
-                ("105", "حسین صادقی", 140000000, 35000000, 0, 1.4, 0),
+                ("101", "علی رضایی", 150000000, 35000000, 24, 1.4, 0, 0.0, False),
+                ("102", "سارا احمدی", 185000000, 40000000, 18, 1.4, 0, 0.0, False),
+                ("103", "محمد محمدی", 120000000, 30000000, 35, 1.4, 0, 0.0, False),
+                ("104", "مریم کاظمی", 210000000, 50000000, 12, 1.4, 0, 0.0, False),
+                ("105", "حسین صادقی", 140000000, 35000000, 0, 1.4, 0, 0.0, False),
             ]
 
         exempt = action.tax_exempt_ceiling
         tax_pct = action.tax_bracket / 100.0
 
         cur_r = 4
-        for emp_id, emp_name, base, allow, ot_hrs, ot_r, deduct in employees_data:
+        for emp_row in employees_data:
+            emp_id, emp_name, base, allow, ot_hrs, ot_r, deduct = emp_row[:7]
+            ot_amt = emp_row[7] if len(emp_row) > 7 else 0.0
+            ot_is_direct_amt = emp_row[8] if len(emp_row) > 8 else False
+
             ps.set_value(f"A{cur_r}", emp_id)
             ps.set_value(f"B{cur_r}", emp_name)
             ps.set_value(f"C{cur_r}", base)
             ps.set_value(f"D{cur_r}", allow)
-            ps.set_value(f"E{cur_r}", ot_hrs)
 
-            # Overtime Amount = (Base / 220) * ot_r * OT_Hours
             ot_factor_str = f"{ot_r:g}" if ot_r else "1.4"
-            ps.set_formula(f"F{cur_r}", f"=ROUND((C{cur_r}/220)*{ot_factor_str}*E{cur_r}, 0)")
+            if ot_is_direct_amt and ot_amt > 0:
+                ps.set_formula(f"E{cur_r}", f"=ROUND(F{cur_r}/((C{cur_r}/220)*{ot_factor_str}), 1)")
+                ps.set_value(f"F{cur_r}", ot_amt)
+            else:
+                ps.set_value(f"E{cur_r}", ot_hrs)
+                ps.set_formula(f"F{cur_r}", f"=ROUND((C{cur_r}/220)*{ot_factor_str}*E{cur_r}, 0)")
 
             # Gross Pay = Base + Allowance + Overtime
             ps.set_formula(f"G{cur_r}", f"=C{cur_r}+D{cur_r}+F{cur_r}")

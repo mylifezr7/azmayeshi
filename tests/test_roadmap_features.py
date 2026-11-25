@@ -1226,6 +1226,47 @@ def test_profit_calculation_lifo_and_average_multibatch(test_manager):
     assert res_avg.data["total_profit"] == 225000.0
 
 
+def test_payroll_with_overtime_amount_and_personnel_code(test_manager):
+    """Verify that overtime in Rials and personnel codes like E001 are parsed properly."""
+    sh = test_manager.create_sheet("لیست_پرسنل_اردیبهشت")
+    sh.set_value('A1', 'کد پرسنلی')
+    sh.set_value('B1', 'نام')
+    sh.set_value('C1', 'واحد')
+    sh.set_value('D1', 'ماه')
+    sh.set_value('E1', 'روز کارکرد')
+    sh.set_value('F1', 'حقوق پایه (ریال)')
+    sh.set_value('G1', 'اضافه کاری (ریال)')
+    sh.set_value('H1', 'پاداش (ریال)')
+    sh.set_value('I1', 'مزایای غیرنقدی (ریال)')
+    sh.set_value('J1', 'کسورات ثابت/بیمه سهم کارمند (ریال)')
+
+    sh.set_value('A2', 'E001')
+    sh.set_value('B2', 'علی رضایی')
+    sh.set_value('C2', 'فروش')
+    sh.set_value('D2', '1405/01')
+    sh.set_value('E2', 30)
+    sh.set_value('F2', 85000000)
+    sh.set_value('G2', 12000000)
+    sh.set_value('H2', 5000000)
+    sh.set_value('I2', 0)
+    sh.set_value('J2', 2500000)
+
+    ctx = ActionContext(manager=test_manager, sheet=sh)
+    action = PayrollAction()
+    res = AccountingActionHandler.execute_payroll(action, ctx)
+
+    assert res.success is True
+    ps = test_manager.get_sheet([s for s in test_manager.get_sheet_names() if s.startswith("فیش_حقوق_و_دستمزد")][-1])
+    assert ps.get_value('A4') == 'E001'
+    assert ps.get_value('B4') == 'علی رضایی'
+    assert ps.get_value('C4') == 85000000
+    assert ps.get_value('D4') == 5000000.0
+    assert ps.get_value('F4') == 12000000.0
+    assert "ROUND(F4/((C4/220)*1.4), 1)" in str(ps.get_formula('E4'))
+    assert ps.get_value('K4') == 2500000.0
+
+
+
 
 
 
