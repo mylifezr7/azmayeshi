@@ -568,6 +568,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 0 14px rgba(251, 113, 133, 0.7);
         }
 
+        .modal-card-cogs {
+            border: 1.5px solid #059669;
+            box-shadow: 0 12px 45px rgba(5, 150, 105, 0.45);
+        }
+        .modal-title-cogs {
+            color: #34D399;
+        }
+        .radio-option-cogs {
+            padding: 9px 12px;
+            border-radius: 9px;
+            background: rgba(4, 9, 26, 0.75);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            transition: all 0.15s;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .radio-option-cogs:hover {
+            background: rgba(6, 78, 59, 0.35);
+            border-color: #10B981;
+            transform: translateX(-2px);
+        }
+        .btn-modal-submit-cogs {
+            background: linear-gradient(90deg, #059669, #10B981);
+            color: #FFFFFF;
+            border: 1px solid #10B981;
+            padding: 8px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 700;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        .btn-modal-submit-cogs:hover {
+            background: linear-gradient(90deg, #047857, #059669);
+            box-shadow: 0 0 14px rgba(52, 211, 153, 0.7);
+        }
+
         /* Center: Chat Area with Background Wallpaper */
         .chat-section {
             flex: 3;
@@ -1020,6 +1059,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <button class="btn-shortcut btn-save" onclick="saveWorkbook()">💾 ذخیره فایل (Save)... <span class="hotkey-badge">Ctrl+S</span></button>
             <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
+            <button class="btn-shortcut btn-profit" onclick="openCogsModal()">🏷️ بهای تمام شده (COGS)...</button>
+            <button class="btn-shortcut btn-profit" onclick="openProfitModal()">💵 محاسبه سود (فایفو/لایفو)... <span class="hotkey-badge">Ctrl+P</span></button>
             <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
         </div>
 
@@ -1207,6 +1248,68 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="modal-footer">
                 <button class="btn-modal-cancel" onclick="closeSalesModal()">انصراف</button>
                 <button class="btn-modal-submit-sales" onclick="submitSalesModal()">محاسبه فروش 📈</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-App Interactive Modal: COGS Method Selector (انتخاب روش بهای تمام شده) -->
+    <div class="modal-overlay" id="cogsModalOverlay" style="display: none;" onclick="if(event.target===this) closeCogsModal()">
+        <div class="modal-card modal-card-cogs">
+            <div class="modal-header">
+                <span class="modal-title modal-title-cogs">🏷️ انتخاب روش محاسبه بهای تمام شده کالای فروش رفته (COGS)</span>
+                <button class="modal-close" onclick="closeCogsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 12.5px; color: #CBD5E1; line-height: 1.6;">
+                    سیستم به صورت خودکار مقادیر انبار، خریدها و فاکتورها را بررسی می‌کند.<br>
+                    لطفاً روش مورد نظر خود را برای محاسبه بهای تمام شده انتخاب کنید:
+                </p>
+
+                <div class="modal-radios">
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('fifo')">
+                        <input type="radio" name="cogsMethodRadio" value="fifo" checked>
+                        <div>
+                            <strong style="color: #34D399;">🟢 ۱. روش فایفو (FIFO) - اولین وارده، اولین صادره</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">خریدهای قدیمی‌تر ابتدا منظور می‌شوند (بهای تمام شده کمتر و سود دفتری بالاتر در شرایط تورم)</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('lifo')">
+                        <input type="radio" name="cogsMethodRadio" value="lifo">
+                        <div>
+                            <strong style="color: #60A5FA;">🔵 ۲. روش لایفو (LIFO) - آخرین وارده، اولین صادره</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">خریدهای جدیدتر و گران‌تر ابتدا منظور می‌شوند (صرفه‌جویی مالیاتی در زمان تورم)</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('average')">
+                        <input type="radio" name="cogsMethodRadio" value="average">
+                        <div>
+                            <strong style="color: #C084FC;">🟣 ۳. روش میانگین موزون (Weighted Average)</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">محاسبه میانگین موزون بهای خرید کالاها و تعدیل نوسانات قیمت</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('compare')">
+                        <input type="radio" name="cogsMethodRadio" value="compare">
+                        <div>
+                            <strong style="color: #38BDF8;">⚖️ ۴. مقایسه تطبیقی هر سه روش (فایفو vs لایفو vs میانگین)</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">تحلیل جامع و همزمان اثر روش‌ها روی سود ناخالص، بهای تمام شده و مالیات</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('periodic')">
+                        <input type="radio" name="cogsMethodRadio" value="periodic">
+                        <div>
+                            <strong style="color: #FBBF24;">🏢 ۵. صورت استاندارد ادواری حسابداری (فرمول جامع)</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">موجودی اول دوره + خرید خالص منهای موجودی پایان دوره = بهای تمام شده</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeCogsModal()">انصراف</button>
+                <button class="btn-modal-submit-cogs" onclick="submitCogsModal()">محاسبه بهای تمام شده 🚀</button>
             </div>
         </div>
     </div>
@@ -1566,6 +1669,49 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             sendCommand(cmd);
         }
 
+        function openCogsModal() {
+            const overlay = document.getElementById('cogsModalOverlay');
+            if (overlay) overlay.style.display = 'flex';
+        }
+
+        function closeCogsModal() {
+            const overlay = document.getElementById('cogsModalOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function selectCogsMethodRadio(val) {
+            const radios = document.getElementsByName('cogsMethodRadio');
+            for (let r of radios) {
+                if (r.value === val) {
+                    r.checked = true;
+                    break;
+                }
+            }
+        }
+
+        function submitCogsModal() {
+            const radios = document.getElementsByName('cogsMethodRadio');
+            let method = 'fifo';
+            for (let r of radios) {
+                if (r.checked) {
+                    method = r.value;
+                    break;
+                }
+            }
+            closeCogsModal();
+            if (method === 'fifo') {
+                sendCommand('محاسبه بهای تمام شده به روش فایفو');
+            } else if (method === 'lifo') {
+                sendCommand('محاسبه بهای تمام شده به روش لایفو');
+            } else if (method === 'average') {
+                sendCommand('محاسبه بهای تمام شده با میانگین موزون');
+            } else if (method === 'compare') {
+                sendCommand('مقایسه بهای تمام شده فایفو و لایفو');
+            } else {
+                sendCommand('محاسبه بهای تمام شده کالای فروش رفته');
+            }
+        }
+
         // Global Keyboard Shortcuts (میانبرهای کیبورد)
         document.addEventListener('keydown', function(e) {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
@@ -1579,6 +1725,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (e.key === 'Escape') {
                 closeProfitModal();
                 closeSalesModal();
+                closeCogsModal();
             }
         });
 
@@ -1603,8 +1750,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    {label: "💵 محاسبه و مقایسه سود (فایفو / لایفو / میانگین)...", cmd: "روش سود"},
-                    {label: "🏷️ محاسبه بهای تمام شده کالای فروش رفته (COGS)", cmd: "محاسبه بهای تمام شده کالای فروش رفته"},
+                    {label: "🏷️ ۱. انتخاب روش بهای تمام شده (فایفو / لایفو / میانگین)...", cmd: "روش بهای تمام شده"},
+                    {label: "💵 ۲. محاسبه و مقایسه سود (فایفو / لایفو / میانگین)...", cmd: "روش سود"},
                     {label: "🏷️ بهای تمام شده به روش فایفو (FIFO)", cmd: "محاسبه بهای تمام شده به روش فایفو"},
                     {label: "🏷️ بهای تمام شده به روش لایفو (LIFO)", cmd: "محاسبه بهای تمام شده به روش لایفو"},
                     {label: "⚖️ مقایسه بهای تمام شده فایفو و لایفو", cmd: "مقایسه بهای تمام شده فایفو و لایفو"},
@@ -1683,6 +1830,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             { title: "⚖️ مقایسه تطبیقی سود (فایفو vs لایفو)", cmd: "مقایسه سود به روش فایفو و لایفو", category: "حسابداری", keywords: ["سود", "مقایسه", "فایفو", "لایفو", "تطبیقی", "compare", "محاسبه سود"] },
             { title: "🏷️ انتخاب روش محاسبه سود (فایفو/لایفو/میانگین)", cmd: "روش سود", category: "حسابداری", keywords: ["سود", "روش سود", "انتخاب سود", "ویزارد سود", "محاسبه سود"] },
             { title: "⚙️ تنظیمات دستی ستون‌های محاسبه سود", cmd: "تنظیمات سود", category: "حسابداری", keywords: ["سود", "تنظیمات سود", "دستی ستون سود", "محاسبه سود"] },
+            { title: "🏷️ انتخاب روش محاسبه بهای تمام شده (فایفو/لایفو/میانگین)", cmd: "روش بهای تمام شده", category: "حسابداری", keywords: ["بهای تمام شده", "روش بهای تمام شده", "انتخاب بهای تمام شده", "ویزارد بهای تمام شده", "cogs", "فایفو", "لایفو"] },
             { title: "🏷️ محاسبه بهای تمام شده کالای فروش رفته (COGS)", cmd: "محاسبه بهای تمام شده کالای فروش رفته", category: "حسابداری", keywords: ["بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs", "کالای فروش رفته", "صورت بهای تمام شده", "جدول بهای تمام شده", "تمام شده"] },
             { title: "🏷️ بهای تمام شده به روش فایفو (FIFO)", cmd: "محاسبه بهای تمام شده به روش فایفو", category: "حسابداری", keywords: ["بهای تمام شده", "فایفو", "fifo", "cogs", "اولین وارده", "قیمت تمام شده"] },
             { title: "🏷️ بهای تمام شده به روش لایفو (LIFO)", cmd: "محاسبه بهای تمام شده به روش لایفو", category: "حسابداری", keywords: ["بهای تمام شده", "لایفو", "lifo", "cogs", "آخرین وارده", "تورم", "قیمت تمام شده"] },
@@ -1849,6 +1997,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 promptRemoveUniqueValidation();
             } else if (cmd === 'محاسبه سود' || cmd === 'روش سود') {
                 openProfitModal();
+            } else if (cmd === 'روش بهای تمام شده' || cmd === 'محاسبه بهای تمام شده' || cmd === 'بهای تمام شده' || cmd === 'انتخاب روش بهای تمام شده') {
+                openCogsModal();
             } else if (cmd === 'محاسبه فروش') {
                 openSalesModal();
             } else if (cmd.includes('تخفیف')) {
@@ -2089,6 +2239,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 promptRemoveUniqueValidation();
             } else if (cmd === 'محاسبه سود' || cmd === 'روش سود') {
                 openProfitModal();
+            } else if (cmd === 'روش بهای تمام شده' || cmd === 'محاسبه بهای تمام شده' || cmd === 'بهای تمام شده' || cmd === 'انتخاب روش بهای تمام شده') {
+                openCogsModal();
             } else if (cmd === 'محاسبه فروش') {
                 openSalesModal();
             } else if (cmd.includes('تخفیف')) {

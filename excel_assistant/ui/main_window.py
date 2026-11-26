@@ -142,8 +142,8 @@ class MainWindow(QMainWindow):
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
+                    ("🏷️ محاسبه بهای تمام شده (فایفو / لایفو / میانگین)...", "روش بهای تمام شده"),
                     ("💵 محاسبه و مقایسه سود (فایفو / لایفو / میانگین موزون)...", "روش سود"),
-                    ("🏷️ محاسبه بهای تمام شده کالای فروش رفته (COGS)", "محاسبه بهای تمام شده کالای فروش رفته"),
                     ("🏷️ بهای تمام شده به روش فایفو (FIFO)", "محاسبه بهای تمام شده به روش فایفو"),
                     ("🏷️ بهای تمام شده به روش لایفو (LIFO)", "محاسبه بهای تمام شده به روش لایفو"),
                     ("⚖️ مقایسه بهای تمام شده فایفو و لایفو", "مقایسه بهای تمام شده فایفو و لایفو"),
@@ -539,6 +539,8 @@ class MainWindow(QMainWindow):
     def _on_quick_chip_clicked(self, command: str):
         if command in ["روش سود", "انتخاب روش سود", "روش محاسبه سود"]:
             self._open_profit_method_dialog()
+        elif command in ["روش بهای تمام شده", "بهای تمام شده", "محاسبه بهای تمام شده", "انتخاب روش بهای تمام شده", "cogs"]:
+            self._open_cogs_method_dialog()
         elif any(w in command for w in ["تنظیمات دستی ستون‌های محاسبه سود", "تنظیمات سود", "ویزارد سود", "دستی ستون سود"]):
             self._open_profit_dialog()
         elif any(w in command for w in ["تنظیمات دستی ستون‌های گزارش فروش", "تنظیمات فروش", "ویزارد فروش", "دستی ستون فروش"]):
@@ -600,6 +602,22 @@ class MainWindow(QMainWindow):
                 }
                 m_str = method_names.get(dialog.selected_method, "فایفو (FIFO)")
                 self._on_message_submitted(f"محاسبه سود به روش {m_str}")
+
+    def _open_cogs_method_dialog(self):
+        """Opens quick 1-click method selector for COGS: FIFO, LIFO, Weighted Average, Comparison, or Periodic."""
+        from excel_assistant.ui.cogs_dialog import CogsMethodSelectorDialog
+        dialog = CogsMethodSelectorDialog(parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            if dialog.selected_method == "fifo":
+                self._on_message_submitted("محاسبه بهای تمام شده به روش فایفو")
+            elif dialog.selected_method == "lifo":
+                self._on_message_submitted("محاسبه بهای تمام شده به روش لایفو")
+            elif dialog.selected_method == "average":
+                self._on_message_submitted("محاسبه بهای تمام شده با میانگین موزون")
+            elif dialog.selected_method == "compare":
+                self._on_message_submitted("مقایسه بهای تمام شده فایفو و لایفو")
+            else:
+                self._on_message_submitted("محاسبه بهای تمام شده کالای فروش رفته")
 
     def _open_profit_dialog(self):
         """Opens interactive wizard dialog for calculating profit by subtracting purchase from sales."""
