@@ -8,7 +8,11 @@ echo ========================================================
 echo.
 
 if "%~1"=="" (
-    if exist "Challenge_3_Accounting.xlsx" (
+    if exist "Challenge_5_Accounting.xlsx" (
+        python calculate_cogs_standalone.py "Challenge_5_Accounting.xlsx"
+    ) else if exist "Challenge_4_Accounting.xlsx" (
+        python calculate_cogs_standalone.py "Challenge_4_Accounting.xlsx"
+    ) else if exist "Challenge_3_Accounting.xlsx" (
         python calculate_cogs_standalone.py "Challenge_3_Accounting.xlsx"
     ) else if exist "Worksheet.xlsx" (
         python calculate_cogs_standalone.py "Worksheet.xlsx"
