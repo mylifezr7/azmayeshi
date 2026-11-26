@@ -14,12 +14,12 @@ from excel_assistant.actions.undo_manager import UndoManager
 from excel_assistant.core.exceptions import AmbiguousCommandError
 
 
-def run_cli(workbook_path: Optional[str] = None):
+def run_cli(workbook_path: Optional[str] = None, preferred_driver: Optional[str] = None):
     print("=" * 60)
     print("  🟢 دستیار هوشمند Microsoft Excel (Excel AI Assistant)")
     print("=" * 60)
 
-    manager = ExcelConnectionManager()
+    manager = ExcelConnectionManager(preferred_driver=preferred_driver)
     try:
         info = manager.connect(workbook_path)
         print(manager.get_status_persian())

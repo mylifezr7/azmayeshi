@@ -28,7 +28,7 @@ def main():
         start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file, preferred_driver=pref_driver)
     elif args.cli:
         from excel_assistant.cli import run_cli
-        run_cli(target_file)
+        run_cli(target_file, preferred_driver=pref_driver)
     elif args.gui or has_display:
         gui_ok = False
         try:
