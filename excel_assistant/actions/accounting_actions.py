@@ -2332,8 +2332,12 @@ class AccountingActionHandler:
         و ایجاد صورت استاندارد ادواری و کارتکس ارزشیابی (فایفو، لایفو و میانگین موزون).
         """
         source_sheet = ctx.sheet
+        # اگر شیت فعال گزارش خروجی قبلی COGS باشد، آن را به عنوان ورودی نادیده بگیر
+        if source_sheet and any(k in source_sheet.name.lower() for k in ["بهای تمام شده", "cogs", "صورت بهای"]):
+            source_sheet = None
 
-        # 1. جستجوی مقادیر موجود در شیت فعال
+        method = action.method or "periodic"
+
         detected_beg_inv = action.beginning_inventory
         detected_purch = action.purchases
         detected_freight = action.freight_in
@@ -2341,8 +2345,38 @@ class AccountingActionHandler:
         detected_end_inv = action.ending_inventory
         detected_sales = action.sales_amount
 
-        if source_sheet:
+        # ۱. اولویت اول: اسکن هوشمند چندشیتی فاکتورها، خرید، فروش و انبار در کل فایل اکسل
+        trans_data = cls._scan_transactional_data(ctx)
+        if trans_data and (trans_data["p_gross"] > 0 or trans_data["net_sales"] > 0 or trans_data["beg_inv"] > 0):
+            if detected_beg_inv is None and trans_data["beg_inv"] > 0:
+                detected_beg_inv = trans_data["beg_inv"]
+            if detected_purch is None and trans_data["p_gross"] > 0:
+                detected_purch = trans_data["p_gross"]
+            if detected_returns is None:
+                detected_returns = trans_data["p_returns"]
+            if detected_freight is None:
+                detected_freight = trans_data.get("inward_freight", 0.0)
+            if detected_sales is None and trans_data["net_sales"] > 0:
+                detected_sales = trans_data["net_sales"]
+
+            if detected_end_inv is None:
+                avail_calc = (detected_beg_inv or 0.0) + (detected_purch or 0.0) + (detected_freight or 0.0) - (detected_returns or 0.0)
+                if method == "lifo":
+                    target_cogs = trans_data["lifo_cogs"]
+                elif method == "average":
+                    target_cogs = trans_data["avg_cogs"]
+                else:
+                    target_cogs = trans_data["fifo_cogs"]
+                detected_end_inv = max(0.0, avail_calc - target_cogs)
+
+        # ۲. در صورت نبود فاکتورهای تراکنشی، اسکن شیت فعال (مثلاً تراز آزمایشی تک‌شیتی)
+        if source_sheet and (detected_purch is None or detected_sales is None or detected_beg_inv is None):
             min_r, min_c, max_r, max_c = source_sheet.get_used_range_bounds()
+            first_col_is_row_num = False
+            hdr_first = str(source_sheet.get_value(f"{col_index_to_letter(min_c)}{min_r}") or "").lower()
+            if any(k in hdr_first for k in ["ردیف", "row", "#"]):
+                first_col_is_row_num = True
+
             for r in range(min_r, min(min_r + 150, max_r + 1)):
                 row_texts = []
                 row_nums = []
@@ -2350,7 +2384,9 @@ class AccountingActionHandler:
                     val = source_sheet.get_value(f"{col_index_to_letter(c)}{r}")
                     if val is not None:
                         num = to_float_safe(val)
-                        if num is not None and abs(num) > 0:
+                        if c == min_c and first_col_is_row_num:
+                            pass
+                        elif num is not None and abs(num) > 0:
                             row_nums.append(abs(num))
                         s_val = str(val).strip().lower()
                         if s_val:
@@ -2360,7 +2396,7 @@ class AccountingActionHandler:
                 if not row_nums:
                     continue
 
-                best_num = row_nums[-1] if len(row_nums) == 1 else (max(row_nums) if "جمع" in row_str else row_nums[0])
+                best_num = row_nums[-1] if len(row_nums) == 1 else (max(row_nums) if "جمع" in row_str else row_nums[-1])
 
                 if detected_beg_inv is None and any(k in row_str for k in ["اول دوره", "ابتدای دوره"]) and "پایان" not in row_str:
                     detected_beg_inv = best_num
@@ -2374,33 +2410,6 @@ class AccountingActionHandler:
                     detected_purch = best_num
                 elif detected_sales is None and any(k in row_str for k in ["فروش کالا", "درآمد فروش", "فروش"]) and not any(k in row_str for k in ["برگشت", "تخفیف"]):
                     detected_sales = best_num
-
-        # 2. اسکن هوشمند چندشیتی فاکتورها در صورت عدم وجود در شیت تراز
-        method = action.method or "periodic"
-        trans_data = None
-        if detected_purch is None or detected_sales is None or detected_beg_inv is None:
-            trans_data = cls._scan_transactional_data(ctx)
-            if trans_data and (trans_data["p_gross"] > 0 or trans_data["net_sales"] > 0 or trans_data["beg_inv"] > 0):
-                if detected_beg_inv is None and trans_data["beg_inv"] > 0:
-                    detected_beg_inv = trans_data["beg_inv"]
-                if detected_purch is None and trans_data["p_gross"] > 0:
-                    detected_purch = trans_data["p_gross"]
-                if detected_returns is None and trans_data["p_returns"] > 0:
-                    detected_returns = trans_data["p_returns"]
-                if detected_sales is None and trans_data["net_sales"] > 0:
-                    detected_sales = trans_data["net_sales"]
-                if detected_freight is None:
-                    detected_freight = trans_data.get("inward_freight", 0.0)
-
-                if detected_end_inv is None:
-                    avail_calc = (detected_beg_inv or 0.0) + (detected_purch or 0.0) + (detected_freight or 0.0) - (detected_returns or 0.0)
-                    if method == "lifo":
-                        target_cogs = trans_data["lifo_cogs"]
-                    elif method == "average":
-                        target_cogs = trans_data["avg_cogs"]
-                    else:
-                        target_cogs = trans_data["fifo_cogs"]
-                    detected_end_inv = max(0.0, avail_calc - target_cogs)
 
         # پیش‌فرض‌های استاندارد بنچ‌مارک در صورت عدم وجود در شیت
         beg_inv = detected_beg_inv if detected_beg_inv is not None else (0.0 if trans_data else 120_000_000.0)
