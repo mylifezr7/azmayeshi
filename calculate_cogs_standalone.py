@@ -71,7 +71,7 @@ def process_cogs(file_path: str, output_path: str = None):
 
     p_sheet, s_sheet, m_sheet = None, None, None
 
-    # شناسایی شیت‌ها
+    # شناسایی خودکار شیت‌ها
     for name in wb.sheetnames:
         nl = name.lower()
         if any(k in nl for k in ["فروش", "sales"]) and not s_sheet:
@@ -81,7 +81,7 @@ def process_cogs(file_path: str, output_path: str = None):
         elif any(k in nl for k in ["حرکت", "انبار", "موجودی", "کاردکس", "گردش", "stock", "inventory"]) and not m_sheet:
             m_sheet = wb[name]
 
-    # اسکن محتوای هدر در صورت نیافتن از روی نام
+    # در صورت عدم شناسایی با نام، اسکن هدرها
     for name in wb.sheetnames:
         ws = wb[name]
         if ws in [p_sheet, s_sheet, m_sheet]:
@@ -99,7 +99,7 @@ def process_cogs(file_path: str, output_path: str = None):
     print(f"   • فاکتورهای فروش: {s_sheet.title if s_sheet else 'یافت نشد'}")
     print(f"   • گردش و حرکت انبار: {m_sheet.title if m_sheet else 'یافت نشد'}")
 
-    # 1. پردازش خرید
+    # 1. استخراج فاکتورهای خرید و برگشتی‌ها
     p_gross = 0.0
     p_returns = 0.0
     batches_by_item: Dict[str, List[Tuple[float, float]]] = {}
@@ -135,7 +135,7 @@ def process_cogs(file_path: str, output_path: str = None):
                 p_gross += qty * price
                 batches_by_item.setdefault(item, []).append((qty, price))
 
-    # 2. پردازش فروش
+    # 2. استخراج فاکتورهای فروش، تخفیفات و برگشتی‌ها
     s_gross = 0.0
     s_disc = 0.0
     s_returns = 0.0
@@ -177,7 +177,7 @@ def process_cogs(file_path: str, output_path: str = None):
 
     s_net = s_gross - s_disc - s_returns
 
-    # 3. موجودی اول دوره از شیت حرکت انبار
+    # 3. موجودی اول دوره از گردش انبار
     beg_inv_val = 0.0
     if m_sheet:
         m_cols = {}
@@ -198,27 +198,20 @@ def process_cogs(file_path: str, output_path: str = None):
                 beg_inv_val += qty * unit_p
                 batches_by_item.setdefault(item, []).insert(0, (qty, unit_p))
 
-    # محاسبه متدها
+    # محاسبات روش‌های ۳ گانه
     fifo_cogs = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "fifo")["cogs"] for k, b in batches_by_item.items())
     fifo_end = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "fifo")["rem_val"] for k, b in batches_by_item.items())
 
     lifo_cogs = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "lifo")["cogs"] for k, b in batches_by_item.items())
-    lifo_end = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "lifo")["rem_val"] for k, b in batches_by_item.items())
-
     avg_cogs = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "average")["cogs"] for k, b in batches_by_item.items())
-    avg_end = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "average")["rem_val"] for k, b in batches_by_item.items())
 
     net_purch = p_gross - p_returns
-    goods_avail = beg_inv_val + net_purch
 
-    # ایجاد یا بازنویسی شیت صورت مالی
+    # ایجاد شیت صورت مالی
     target_name = "صورت بهای تمام شده (COGS)"
     if target_name in wb.sheetnames:
         del wb[target_name]
     ws = wb.create_sheet(title=target_name)
-
-    thin = Side(border_style="thin", color="CCCCCC")
-    border_all = Border(top=thin, left=thin, right=thin, bottom=thin)
 
     # سربرگ
     ws["A1"] = "🏢 صورت محاسبه بهای تمام شده کالای فروش رفته (Cost of Goods Sold - COGS)"
@@ -234,7 +227,6 @@ def process_cogs(file_path: str, output_path: str = None):
     ws["A2"].fill = PatternFill(fill_type="solid", fgColor="ECFDF5")
     ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
 
-    # هدر جدول
     headers = ["ردیف", "شرح اقلام بهای تمام شده", "مبلغ جزئی (تومان)", "مبلغ کلی (تومان)", "ملاحظات و فرمول محاسباتی"]
     for c_idx, h in enumerate(headers, start=1):
         cell = ws.cell(4, c_idx, h)
@@ -263,21 +255,15 @@ def process_cogs(file_path: str, output_path: str = None):
         ws.cell(i, 1, rn).alignment = Alignment(horizontal="center")
         ws.cell(i, 2, title)
         if part is not None:
-            c_cell = ws.cell(i, 3, part)
-            c_cell.number_format = "#,##0"
+            ws.cell(i, 3, part).number_format = "#,##0"
         if total is not None:
-            d_cell = ws.cell(i, 4)
-            if str(total).startswith("="):
-                d_cell.value = total
-            else:
-                d_cell.value = total
+            d_cell = ws.cell(i, 4, total)
             d_cell.number_format = "#,##0"
 
-        # اطمینان از عدم وجود = در ستون توضیحات برای رفع قطعی #NAME?
+        # حذف علامت = برای جلوگیری قطعی از ارور #NAME? در اکسل
         clean_note = str(note or "").lstrip("=")
         ws.cell(i, 5, clean_note)
 
-        # استایل‌دهی ردیف‌های خاص
         fill_color = None
         if i in [9, 10]: fill_color = "F0FDF4"
         elif i == 12: fill_color = "DCFCE7"
@@ -312,25 +298,21 @@ def process_cogs(file_path: str, output_path: str = None):
     for idx, (rn, m_title, c_val, gp_form, note, f_col) in enumerate(cmp_rows, start=21):
         ws.cell(idx, 1, rn).alignment = Alignment(horizontal="center")
         ws.cell(idx, 2, m_title)
-        c_cell = ws.cell(idx, 3, c_val)
-        c_cell.number_format = "#,##0"
-        d_cell = ws.cell(idx, 4, gp_form)
-        d_cell.number_format = "#,##0"
+        ws.cell(idx, 3, c_val).number_format = "#,##0"
+        ws.cell(idx, 4, gp_form).number_format = "#,##0"
         ws.cell(idx, 5, note)
         for c in range(1, 6):
             ws.cell(idx, c).fill = PatternFill(fill_type="solid", fgColor=f_col)
             ws.cell(idx, c).font = Font(name="Tahoma", bold=True)
 
-    # تنظیم عرض ستون‌ها
     col_widths = {"A": 8, "B": 48, "C": 22, "D": 22, "E": 60}
     for col, width in col_widths.items():
         ws.column_dimensions[col].width = width
 
     out_file = output_path or file_path
     wb.save(out_file)
-    print(f"\n✅ محاسبات با موفقیت انجام و در فایل ذخیره شد:")
+    print(f"\n✅ شیت «{target_name}» با موفقیت در فایل ذخیره شد:")
     print(f"   💾 {out_file}")
-    print(f"   📋 شیت ایجاد شده: «{target_name}»")
     print(f"\n📊 خلاصه نهایی:")
     print(f"   • موجودی اول دوره: {beg_inv_val:,.0f} تومان")
     print(f"   • خرید خالص دوره: {net_purch:,.0f} تومان")
@@ -342,19 +324,61 @@ def process_cogs(file_path: str, output_path: str = None):
     return True
 
 
-if __name__ == "__main__":
-    target_file = None
-    if len(sys.argv) > 1:
-        target_file = sys.argv[1]
-    else:
-        # جستجو در دایرکتوری جاری
-        excel_files = [f for f in glob.glob("*.xlsx") if not f.startswith("~$") and "backup" not in f.lower()]
-        if excel_files:
-            target_file = excel_files[0]
+def get_target_file():
+    # 1. اگر به عنوان آرگومان داده شده بود
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        arg_p = sys.argv[1].strip('\"\' ')
+        if os.path.exists(arg_p):
+            return arg_p
+        print(f"⚠️ فایل در مسیر «{arg_p}» پیدا نشد.")
 
-    if not target_file:
-        print("لطفاً مسیر فایل اکسل را مشخص کنید. مثال:")
-        print("python calculate_cogs_standalone.py 'فایل_شما.xlsx'")
+    # 2. جستجوی فایل‌های اکسل واقعی کاربر (به جز نمونه‌ها)
+    files = [f for f in glob.glob("*.xlsx") if not f.startswith("~$") and "backup" not in f.lower() and "sample" not in f.lower() and f != "Worksheet.xlsx"]
+    if len(files) == 1:
+        return files[0]
+    elif len(files) > 1:
+        print("📁 چند فایل اکسل در پوشه پیدا شد:")
+        for i, f in enumerate(files, 1):
+            print(f"   {i}. {f}")
+        try:
+            choice = input(f"شماره فایل مدنظر را انتخاب کنید (1 تا {len(files)}): ").strip()
+            if choice.isdigit() and 1 <= int(choice) <= len(files):
+                return files[int(choice) - 1]
+        except Exception:
+            pass
+
+    # 3. باز کردن پنجره انتخاب فایل ویندوز (File Dialog)
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selected = filedialog.askopenfilename(
+            title="انتخاب فایل اکسل شما (حاوی فاکتورها)",
+            filetypes=[("Excel Files", "*.xlsx *.xls")]
+        )
+        root.destroy()
+        if selected and os.path.exists(selected):
+            return selected
+    except Exception:
+        pass
+
+    # 4. دریافت از کاربر به صورت ورودی متنی (Drag and Drop)
+    try:
+        user_input = input("لطفاً فایل اکسل خود را با موس بکشید و داخل این پنجره رها کنید (Drag & Drop) یا نام آن را بنویسید: ").strip('\"\' ')
+        if user_input and os.path.exists(user_input):
+            return user_input
+    except Exception:
+        pass
+
+    return None
+
+
+if __name__ == "__main__":
+    target = get_target_file()
+    if not target:
+        print("❌ هیچ فایلی انتخاب نشد. برنامه متوقف شد.")
         sys.exit(1)
 
-    process_cogs(target_file)
+    process_cogs(target)
