@@ -217,6 +217,41 @@ def process_cogs(file_path: str, output_path: str = None, unit_pref: str = "auto
                 "disc": row_d, "net": row_net, "init_qty": qty, "freight": 0.0
             })
 
+    # در صورت عدم وجود شیت خرید مجزا، بررسی شیت‌های توأم خرید و فروش (مانند فروش_و_انبار یا کاردکس)
+    if not p_records:
+        candidate_sheets = [s_sheet] + [wb[n] for n in wb.sheetnames if wb[n] not in [s_sheet, beg_sheet, pr_sheet, fr_sheet, sr_sheet, cn_sheet]]
+        for candidate in candidate_sheets:
+            if not candidate: continue
+            cand_p_cols = {}
+            for c in range(1, candidate.max_column + 1):
+                h = str(candidate.cell(1, c).value or "").strip().lower()
+                if not h: continue
+                if ("نام" in h or "کد" in h or "شرح" in h) and "کالا" in h: cand_p_cols["item"] = c
+                elif not cand_p_cols.get("item") and ("کالا" in h or "item" in h): cand_p_cols["item"] = c
+                if ("خرید" in h or "وارده" in h or "ورود" in h or "رسید" in h) and ("تعداد" in h or "مقدار" in h or "qty" in h): cand_p_cols["qty"] = c
+                if ("خرید" in h or "وارده" in h or "ورود" in h) and any(k in h for k in ["قیمت", "فی", "بها", "نرخ", "مبلغ", "price", "cost"]): cand_p_cols["price"] = c
+
+            if cand_p_cols.get("qty") and cand_p_cols.get("price"):
+                item_c = cand_p_cols.get("item", 1)
+                qty_c = cand_p_cols["qty"]
+                price_c = cand_p_cols["price"]
+                for r in range(2, candidate.max_row + 1):
+                    item = str(candidate.cell(r, item_c).value or "").strip()
+                    if not item: continue
+                    qty = to_float(candidate.cell(r, qty_c).value)
+                    price = to_float(candidate.cell(r, price_c).value)
+                    if qty > 0 and price > 0:
+                        row_g = qty * price
+                        p_gross += row_g
+                        p_records.append({
+                            "doc": f"REC-{r}", "item": item, "name": item, "qty": qty, "price": price,
+                            "disc": 0.0, "net": row_g, "init_qty": qty, "freight": 0.0
+                        })
+                        item_names[item] = item
+                if p_records:
+                    print(f"   💡 داده‌های خرید از ستون‌های خرید شیت «{candidate.title}» استخراج شد ({len(p_records)} قلم).")
+                    break
+
     # ۳. استخراج و تخصیص دینامیک هزینه‌های حمل ورودی
     inward_freight = 0.0
     period_freight = 0.0
@@ -306,9 +341,11 @@ def process_cogs(file_path: str, output_path: str = None, unit_pref: str = "auto
             if "سند" in h or "فاکتور" in h: s_cols["doc"] = c
             elif "کد کالا" in h or ("کالا" in h and "کد" in h) or (not s_cols.get("item") and "کالا" in h): s_cols["item"] = c
             elif "شرح" in h or "نام" in h: s_cols["name"] = c
-            elif "تعداد" in h or "مقدار" in h: s_cols["qty"] = c
+            elif ("فروش" in h or "صادره" in h or "خروج" in h or "حواله" in h) and ("تعداد" in h or "مقدار" in h or "qty" in h): s_cols["qty"] = c
+            elif not s_cols.get("qty") and ("تعداد" in h or "مقدار" in h) and "خرید" not in h and "وارده" not in h: s_cols["qty"] = c
             elif "تخفیف" in h: s_cols["disc"] = c
-            elif ("قیمت" in h or "فی" in h) and "تخفیف" not in h: s_cols["price"] = c
+            elif ("فروش" in h or "صادره" in h or "خروج" in h) and any(k in h for k in ["قیمت", "فی", "بها", "نرخ", "مبلغ"]): s_cols["price"] = c
+            elif not s_cols.get("price") and ("قیمت" in h or "فی" in h) and "تخفیف" not in h and "خرید" not in h and "وارده" not in h: s_cols["price"] = c
 
         s_doc_c = s_cols.get("doc", 1)
         s_item_c = s_cols.get("item", 4)
