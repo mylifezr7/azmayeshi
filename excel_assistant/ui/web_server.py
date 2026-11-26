@@ -2579,14 +2579,35 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
             sheet2.set_value("C5", 220)
 
     WebAssistantHandler.controller = ctrl
-    server_address = (host, port)
 
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
-    with ReusableTCPServer(server_address, WebAssistantHandler) as httpd:
-        print(f"🚀 سرور وب دستیار هوشمند اکسل با تم تیره و مدرن فعال شد:")
-        print(f"👉 http://127.0.0.1:{port}")
+    httpd = None
+    actual_port = port
+    for p in range(port, port + 10):
+        try:
+            server_address = (host, p)
+            httpd = ReusableTCPServer(server_address, WebAssistantHandler)
+            actual_port = p
+            break
+        except OSError:
+            continue
+
+    if httpd is None:
+        server_address = (host, port)
+        httpd = ReusableTCPServer(server_address, WebAssistantHandler)
+        actual_port = port
+
+    print(f"🚀 سرور وب دستیار هوشمند اکسل با تم تیره و مدرن فعال شد:")
+    print(f"👉 http://127.0.0.1:{actual_port}")
+    try:
+        import webbrowser
+        webbrowser.open(f"http://localhost:{actual_port}")
+    except Exception:
+        pass
+
+    with httpd:
         httpd.serve_forever()
 
 

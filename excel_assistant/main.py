@@ -28,17 +28,19 @@ def main():
         from excel_assistant.cli import run_cli
         run_cli(target_file)
     elif args.gui or has_display:
+        gui_ok = False
         try:
             from excel_assistant.ui.app import run_gui
-            run_gui(target_file)
+            res = run_gui(target_file)
+            if res == 0:
+                gui_ok = True
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             print(f"\n⚠️ خطا در اجرای رابط گرافیکی دسکتاپ: {e}")
-            if sys.platform != "win32":
-                print("در حال راه‌اندازی رابط کاربری تحت وب...")
-                from excel_assistant.ui.web_server import start_web_server
-                start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file)
+
+        if not gui_ok:
+            print("🚀 در حال راه‌اندازی و باز کردن خودکار برنامه در مرورگر (Web UI)...")
+            from excel_assistant.ui.web_server import start_web_server
+            start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file)
     else:
         from excel_assistant.ui.web_server import start_web_server
         start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file)
