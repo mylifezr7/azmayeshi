@@ -40,6 +40,11 @@ def main():
             print(f"\n⚠️ خطا در اجرای رابط گرافیکی دسکتاپ: {e}")
 
         if not gui_ok:
+            if args.gui:
+                print("\n❌ باز شدن پنجره دسکتاپ با خطا مواجه شد.")
+                print("💡 برای نصب یا تعمیر وابستگی گرافیکی، دستور زیر را در CMD اجرا کنید:")
+                print("   python -m pip install PySide6\n")
+                sys.exit(1)
             print("🚀 در حال راه‌اندازی و باز کردن خودکار برنامه در مرورگر (Web UI)...")
             from excel_assistant.ui.web_server import start_web_server
             start_web_server(host="0.0.0.0", port=args.port, workbook_path=target_file, preferred_driver=pref_driver)

@@ -52,9 +52,24 @@ def setup_application_font(app):
 
 def run_gui(workbook_path: Optional[str] = None):
     """Initializes and runs the PySide6 modern GUI."""
+    global QApplication, Qt, QFont, QFontDatabase
     if QApplication is None:
-        print("❌ پکیج PySide6 روی سیستم شما نصب نیست. لطفاً دستور زیر را اجرا کنید:\npip install PySide6")
-        return 1
+        print("\n⏳ پکیج PySide6 یافت نشد؛ در حال نصب خودکار PySide6 برای باز شدن پنجره دسکتاپ...")
+        try:
+            import subprocess
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "PySide6"])
+            from PySide6.QtCore import Qt as _Qt
+            from PySide6.QtGui import QFont as _QFont, QFontDatabase as _QFontDatabase
+            from PySide6.QtWidgets import QApplication as _QApplication
+            Qt = _Qt
+            QFont = _QFont
+            QFontDatabase = _QFontDatabase
+            QApplication = _QApplication
+            print("✅ پکیج PySide6 با موفقیت نصب شد! در حال باز کردن پنجره دسکتاپ...\n")
+        except Exception as e:
+            print(f"❌ پکیج PySide6 روی سیستم شما نصب نیست: {e}")
+            print("💡 لطفاً در خط فرمان CMD دستور زیر را اجرا کنید:\npython -m pip install PySide6\n")
+            return 1
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setLayoutDirection(Qt.RightToLeft)
