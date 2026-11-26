@@ -327,3 +327,30 @@ def test_cogs_nine_sheets_comprehensive_case_study():
     # 18 * 39.5M = 711M; Disc 5% = 35.55M -> Net unit = 37.525M. Return 2 units = 75.05M -> Net = 600.4M
     assert cogs_sh.get_value("D14") == 600_400_000.0
 
+
+def test_cogs_challenge_4_comprehensive():
+    """Verify Challenge 4 (Mehr 1405) with all 10 sheets, freight allocation by weight, and discounts."""
+    import os
+    if not os.path.exists("Challenge_4_Accounting.xlsx"):
+        pytest.skip("Challenge_4_Accounting.xlsx not found")
+
+    mgr = ExcelConnectionManager()
+    mgr.connect("Challenge_4_Accounting.xlsx")
+    sheet = mgr.get_active_sheet()
+    ctx = ActionContext(sheet=sheet, manager=mgr)
+
+    action = CostOfGoodsSoldAction(method="fifo")
+    res = AccountingActionHandler.execute_cogs(action, ctx)
+
+    assert res.success is True
+    assert "تطبیق‌های حسابرسی و انبارگردانی اعمال‌شده در چالش ۴" in res.message_persian
+
+    cogs_sh = mgr.get_sheet("صورت بهای تمام شده (COGS)")
+    assert cogs_sh.get_value("D5") == 1_654_350_000.0   # موجودی اول دوره
+    assert cogs_sh.get_value("C6") == 2_087_690_000.0   # خرید ناخالص
+    assert cogs_sh.get_value("C7") == 40_500_000.0      # کرایه حمل ورودی
+    assert cogs_sh.get_value("C8") == 99_690_000.0      # برگشت و تخفیفات خرید
+    assert cogs_sh.get_value("D11") == 1_615_427_740.0  # موجودی پایان دوره (فایفو)
+    assert cogs_sh.get_value("D14") == 2_598_410_000.0  # فروش خالص
+
+
