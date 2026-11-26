@@ -2508,9 +2508,12 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Optional[str] = None, controller: Optional[AssistantUIController] = None):
+def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Optional[str] = None, controller: Optional[AssistantUIController] = None, preferred_driver: Optional[str] = None):
     """Starts the standalone Persian Web UI Server."""
-    ctrl = controller or AssistantUIController()
+    if not controller and preferred_driver:
+        ctrl = AssistantUIController(manager=ExcelConnectionManager(preferred_driver=preferred_driver))
+    else:
+        ctrl = controller or AssistantUIController()
     ctrl.connect(workbook_path)
 
     # Initialize sample data if fresh workbook

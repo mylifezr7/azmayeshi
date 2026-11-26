@@ -29,7 +29,8 @@ def ensure_windows_excel_dependencies():
 
 
 if __name__ == "__main__":
-    ensure_windows_excel_dependencies()
+    if "--no-excel" not in sys.argv:
+        ensure_windows_excel_dependencies()
 
     from excel_assistant.main import main
 
