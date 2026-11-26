@@ -150,3 +150,93 @@ def test_search_cogs():
     res_cogs = search_commands("cogs", limit=5)
     assert len(res_cogs) > 0
     assert any("بهای تمام شده" in r["title"] or "cogs" in str(r["keywords"]).lower() for r in res_cogs)
+
+
+def test_execute_cogs_with_transactional_multi_sheets():
+    """Verify COGS dynamically scans multi-sheet workbooks (sales, purchases, inventory)."""
+    mgr = ExcelConnectionManager()
+    mgr.connect()
+    sh_sales = mgr.create_sheet("فاکتور فروش")
+    sh_purch = mgr.create_sheet("فاکتور خرید")
+    sh_inv = mgr.create_sheet("حرکت انبار")
+
+    # Purchase invoices
+    sh_purch.set_value("A1", "سند")
+    sh_purch.set_value("E1", "کد کالا")
+    sh_purch.set_value("G1", "تعداد")
+    sh_purch.set_value("H1", "قیمت واحد")
+
+    sh_purch.set_value("A2", "PI501")
+    sh_purch.set_value("E2", "IT01")
+    sh_purch.set_value("G2", 5)
+    sh_purch.set_value("H2", 690_000_000)
+
+    sh_purch.set_value("A3", "PI502")
+    sh_purch.set_value("E3", "IT02")
+    sh_purch.set_value("G3", 20)
+    sh_purch.set_value("H3", 92_000_000)
+
+    sh_purch.set_value("A4", "PR601")  # purchase return
+    sh_purch.set_value("E4", "IT02")
+    sh_purch.set_value("G4", 2)
+    sh_purch.set_value("H4", 92_000_000)
+
+    # Sales invoices
+    sh_sales.set_value("A1", "سند")
+    sh_sales.set_value("E1", "کد کالا")
+    sh_sales.set_value("G1", "تعداد")
+    sh_sales.set_value("H1", "قیمت واحد")
+    sh_sales.set_value("I1", "تخفیف%")
+
+    sh_sales.set_value("A2", "SI301")
+    sh_sales.set_value("E2", "IT01")
+    sh_sales.set_value("G2", 2)
+    sh_sales.set_value("H2", 980_000_000)
+    sh_sales.set_value("I2", 3)
+
+    sh_sales.set_value("A3", "SI302")
+    sh_sales.set_value("E3", "IT02")
+    sh_sales.set_value("G3", 8)
+    sh_sales.set_value("H3", 145_000_000)
+    sh_sales.set_value("I3", 0)
+
+    # Inventory movements
+    sh_inv.set_value("A1", "تاریخ")
+    sh_inv.set_value("B1", "سند")
+    sh_inv.set_value("C1", "کد کالا")
+    sh_inv.set_value("E1", "نوع حرکت")
+    sh_inv.set_value("F1", "تعداد +/-")
+
+    sh_inv.set_value("A2", "03/01")
+    sh_inv.set_value("B2", "OP01")
+    sh_inv.set_value("C2", "IT01")
+    sh_inv.set_value("E2", "اول دوره")
+    sh_inv.set_value("F2", 3)
+
+    sh_inv.set_value("A3", "03/01")
+    sh_inv.set_value("B3", "OP02")
+    sh_inv.set_value("C3", "IT02")
+    sh_inv.set_value("E3", "اول دوره")
+    sh_inv.set_value("F3", 12)
+
+    ctx = ActionContext(sheet=sh_purch, manager=mgr)
+    action = CostOfGoodsSoldAction(method="fifo")
+    res = AccountingActionHandler.execute_cogs(action, ctx)
+
+    assert res.success is True
+    cogs_sh = mgr.get_sheet("صورت بهای تمام شده (COGS)")
+    
+    # Beginning inventory: 3*690M + 12*92M = 2,070M + 1,104M = 3,174,000,000
+    assert cogs_sh.get_value("D5") == 3_174_000_000.0
+    # Gross purchases: 5*690M + 20*92M = 3,450M + 1,840M = 5,290,000,000
+    assert cogs_sh.get_value("C6") == 5_290_000_000.0
+    # Purchase returns: 2*92M = 184,000,000
+    assert cogs_sh.get_value("C8") == 184_000_000.0
+    # Net sales: (2*980M * 0.97) + (8*145M) = 1,901,200,000 + 1,160,000,000 = 3,061,200,000
+    assert cogs_sh.get_value("D14") == 3_061_200_000.0
+
+    # Ensure no notes start with '=' (which causes #NAME? in Excel)
+    for r in range(5, 18):
+        val = str(cogs_sh.get_value(f"E{r}") or "")
+        assert not val.startswith("="), f"Row {r} note begins with '=': {val}"
+

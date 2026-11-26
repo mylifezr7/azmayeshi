@@ -1838,6 +1838,291 @@ class AccountingActionHandler:
             )
 
     @classmethod
+    def _scan_transactional_data(cls, ctx: ActionContext) -> Optional[Dict[str, Any]]:
+        """
+        بررسی هوشمند ورک‌بوک برای استخراج فاکتورهای خرید، فاکتورهای فروش و گردش انبار
+        و محاسبه دقیق خرید خالص، فروش خالص، موجودی اول دوره و کاردکس کالاها.
+        """
+        driver = ctx.manager if ctx.manager else None
+        if not driver:
+            return None
+
+        sheet_names = []
+        if hasattr(driver, "list_sheets"):
+            try:
+                sheet_names = driver.list_sheets()
+            except Exception:
+                pass
+        if not sheet_names and hasattr(driver, "get_sheet_names"):
+            try:
+                sheet_names = driver.get_sheet_names()
+            except Exception:
+                pass
+
+        sheets = []
+        if sheet_names:
+            for sn in sheet_names:
+                try:
+                    sh = driver.get_sheet(sn)
+                    if sh:
+                        sheets.append(sh)
+                except Exception:
+                    pass
+        elif ctx.sheet:
+            sheets = [ctx.sheet]
+
+        p_sheet = None
+        s_sheet = None
+        m_sheet = None
+
+        # 1. تطبیق نام شیت
+        for sh in sheets:
+            sh_name_l = sh.name.lower()
+            if any(k in sh_name_l for k in ["فروش", "sales", "صورتحساب فروش"]) and not s_sheet:
+                s_sheet = sh
+            elif any(k in sh_name_l for k in ["خرید", "purchase", "purchases"]) and not p_sheet:
+                p_sheet = sh
+            elif any(k in sh_name_l for k in ["حرکت", "انبار", "موجودی", "کاردکس", "گردش", "stock", "inventory"]) and not m_sheet:
+                m_sheet = sh
+
+        # 2. در صورت عدم تطبیق نام، تطبیق بر اساس هدرهای ستون‌ها
+        for sh in sheets:
+            if sh in [p_sheet, s_sheet, m_sheet]:
+                continue
+            min_r, min_c, max_r, max_c = sh.get_used_range_bounds()
+            if max_r < min_r or max_c < min_c:
+                continue
+            hdr_txt = ""
+            for r in range(min_r, min(min_r + 5, max_r + 1)):
+                hdr_txt += " ".join(str(sh.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1)).lower() + " "
+
+            if not s_sheet and ("مشتری" in hdr_txt or ("فروش" in hdr_txt and any(k in hdr_txt for k in ["تعداد", "فی", "قیمت"]))):
+                s_sheet = sh
+            elif not p_sheet and ("تامین" in hdr_txt or ("خرید" in hdr_txt and any(k in hdr_txt for k in ["تعداد", "فی", "قیمت"]))):
+                p_sheet = sh
+            elif not m_sheet and any(k in hdr_txt for k in ["نوع حرکت", "شرح حرکت", "اول دوره"]):
+                m_sheet = sh
+
+        if not p_sheet and not s_sheet and not m_sheet:
+            return None
+
+        from excel_assistant.actions.business_actions import InventoryValuationCalculator
+
+        p_gross = 0.0
+        p_returns = 0.0
+        batches_by_item: Dict[str, List[Tuple[float, float]]] = {}
+        earliest_price_by_item: Dict[str, float] = {}
+
+        # استخراج داده‌های خرید
+        if p_sheet:
+            p_min_r, p_min_c, p_max_r, p_max_c = p_sheet.get_used_range_bounds()
+            p_hdr_r = p_min_r
+            p_col_map = {}
+            for r in range(p_min_r, min(p_min_r + 5, p_max_r + 1)):
+                row_cols = {}
+                for c in range(p_min_c, p_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(p_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "سند" in h or "فاکتور" in h:
+                        row_cols["doc"] = c_let
+                    elif "کد کالا" in h or ("کالا" in h and "کد" in h) or (not row_cols.get("item") and "کالا" in h):
+                        row_cols["item"] = c_let
+                    elif "شرح" in h or "نام" in h:
+                        row_cols["name"] = c_let
+                    elif "تعداد" in h or "مقدار" in h:
+                        row_cols["qty"] = c_let
+                    elif ("قیمت" in h or "فی" in h) and "تخفیف" not in h:
+                        row_cols["price"] = c_let
+                if "qty" in row_cols or "price" in row_cols:
+                    p_hdr_r = r
+                    p_col_map = row_cols
+                    break
+
+            doc_c = p_col_map.get("doc", "A")
+            item_c = p_col_map.get("item") or p_col_map.get("name") or col_index_to_letter(p_min_c)
+            qty_c = p_col_map.get("qty", "G")
+            price_c = p_col_map.get("price", "H")
+
+            for r in range(p_hdr_r + 1, p_max_r + 1):
+                doc_val = str(p_sheet.get_value(f"{doc_c}{r}") or "").strip()
+                item_raw = str(p_sheet.get_value(f"{item_c}{r}") or "").strip()
+                if not item_raw:
+                    continue
+                qty = to_float_safe(p_sheet.get_value(f"{qty_c}{r}")) or 0.0
+                price = to_float_safe(p_sheet.get_value(f"{price_c}{r}")) or 0.0
+                if abs(qty) == 0 or price == 0:
+                    continue
+
+                if item_raw not in earliest_price_by_item and price > 0:
+                    earliest_price_by_item[item_raw] = price
+
+                is_return = "pr" in doc_val.lower() or "برگشت" in doc_val or qty < 0
+                if is_return:
+                    p_returns += abs(qty) * price
+                    if item_raw in batches_by_item and batches_by_item[item_raw]:
+                        last_q, last_p = batches_by_item[item_raw][-1]
+                        batches_by_item[item_raw][-1] = (max(0.0, last_q - abs(qty)), last_p)
+                else:
+                    p_gross += qty * price
+                    batches_by_item.setdefault(item_raw, []).append((qty, price))
+
+        # استخراج داده‌های فروش
+        s_gross = 0.0
+        s_discounts = 0.0
+        s_returns = 0.0
+        sold_qty_by_item: Dict[str, float] = {}
+
+        if s_sheet:
+            s_min_r, s_min_c, s_max_r, s_max_c = s_sheet.get_used_range_bounds()
+            s_hdr_r = s_min_r
+            s_col_map = {}
+            for r in range(s_min_r, min(s_min_r + 5, s_max_r + 1)):
+                row_cols = {}
+                for c in range(s_min_c, s_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(s_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "سند" in h or "فاکتور" in h:
+                        row_cols["doc"] = c_let
+                    elif "کد کالا" in h or ("کالا" in h and "کد" in h) or (not row_cols.get("item") and "کالا" in h):
+                        row_cols["item"] = c_let
+                    elif "شرح" in h or "نام" in h:
+                        row_cols["name"] = c_let
+                    elif "تعداد" in h or "مقدار" in h:
+                        row_cols["qty"] = c_let
+                    elif "تخفیف" in h:
+                        row_cols["disc"] = c_let
+                    elif ("قیمت" in h or "فی" in h) and "تخفیف" not in h:
+                        row_cols["price"] = c_let
+                    elif "تسویه" in h or "توضیح" in h or "ملاحظات" in h:
+                        row_cols["note"] = c_let
+                if "qty" in row_cols or "price" in row_cols:
+                    s_hdr_r = r
+                    s_col_map = row_cols
+                    break
+
+            doc_c = s_col_map.get("doc", "A")
+            item_c = s_col_map.get("item") or s_col_map.get("name") or col_index_to_letter(s_min_c)
+            qty_c = s_col_map.get("qty", "G")
+            price_c = s_col_map.get("price", "H")
+            disc_c = s_col_map.get("disc")
+            note_c = s_col_map.get("note")
+
+            for r in range(s_hdr_r + 1, s_max_r + 1):
+                doc_val = str(s_sheet.get_value(f"{doc_c}{r}") or "").strip()
+                item_raw = str(s_sheet.get_value(f"{item_c}{r}") or "").strip()
+                if not item_raw:
+                    continue
+                qty = to_float_safe(s_sheet.get_value(f"{qty_c}{r}")) or 0.0
+                price = to_float_safe(s_sheet.get_value(f"{price_c}{r}")) or 0.0
+                if abs(qty) == 0 or price == 0:
+                    continue
+                disc_raw = to_float_safe(s_sheet.get_value(f"{disc_c}{r}")) if disc_c else 0.0
+                disc_val = disc_raw or 0.0
+                note_val = str(s_sheet.get_value(f"{note_c}{r}") or "").strip() if note_c else ""
+
+                row_g = abs(qty) * price
+                row_d = row_g * (disc_val / 100.0) if (0 < disc_val <= 100) else disc_val
+                row_net = row_g - row_d
+
+                is_return = "sr" in doc_val.lower() or "برگشت" in doc_val or "برگشت" in note_val or qty < 0
+                if is_return:
+                    s_returns += row_net
+                    sold_qty_by_item[item_raw] = sold_qty_by_item.get(item_raw, 0.0) - abs(qty)
+                else:
+                    s_gross += row_g
+                    s_discounts += row_d
+                    sold_qty_by_item[item_raw] = sold_qty_by_item.get(item_raw, 0.0) + abs(qty)
+
+        s_net = s_gross - s_discounts - s_returns
+
+        # استخراج موجودی اول دوره و گردش انبار
+        beg_inv_val = 0.0
+        if m_sheet:
+            m_min_r, m_min_c, m_max_r, m_max_c = m_sheet.get_used_range_bounds()
+            m_hdr_r = m_min_r
+            m_col_map = {}
+            for r in range(m_min_r, min(m_min_r + 5, m_max_r + 1)):
+                row_cols = {}
+                for c in range(m_min_c, m_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(m_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "کد کالا" in h or ("کالا" in h and "کد" in h):
+                        row_cols["item"] = c_let
+                    elif "شرح" in h or "نام" in h:
+                        row_cols["name"] = c_let
+                    elif "حرکت" in h or "نوع" in h or "شرح حرکت" in h:
+                        row_cols["type"] = c_let
+                    elif "تعداد" in h or "مقدار" in h:
+                        row_cols["qty"] = c_let
+                if "qty" in row_cols:
+                    m_hdr_r = r
+                    m_col_map = row_cols
+                    break
+
+            item_c = m_col_map.get("item") or m_col_map.get("name") or col_index_to_letter(m_min_c)
+            type_c = m_col_map.get("type", "E")
+            qty_c = m_col_map.get("qty", "F")
+
+            for r in range(m_hdr_r + 1, m_max_r + 1):
+                type_val = str(m_sheet.get_value(f"{type_c}{r}") or "").strip().lower()
+                item_raw = str(m_sheet.get_value(f"{item_c}{r}") or "").strip()
+                if not item_raw:
+                    continue
+                qty = to_float_safe(m_sheet.get_value(f"{qty_c}{r}")) or 0.0
+
+                if "اول دوره" in type_val or "ابتدای دوره" in type_val:
+                    unit_p = earliest_price_by_item.get(item_raw, 0.0)
+                    beg_inv_val += qty * unit_p
+                    batches_by_item.setdefault(item_raw, []).insert(0, (qty, unit_p))
+
+        # محاسبه بهای تمام شده و مانده پایان دوره به تفکیک روش‌ها
+        fifo_cogs = 0.0
+        lifo_cogs = 0.0
+        avg_cogs = 0.0
+        fifo_end_inv = 0.0
+        lifo_end_inv = 0.0
+        avg_end_inv = 0.0
+
+        for it_code, batches in batches_by_item.items():
+            sold_q = sold_qty_by_item.get(it_code, 0.0)
+            f_res = InventoryValuationCalculator.calculate_valuation(batches, sold_q, "fifo")
+            l_res = InventoryValuationCalculator.calculate_valuation(batches, sold_q, "lifo")
+            a_res = InventoryValuationCalculator.calculate_valuation(batches, sold_q, "average")
+
+            fifo_cogs += f_res["cogs"]
+            fifo_end_inv += f_res["remaining_value"]
+            lifo_cogs += l_res["cogs"]
+            lifo_end_inv += l_res["remaining_value"]
+            avg_cogs += a_res["cogs"]
+            avg_end_inv += a_res["remaining_value"]
+
+        src_parts = []
+        if p_sheet:
+            src_parts.append(f"خرید: {p_sheet.name}")
+        if s_sheet:
+            src_parts.append(f"فروش: {s_sheet.name}")
+        if m_sheet:
+            src_parts.append(f"انبار: {m_sheet.name}")
+
+        return {
+            "p_gross": p_gross,
+            "p_returns": p_returns,
+            "net_purchases": p_gross - p_returns,
+            "s_gross": s_gross,
+            "s_discounts": s_discounts,
+            "s_returns": s_returns,
+            "net_sales": s_net,
+            "beg_inv": beg_inv_val,
+            "fifo_cogs": fifo_cogs,
+            "fifo_end_inv": fifo_end_inv,
+            "lifo_cogs": lifo_cogs,
+            "lifo_end_inv": lifo_end_inv,
+            "avg_cogs": avg_cogs,
+            "avg_end_inv": avg_end_inv,
+            "source_desc": " | ".join(src_parts)
+        }
+
+    @classmethod
     def execute_cogs(cls, action: CostOfGoodsSoldAction, ctx: ActionContext) -> ActionResult:
         """
         محاسبه بهای تمام شده کالای فروش رفته (Cost of Goods Sold - COGS)
@@ -1887,6 +2172,29 @@ class AccountingActionHandler:
                 elif detected_sales is None and any(k in row_str for k in ["فروش کالا", "درآمد فروش", "فروش"]) and not any(k in row_str for k in ["برگشت", "تخفیف"]):
                     detected_sales = best_num
 
+        # 2. اسکن هوشمند چندشیتی فاکتورها در صورت عدم وجود در شیت تراز
+        method = action.method or "periodic"
+        trans_data = None
+        if detected_purch is None or detected_sales is None or detected_beg_inv is None:
+            trans_data = cls._scan_transactional_data(ctx)
+            if trans_data and (trans_data["p_gross"] > 0 or trans_data["net_sales"] > 0 or trans_data["beg_inv"] > 0):
+                if detected_beg_inv is None and trans_data["beg_inv"] > 0:
+                    detected_beg_inv = trans_data["beg_inv"]
+                if detected_purch is None and trans_data["p_gross"] > 0:
+                    detected_purch = trans_data["p_gross"]
+                if detected_returns is None and trans_data["p_returns"] > 0:
+                    detected_returns = trans_data["p_returns"]
+                if detected_sales is None and trans_data["net_sales"] > 0:
+                    detected_sales = trans_data["net_sales"]
+
+                if detected_end_inv is None:
+                    if method == "lifo":
+                        detected_end_inv = trans_data["lifo_end_inv"]
+                    elif method == "average":
+                        detected_end_inv = trans_data["avg_end_inv"]
+                    else:
+                        detected_end_inv = trans_data["fifo_end_inv"]
+
         # پیش‌فرض‌های استاندارد بنچ‌مارک در صورت عدم وجود در شیت
         beg_inv = detected_beg_inv if detected_beg_inv is not None else 120_000_000.0
         purchases = detected_purch if detected_purch is not None else 450_000_000.0
@@ -1902,7 +2210,6 @@ class AccountingActionHandler:
         cogs_pct = (cogs_val / sales_val * 100) if sales_val > 0 else 0.0
         gross_margin_pct = (gross_profit / sales_val * 100) if sales_val > 0 else 0.0
 
-        method = action.method or "periodic"
         method_names = {
             "periodic": "صورت استاندارد ادواری (فرمول جامع)",
             "fifo": "روش اولین وارده از اولین صادره (FIFO)",
@@ -1948,13 +2255,13 @@ class AccountingActionHandler:
             ("2", "خرید ناخالص طی دوره (Gross Purchases)", purchases, None, "فاکتورهای رسمی و اسناد خرید دوره"),
             ("3", "به اضافه: هزینه حمل کالای خریداری شده (حمل به داخل)", freight_in, None, "کرایه حمل و باربری کالاهای خریداری‌شده"),
             ("4", "کسر می‌شود: برگشت از خرید و تخفیفات", p_returns, None, "مرجوعی کالا و تخفیفات نقدی اخذشده"),
-            ("5", "بهای تمام شده کالای خریداری شده (خرید خالص)", None, "=C6+C7-C8", "=خرید ناخالص + هزینه حمل - برگشت و تخفیفات"),
-            ("6", "بهای تمام شده کالای آماده برای فروش", None, "=D5+D9", "=موجودی اول دوره + بهای خرید خالص دوره"),
+            ("5", "بهای تمام شده کالای خریداری شده (خرید خالص)", None, "=C6+C7-C8", "خرید ناخالص + هزینه حمل - برگشت و تخفیفات"),
+            ("6", "بهای تمام شده کالای آماده برای فروش", None, "=D5+D9", "موجودی اول دوره + بهای خرید خالص دوره"),
             ("7", "کسر می‌شود: موجودی کالای پایان دوره (Ending Inventory)", None, end_inv, "موجودی انبارگردانی و عینی پایان دوره"),
-            ("8", "بهای تمام شده کالای فروش رفته (COGS)", None, "=D10-D11", "=کالای آماده برای فروش - موجودی پایان دوره"),
+            ("8", "بهای تمام شده کالای فروش رفته (COGS)", None, "=D10-D11", "کالای آماده برای فروش - موجودی پایان دوره"),
             ("", "---", None, None, "---"),
             ("9", "درآمد حاصل از فروش کالا طی دوره", None, sales_val, "فروش خالص کالاها طی دوره مالی"),
-            ("10", "سود (زیان) ناخالص دوره (Gross Profit)", None, "=D14-D12", "=فروش خالص - بهای تمام شده کالای فروش رفته"),
+            ("10", "سود (زیان) ناخالص دوره (Gross Profit)", None, "=D14-D12", "فروش خالص - بهای تمام شده کالای فروش رفته"),
             ("11", "درصد بهای تمام شده نسبت به فروش (COGS %)", None, "=ROUND((D12/D14)*100, 1)", "نسبت سهم بهای تمام شده از هر ۱۰۰ تومان فروش"),
             ("12", "حاشیه سود ناخالص دوره (Gross Margin %)", None, "=ROUND((D15/D14)*100, 1)", "درصد سود ناخالص به دست آمده از درآمد فروش"),
         ]
@@ -1971,7 +2278,11 @@ class AccountingActionHandler:
                     ws.set_formula(f"D{i}", total)
                 else:
                     ws.set_value(f"D{i}", total)
-            ws.set_value(f"E{i}", note)
+            
+            clean_note = str(note or "")
+            if clean_note.startswith("="):
+                clean_note = clean_note.lstrip("=")
+            ws.set_value(f"E{i}", clean_note)
 
             # هایلایت ردیف‌های کلیدی
             if i in [9, 10]:
@@ -2007,9 +2318,14 @@ class AccountingActionHandler:
             ws.set_font(f"A{cmp_hdr_r}:E{cmp_hdr_r}", bold=True, color_hex="#FFFFFF")
             ws.set_cell_color(f"A{cmp_hdr_r}:E{cmp_hdr_r}", "#2563EB")
 
-            fifo_cogs = cogs_val * 0.95
-            lifo_cogs = cogs_val * 1.05
-            avg_cogs = cogs_val
+            if trans_data and trans_data["fifo_cogs"] > 0:
+                fifo_cogs = trans_data["fifo_cogs"]
+                lifo_cogs = trans_data["lifo_cogs"]
+                avg_cogs = trans_data["avg_cogs"]
+            else:
+                fifo_cogs = cogs_val * 0.95
+                lifo_cogs = cogs_val * 1.05
+                avg_cogs = cogs_val
 
             cmp_rows = [
                 ("۱", "فایفو - اولین صادره (FIFO)", round(fifo_cogs, 0), f"=D14-C{cmp_hdr_r+1}", "کاهش بهای تمام شده در تورم، افزایش سود دفتری و ارزش بالاتر موجودی پایان دوره"),
@@ -2035,7 +2351,11 @@ class AccountingActionHandler:
 
         ws.auto_fit_columns(["A", "B", "C", "D", "E"])
 
-        src_info = f" بر اساس داده‌های شیت «{source_sheet.name}»" if source_sheet else ""
+        src_info = ""
+        if trans_data and trans_data.get("source_desc"):
+            src_info = f" بر اساس داده‌های استخراج شده از «{trans_data['source_desc']}»"
+        elif source_sheet:
+            src_info = f" بر اساس داده‌های شیت «{source_sheet.name}»"
         return ActionResult(
             success=True,
             message_persian=(
