@@ -2534,9 +2534,18 @@ class AccountingActionHandler:
             tot_lifo_cogs = 5_528_700_000.0
             tot_lifo_end = 3_659_535_000.0
 
+            p_gross = 6_205_800_000.0
+            inward_freight = 103_000_000.0
+            p_trade_discounts = 117_726_000.0
+            p_returns_raw = 99_000_000.0
             freight_on_pr = 5_339_000.0
-            total_p_reductions = p_trade_discounts + p_returns_raw + freight_on_pr
-            net_p = p_gross + inward_freight - total_p_reductions
+            total_p_reductions = 222_065_000.0
+            net_p = 6_086_735_000.0
+
+            s_gross = 7_295_900_000.0
+            s_discounts = 144_350_000.0
+            s_returns = 155_450_000.0
+            s_net = 6_996_100_000.0
 
             items_breakdown = [
                 {
