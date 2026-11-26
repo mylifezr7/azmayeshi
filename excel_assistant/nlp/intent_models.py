@@ -313,6 +313,20 @@ class PayrollAction(BaseActionModel):
     description_persian: str = "محاسبه حقوق و دستمزد، اضافه‌کاری، بیمه و مالیات"
 
 
+class AttendanceAction(BaseActionModel):
+    action_type: Literal["attendance_calculation"] = "attendance_calculation"
+    employee_name: Optional[str] = None
+    month_name: Optional[str] = "آبان ۱۴۰۵"
+    standard_daily_hours: float = 8.0
+    date_col: Optional[str] = None
+    day_col: Optional[str] = None
+    entry_col: Optional[str] = None
+    exit_col: Optional[str] = None
+    status_col: Optional[str] = None
+    create_summary_sheet: bool = True
+    description_persian: str = "محاسبه ورود و خروج، کارکرد، اضافه‌کار، کسری کار و حضور و غیاب"
+
+
 class DepreciationAction(BaseActionModel):
     action_type: Literal["asset_depreciation"] = "asset_depreciation"
     cost: Optional[float] = 100000000.0
@@ -401,6 +415,7 @@ ExcelAction = Union[
     TrialBalanceAction,
     AccountBalanceAction,
     PayrollAction,
+    AttendanceAction,
     DepreciationAction,
     FinancialStatementAction,
     DeepFileAuditAction,

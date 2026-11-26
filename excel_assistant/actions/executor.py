@@ -49,6 +49,7 @@ from excel_assistant.nlp.intent_models import (
     TrialBalanceAction,
     AccountBalanceAction,
     PayrollAction,
+    AttendanceAction,
     DepreciationAction,
     FinancialStatementAction,
     DeepFileAuditAction,
@@ -222,6 +223,9 @@ class ActionExecutor:
 
         elif isinstance(action, PayrollAction):
             return AccountingActionHandler.execute_payroll(action, ctx)
+
+        elif isinstance(action, AttendanceAction):
+            return AccountingActionHandler.execute_attendance(action, ctx)
 
         elif isinstance(action, DepreciationAction):
             return AccountingActionHandler.execute_depreciation(action, ctx)

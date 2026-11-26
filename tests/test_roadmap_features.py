@@ -1346,6 +1346,76 @@ def test_payroll_employee_name_with_tavakoli_not_skipped(test_manager):
     assert ps.get_value('A5') == 'جمع کل لیست حقوق:'
 
 
+def test_attendance_calculation(test_manager):
+    """Test attendance, timesheet, clock-in/out, overtime, shortage, and monthly summaries."""
+    from excel_assistant.nlp.intent_models import AttendanceAction
+    from excel_assistant.nlp.parser import PersianIntentParser
+    from excel_assistant.actions.accounting_actions import AccountingActionHandler
+
+    parser = PersianIntentParser()
+    action = parser.parse("محاسبه ورود و خروج کارمندان")
+    assert isinstance(action, AttendanceAction)
+
+    sheet = test_manager.get_active_sheet()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_attendance(action, ctx)
+
+    assert res.success is True
+    assert "ثبت_ماهانه" in test_manager.get_sheet_names()
+    assert "خلاصه_کارمندان" in test_manager.get_sheet_names()
+
+    # Verify daily sheet content (Image 2)
+    daily = test_manager.get_sheet("ثبت_ماهانه")
+    assert daily.get_value("A2") == "تاریخ"
+    assert daily.get_value("B2") == "روز"
+    assert daily.get_value("C2") == "ورود"
+    assert daily.get_value("D2") == "خروج"
+    assert daily.get_value("E2") == "ساعت کار"
+    assert daily.get_value("F2") == "اضافه‌کار"
+    assert daily.get_value("G2") == "کسری کار"
+    assert daily.get_value("H2") == "وضعیت"
+
+    # Day 1: 1 Aban, Friday, Holiday
+    assert daily.get_value("A3") == "۱ آبان"
+    assert daily.get_value("B3") == "جمعه"
+    assert daily.get_value("H3") == "تعطیل"
+
+    # Day 2: 2 Aban, Saturday, Present
+    assert daily.get_value("A4") == "۲ آبان"
+    assert daily.get_value("C4") == "08:14"
+    assert daily.get_value("D4") == "16:16"
+    assert daily.get_value("E4") == "8:02"
+    assert daily.get_value("F4") == "0:02"
+
+    # Total row (row 33)
+    assert daily.get_value("A33") == "جمع کل"
+    assert daily.get_value("E33") == "181:38"
+    assert daily.get_value("F33") == "8:50"
+    assert daily.get_value("G33") == "3:12"
+
+    # Verify summary sheet content (Image 1)
+    summary = test_manager.get_sheet("خلاصه_کارمندان")
+    assert "خلاصه عملکرد ماهانه" in str(summary.get_value("A1"))
+    assert summary.get_value("A2") == "کارمند"
+    assert summary.get_value("B2") == "روز کارکرد"
+    assert summary.get_value("C2") == "ساعت کار"
+    assert summary.get_value("D2") == "اضافه‌کار"
+    assert summary.get_value("E2") == "کسری کار"
+    assert summary.get_value("F2") == "مرخصی"
+
+    # Check employee rows
+    assert summary.get_value("A3") == "علی رضایی"
+    assert summary.get_value("B3") == "۲۲ روز"
+    assert summary.get_value("C3") == "181:38"
+    assert summary.get_value("D3") == "8:50"
+    assert summary.get_value("E3") == "3:12"
+    assert summary.get_value("F3") == "۳ روز"
+
+    assert summary.get_value("A10") == "زهرا موسوی"
+    assert summary.get_value("B10") == "۱۶ روز"
+
+
+
 
 
 

@@ -41,6 +41,7 @@ from excel_assistant.nlp.intent_models import (
     TrialBalanceAction,
     AccountBalanceAction,
     PayrollAction,
+    AttendanceAction,
     DepreciationAction,
     FinancialStatementAction,
     DeepFileAuditAction,
@@ -148,7 +149,26 @@ class PersianRuleParser:
                 description_persian=f"ثبت و صدور {inv_title} رسمی با محاسبات ارزش افزوده و تخفیف"
             )
 
-        # 1.10 Payroll, Overtime, Insurance & Salary Tax / حقوق و دستمزد
+        # 1.10 Attendance & Timesheet / ورود و خروج، کارکرد، اضافه‌کار و کسری کار پرسنل
+        if any(w in text_lower for w in [
+            "ورود و خروج", "حضور و غیاب", "حضور وغیاب", "ورود خروج",
+            "ساعت کارکرد", "کارکرد ماهانه", "تایم شیت", "تایمشیت", "timesheet",
+            "کسری کار", "تاخیر و اضافه کار", "تأخیر و اضافه کار", "ثبت ماهانه",
+            "خلاصه کارمندان"
+        ]) or (
+            ("کارکرد" in text_lower or "ساعت کار" in text_lower) and any(w in text_lower for w in ["کارمند", "پرسنل", "ورود", "خروج", "ماهانه", "روزانه"])
+        ):
+            emp_name = None
+            for cand_name in ["علی رضایی", "مریم احمدی", "حسین کریمی", "سارا محمدی", "رضا نوری", "نرگس حیدری", "امیر صادقی", "زهرا موسوی"]:
+                if cand_name in text:
+                    emp_name = cand_name
+                    break
+            return AttendanceAction(
+                employee_name=emp_name,
+                description_persian="محاسبه دقیق ورود و خروج، کارکرد، اضافه‌کار، کسری کار و حضور و غیاب پرسنل"
+            )
+
+        # 1.11 Payroll, Overtime, Insurance & Salary Tax / حقوق و دستمزد
         if any(w in text_lower for w in [
             "حقوق و دستمزد", "حقوق", "دستمزد", "اضافه کاری", "اضافه‌کاری",
             "بیمه کارگر", "بیمه تامین اجتماعی", "مالیات حقوق", "فیش حقوق"
