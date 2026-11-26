@@ -719,6 +719,129 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 4px 14px rgba(16, 185, 129, 0.5);
         }
 
+        /* Command Search Bar & Suggestion Dropdown */
+        .search-bar-wrapper {
+            position: relative;
+            padding: 8px 18px;
+            background: rgba(3, 16, 14, 0.95);
+            border-top: 1px solid rgba(16, 185, 129, 0.25);
+            backdrop-filter: blur(8px);
+        }
+
+        .search-input-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .search-icon-symbol {
+            position: absolute;
+            right: 14px;
+            font-size: 15px;
+            color: #10B981;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .search-input-field {
+            width: 100%;
+            background-color: #031412;
+            border: 2px solid #0F766E;
+            color: #FFFFFF;
+            padding: 8px 40px 8px 40px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            outline: none;
+            font-family: inherit;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        }
+
+        .search-input-field:focus {
+            border-color: #10B981;
+            background-color: #04201C;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+        }
+
+        .clear-search-btn {
+            position: absolute;
+            left: 12px;
+            background: #1E293B;
+            border: 1px solid #334155;
+            color: #94A3B8;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            transition: all 0.2s;
+            z-index: 2;
+        }
+
+        .clear-search-btn:hover {
+            background: #EF4444;
+            color: #FFFFFF;
+            border-color: #F87171;
+        }
+
+        .search-results-popup {
+            position: absolute;
+            bottom: 100%;
+            right: 18px;
+            left: 18px;
+            margin-bottom: 6px;
+            background: #031412;
+            border: 2px solid #10B981;
+            border-radius: 12px;
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
+        }
+
+        .search-result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: #E2E8F0;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(15, 118, 110, 0.25);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover, .search-result-item.active {
+            background: #047857;
+            color: #FFFFFF;
+            transform: translateX(-2px);
+        }
+
+        .search-result-category {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(6, 78, 59, 0.6);
+            color: #6EE7B7;
+            border: 1px solid #059669;
+            font-weight: bold;
+        }
+
         .chip {
             background-color: rgba(10, 20, 42, 0.85);
             border: 1px solid var(--border-blue);
@@ -882,6 +1005,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Chat Panel with Wallpaper Backdrop -->
         <div class="chat-section">
             <div class="chat-messages" id="chatFeed"></div>
+
+            <!-- Command Search Bar with Instant Suggestions (جستجوی هوشمند قابلیت‌ها) -->
+            <div class="search-bar-wrapper">
+                <div class="search-input-box">
+                    <span class="search-icon-symbol">🔍</span>
+                    <input type="text" id="cmdSearchInput" class="search-input-field"
+                           placeholder="جستجوی سریع قابلیت‌ها (مثلاً: سود، سود سالانه، کارکرد، فروش، فیلتر)..."
+                           oninput="onSearchQueryChanged(this.value)"
+                           onkeydown="onSearchKeyDown(event)"
+                           autocomplete="off" />
+                    <button id="clearSearchBtn" class="clear-search-btn" onclick="clearSearchInput()" style="display: none;">✕</button>
+                </div>
+                <!-- Dropdown Popup for Realtime Results -->
+                <div id="searchResultsPopup" class="search-results-popup" style="display: none;"></div>
+            </div>
 
             <!-- Quick Action Cascading Selector (5 Categories) -->
             <div class="chips-bar">
@@ -1500,6 +1638,261 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         };
 
+        // ==========================================
+        // Command Search Registry & Realtime Search
+        // ==========================================
+        const COMMAND_SEARCH_REGISTRY = [
+            // ۲. قابلیت‌های حسابداری
+            { title: "💵 محاسبه سود سالانه", cmd: "محاسبه سود سالانه", category: "حسابداری", keywords: ["سود", "سود سالانه", "سالانه", "سال", "profit", "annual", "yearly", "محاسبه سود"] },
+            { title: "💵 محاسبه سود ماهانه", cmd: "محاسبه سود ماهانه", category: "حسابداری", keywords: ["سود", "سود ماهانه", "ماهانه", "profit", "monthly", "محاسبه سود"] },
+            { title: "💵 محاسبه سود روزانه", cmd: "محاسبه سود روزانه", category: "حسابداری", keywords: ["سود", "سود روزانه", "روزانه", "profit", "daily", "محاسبه سود"] },
+            { title: "💵 محاسبه سود کل دوره", cmd: "محاسبه سود کل", category: "حسابداری", keywords: ["سود", "سود کل", "کل سود", "profit", "total", "محاسبه سود"] },
+            { title: "💵 محاسبه سود به روش فایفو (FIFO)", cmd: "محاسبه سود به روش فایفو", category: "حسابداری", keywords: ["سود", "فایفو", "fifo", "اولین وارده", "بهای تمام شده", "cogs", "محاسبه سود"] },
+            { title: "💵 محاسبه سود به روش لایفو (LIFO)", cmd: "محاسبه سود به روش لایفو", category: "حسابداری", keywords: ["سود", "لایفو", "lifo", "آخرین وارده", "تورم", "محاسبه سود"] },
+            { title: "💵 محاسبه سود با میانگین موزون", cmd: "محاسبه سود با میانگین موزون", category: "حسابداری", keywords: ["سود", "میانگین", "موزون", "average", "محاسبه سود"] },
+            { title: "⚖️ مقایسه تطبیقی سود (فایفو vs لایفو)", cmd: "مقایسه سود به روش فایفو و لایفو", category: "حسابداری", keywords: ["سود", "مقایسه", "فایفو", "لایفو", "تطبیقی", "compare", "محاسبه سود"] },
+            { title: "🏷️ انتخاب روش محاسبه سود (فایفو/لایفو/میانگین)", cmd: "روش سود", category: "حسابداری", keywords: ["سود", "روش سود", "انتخاب سود", "ویزارد سود", "محاسبه سود"] },
+            { title: "⚙️ تنظیمات دستی ستون‌های محاسبه سود", cmd: "تنظیمات سود", category: "حسابداری", keywords: ["سود", "تنظیمات سود", "دستی ستون سود", "محاسبه سود"] },
+            { title: "⏱️ محاسبه ساعت کاری، ورود و خروج کارمندان (تایم‌شیت)", cmd: "محاسبه ساعت کاری", category: "حسابداری", keywords: ["ساعت کاری", "ساعت کار", "ورود و خروج", "ورود خروج", "حضور و غیاب", "حضور غیاب", "تایم شیت", "تایمشیت", "اضافه کار", "کسری کار", "مرخصی", "تردد", "پرسنل", "کارمندان"] },
+            { title: "💼 لیست حقوق و دستمزد، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد", category: "حسابداری", keywords: ["حقوق", "دستمزد", "فیش حقوقی", "بیمه", "مالیات", "payroll", "salary"] },
+            { title: "💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", cmd: "محاسبه فروش", category: "حسابداری", keywords: ["فروش", "فروش کل", "فروش ماهانه", "فروش سالانه", "فروش روزانه", "sales", "گزارش فروش"] },
+            { title: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B", category: "حسابداری", keywords: ["مغایرت", "مغایرت گیری", "اختلاف", "تطبیق", "reconciliation"] },
+            { title: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی", category: "حسابداری", keywords: ["تراز", "تراز آزمایشی", "چهار ستونه", "trial balance"] },
+            { title: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب", category: "حسابداری", keywords: ["مانده", "مانده حساب", "بدهکار", "بستانکار", "تسویه"] },
+            { title: "📉 محاسبه جدول استهلاک دارایی‌ها", cmd: "محاسبه استهلاک", category: "حسابداری", keywords: ["استهلاک", "دارایی", "استهلاک انباشته", "depreciation"] },
+            { title: "📈 تهیه صورت سود و زیان جامع دوره", cmd: "صورت سود و زیان جامع", category: "حسابداری", keywords: ["صورت سود و زیان", "سود و زیان", "سود", "زیان", "income statement"] },
+            { title: "🏛️ تهیه ترازنامه مالی (بیلان)", cmd: "ترازنامه", category: "حسابداری", keywords: ["ترازنامه", "صورت وضعیت مالی", "بیلان", "balance sheet"] },
+            { title: "🏷️ محاسبه تخفیف کالاها", cmd: "محاسبه تخفیف", category: "حسابداری", keywords: ["تخفیف", "درصد تخفیف", "discount"] },
+
+            // ۳. قابلیت‌های فروش و انبارداری
+            { title: "🧾 صدور و ثبت فاکتور رسمی فروش", cmd: "ثبت فاکتور فروش", category: "فروش و انبارداری", keywords: ["فاکتور", "فاکتور فروش", "صدور فاکتور", "invoice"] },
+            { title: "🛒 صدور و ثبت فاکتور رسمی خرید", cmd: "ثبت فاکتور خرید", category: "فروش و انبارداری", keywords: ["خرید", "فاکتور خرید", "purchase"] },
+            { title: "📦 کنترل موجودی و هشدار کمبود انبار", cmd: "موجودی انبار و هشدار کمبود موجودی", category: "فروش و انبارداری", keywords: ["موجودی", "انبار", "کمبود انبار", "کسری موجودی", "هشدار انبار"] },
+            { title: "📊 ارزش‌گذاری موجودی انبار به روش فایفو (FIFO)", cmd: "ارزش‌گذاری انبار به روش فایفو", category: "فروش و انبارداری", keywords: ["انبار", "ارزش گذاری", "فایفو", "موجودی انبار"] },
+            { title: "📊 ارزش‌گذاری موجودی انبار به روش لایفو (LIFO)", cmd: "ارزش‌گذاری انبار به روش لایفو", category: "فروش و انبارداری", keywords: ["انبار", "ارزش گذاری", "لایفو"] },
+            { title: "📊 ارزش‌گذاری موجودی انبار با میانگین موزون", cmd: "ارزش‌گذاری انبار به روش میانگین موزون", category: "فروش و انبارداری", keywords: ["انبار", "ارزش گذاری", "میانگین موزون", "کاردکس"] },
+            { title: "💰 محاسبه ارزش ریالی کل موجودی انبار", cmd: "ارزش کل موجودی انبار", category: "فروش و انبارداری", keywords: ["ارزش انبار", "ارزش ریالی", "موجودی کل"] },
+            { title: "👥 محاسبه بدهی و طلب مشتریان", cmd: "محاسبه بدهی و طلب مشتریان", category: "فروش و انبارداری", keywords: ["مشتری", "بدهی", "طلب", "حساب مشتری"] },
+            { title: "🏆 گزارش پرفروش‌ترین کالاها", cmd: "گزارش پرفروش‌ترین کالاها", category: "فروش و انبارداری", keywords: ["پرفروش", "کالای پرفروش", "پرفروش ترین", "top selling"] },
+            { title: "🏷️ افزایش درصدی قیمت‌های کالا", cmd: "قیمت‌های ستون C را ۱۵ درصد افزایش بده", category: "فروش و انبارداری", keywords: ["افزایش قیمت", "درصد افزایش", "تغییر قیمت"] },
+
+            // ۱. قابلیت‌های ضروری
+            { title: "🔍 فیلتر هوشمند اطلاعات جدول", cmd: "فیلتر هوشمند جدول", category: "ضروری", keywords: ["فیلتر", "جستجو", "filter"] },
+            { title: "🔄 مرتب‌سازی صعودی داده‌ها", cmd: "مرتب‌سازی صعودی ستون A", category: "ضروری", keywords: ["مرتب سازی", "صعودی", "sort"] },
+            { title: "🔽 مرتب‌سازی نزولی داده‌ها", cmd: "مرتب‌سازی نزولی ستون A", category: "ضروری", keywords: ["مرتب سازی", "نزولی", "sort desc"] },
+            { title: "🗑️ حذف موارد تکراری", cmd: "حذف داده‌های تکراری", category: "ضروری", keywords: ["حذف تکراری", "تکراری", "duplicate"] },
+            { title: "🧹 حذف سطرهای خالی شیت", cmd: "ردیف‌های خالی را حذف کن", category: "ضروری", keywords: ["حذف خالی", "ردیف خالی", "سطر خالی"] },
+            { title: "➕ جمع خودکار (AutoSum)", cmd: "جمع خودکار ستون A", category: "ضروری", keywords: ["جمع", "مجموع", "جمع خودکار", "autosum", "sum"] },
+            { title: "📊 محاسبه میانگین داده‌ها", cmd: "میانگین ستون A", category: "ضروری", keywords: ["میانگین", "معدل", "average"] },
+            { title: "🔺 بیشترین و کمترین مقدار (MAX / MIN)", cmd: "بیشترین مقدار ستون A", category: "ضروری", keywords: ["بیشترین", "کمترین", "حداکثر", "حداقل", "max", "min"] },
+            { title: "🔢 شمارش اطلاعات و سلول‌های پر", cmd: "شمارش سلول‌های پر ستون A", category: "ضروری", keywords: ["شمارش", "تعداد", "count"] },
+            { title: "🔢 تبدیل متن به عدد (اصلاح داده‌ها)", cmd: "تبدیل متن به عدد در ستون A", category: "ضروری", keywords: ["تبدیل به عدد", "اصلاح متن", "text to number"] },
+            { title: "🧮 ۴ عمل اصلی ستون‌ها (جمع، تفریق، ضرب، تقسیم)", cmd: "۴ عمل اصلی", category: "ضروری", keywords: ["چهار عمل اصلی", "جمع ستون", "تفریق", "ضرب", "تقسیم"] },
+            { title: "📅 درج تاریخ روز در شیت", cmd: "درج تاریخ در شیت", category: "ضروری", keywords: ["تاریخ", "درج تاریخ", "تاریخ شمسی", "امروز", "date"] },
+
+            // ۴. قابلیت‌های هوشمند و کاربردی
+            { title: "🔒 قفل یکتاسازی ستون (جلوگیری از ثبت تکراری)", cmd: "قفل یکتایی ستون", category: "هوشمند", keywords: ["قفل یکتایی", "یکتا", "جلوگیری از تکراری", "unique"] },
+            { title: "🔓 لغو و برداشتن قفل یکتایی ستون", cmd: "قفل یکتایی ستون را بردار", category: "هوشمند", keywords: ["برداشتن قفل", "لغو یکتایی", "unlock"] },
+            { title: "📊 تحلیل هوشمند شیت و داده‌ها", cmd: "تحلیل ساختار فایل و شیت", category: "هوشمند", keywords: ["تحلیل", "آنالیز", "سلامت فایل", "analyze"] },
+            { title: "🩺 چکاپ عمیق سلامت و خطاهای فایل اکسل", cmd: "سلامت فایل و بررسی خطاهای اکسل", category: "هوشمند", keywords: ["سلامت فایل", "خطا", "چکاپ", "audit"] },
+            { title: "📈 رسم خودکار نمودار گرافیکی", cmd: "رسم نمودار ستونی", category: "هوشمند", keywords: ["نمودار", "چارت", "chart", "graph"] },
+            { title: "📋 تشخیص و ساخت جدول اکسل", cmd: "یک جدول بساز", category: "هوشمند", keywords: ["جدول", "ساخت جدول", "create table"] },
+            { title: "✂️ تفکیک نام و نام خانوادگی", cmd: "تفکیک نام و نام خانوادگی در ستون A", category: "هوشمند", keywords: ["تفکیک نام", "جداسازی نام", "split name"] },
+            { title: "🎨 رنگ‌آمیزی سلول‌های تکراری", cmd: "داده‌های متنی تکراری را رنگ کن", category: "هوشمند", keywords: ["رنگ تکراری", "هایلایت تکراری", "highlight duplicates"] },
+            { title: "💲 تغییر فرمت به واحد پول (تومان)", cmd: "فرمت ستون B را به تومان تغییر بده", category: "هوشمند", keywords: ["واحد پول", "فرمت پول", "تومان", "currency"] },
+            { title: "📈 تغییر فرمت به درصد (%)", cmd: "فرمت ستون C را درصدی کن", category: "هوشمند", keywords: ["درصد", "فرمت درصد", "percentage"] },
+
+            // ۵. امکانات عمومی و مدیریتی
+            { title: "💾 ذخیره تغییرات فایل اکسل (Ctrl+S)", cmd: "ذخیره فایل", category: "عمومی", keywords: ["ذخیره", "سیو", "save"] },
+            { title: "💾 ذخیره نسخه پشتیبان (Backup)", cmd: "ذخیره نسخه پشتیبان", category: "عمومی", keywords: ["پشتیبان", "بکاپ", "backup"] },
+            { title: "📄 تولید خروجی PDF استاندارد", cmd: "خروجی PDF از شیت", category: "عمومی", keywords: ["پی دی اف", "pdf", "خروجی pdf", "پرینت"] },
+            { title: "↩️ لغو آخرین عملیات (Undo چندمرحله‌ای)", cmd: "لغو آخرین عملیات", category: "عمومی", keywords: ["لغو", "آندو", "undo", "برگشت"] },
+            { title: "📐 تنظیم خودکار عرض ستون‌ها (AutoFit)", cmd: "عرض ستون‌ها را خودکار تنظیم کن", category: "عمومی", keywords: ["تنظیم عرض", "عرض ستون", "autofit"] }
+        ];
+
+        function normalizePersianText(str) {
+            if (!str) return "";
+            return str.toLowerCase()
+                .replace(/ي/g, "ی")
+                .replace(/ك/g, "ک")
+                .replace(/[آأإ]/g, "ا")
+                .replace(/\\u200c/g, " ")
+                .replace(/\\s+/g, " ")
+                .trim();
+        }
+
+        let activeSearchIndex = -1;
+        let currentSearchResults = [];
+
+        function onSearchQueryChanged(val) {
+            const popup = document.getElementById('searchResultsPopup');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            const qNorm = normalizePersianText(val);
+
+            if (!qNorm) {
+                popup.style.display = 'none';
+                popup.innerHTML = '';
+                clearBtn.style.display = 'none';
+                currentSearchResults = [];
+                activeSearchIndex = -1;
+                return;
+            }
+
+            clearBtn.style.display = 'flex';
+            const tokens = qNorm.split(' ').filter(t => t.length > 0);
+
+            const scored = [];
+            COMMAND_SEARCH_REGISTRY.forEach((item, idx) => {
+                let score = 0;
+                const cNorm = normalizePersianText(item.cmd);
+                const tNorm = normalizePersianText(item.title);
+
+                if (qNorm === cNorm || qNorm === tNorm) score += 150;
+                else if (cNorm.startsWith(qNorm) || tNorm.startsWith(qNorm)) score += 100;
+                else if (cNorm.includes(qNorm)) score += 70;
+                else if (tNorm.includes(qNorm)) score += 60;
+
+                if (item.cmd.startsWith("محاسبه ")) score += 15;
+
+                let bestKw = 0;
+                for (const kw of item.keywords) {
+                    const kwNorm = normalizePersianText(kw);
+                    if (qNorm === kwNorm) bestKw = Math.max(bestKw, 85);
+                    else if (qNorm.includes(kwNorm)) bestKw = Math.max(bestKw, 55);
+                    else if (kwNorm.includes(qNorm)) bestKw = Math.max(bestKw, 45);
+                }
+                score += bestKw;
+
+                let hits = 0;
+                for (const tok of tokens) {
+                    const cWords = cNorm.split(' ');
+                    const tWords = tNorm.split(' ');
+                    if (cWords.includes(tok)) { score += 50; hits++; }
+                    else if (tWords.includes(tok)) { score += 45; hits++; }
+                    else if (item.keywords.some(k => normalizePersianText(k) === tok)) { score += 40; hits++; }
+                    else if (cNorm.includes(tok)) { score += 20; hits++; }
+                    else if (tNorm.includes(tok)) { score += 15; hits++; }
+                    else if (item.keywords.some(k => normalizePersianText(k).includes(tok))) { score += 12; hits++; }
+                }
+                if (tokens.length > 1 && hits === tokens.length) score += 40;
+
+                if (score > 0) scored.push({ score, index: idx, item });
+            });
+
+            scored.sort((a, b) => b.score - a.score || a.index - b.index);
+            currentSearchResults = scored.slice(0, 10).map(s => s.item);
+            activeSearchIndex = -1;
+
+            if (currentSearchResults.length === 0) {
+                popup.innerHTML = '<div style="padding: 10px 14px; color: var(--text-muted); font-size: 13px; text-align: center;">عملیاتی متناسب با جستجوی شما یافت نشد.</div>';
+                popup.style.display = 'flex';
+                return;
+            }
+
+            let html = '';
+            currentSearchResults.forEach((res, idx) => {
+                html += `<div class="search-result-item" id="search-item-${idx}" onclick="selectSearchResult(${idx})">
+                    <span>${res.title}</span>
+                    <span class="search-result-category">${res.category}</span>
+                </div>`;
+            });
+            popup.innerHTML = html;
+            popup.style.display = 'flex';
+        }
+
+        function selectSearchResult(idx) {
+            if (idx < 0 || idx >= currentSearchResults.length) return;
+            const selected = currentSearchResults[idx];
+            document.getElementById('commandInput').value = selected.cmd;
+            clearSearchInput();
+            executeCommandDirectly(selected.cmd);
+        }
+
+        function executeCommandDirectly(cmd) {
+            if (cmd === 'قفل یکتایی ستون') {
+                promptPreventDuplicates();
+            } else if (cmd.includes('قفل یکتایی') && (cmd.includes('بردار') || cmd.includes('لغو') || cmd.includes('حذف'))) {
+                promptRemoveUniqueValidation();
+            } else if (cmd === 'محاسبه سود' || cmd === 'روش سود') {
+                openProfitModal();
+            } else if (cmd === 'محاسبه فروش') {
+                openSalesModal();
+            } else if (cmd.includes('تخفیف')) {
+                promptDiscount();
+            } else if (cmd.includes('۴ عمل') || cmd.includes('4 عمل')) {
+                promptArithmetic('add');
+            } else if (cmd === 'درج تاریخ در شیت') {
+                promptInsertDate();
+            } else {
+                sendCommand(cmd);
+            }
+        }
+
+        function clearSearchInput() {
+            const input = document.getElementById('cmdSearchInput');
+            input.value = '';
+            const popup = document.getElementById('searchResultsPopup');
+            popup.style.display = 'none';
+            popup.innerHTML = '';
+            document.getElementById('clearSearchBtn').style.display = 'none';
+            currentSearchResults = [];
+            activeSearchIndex = -1;
+        }
+
+        function onSearchKeyDown(e) {
+            const popup = document.getElementById('searchResultsPopup');
+            if (popup.style.display === 'none' || currentSearchResults.length === 0) {
+                if (e.key === 'Enter') {
+                    const val = document.getElementById('cmdSearchInput').value.trim();
+                    if (val) {
+                        document.getElementById('commandInput').value = val;
+                        clearSearchInput();
+                        sendInput();
+                    }
+                }
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeSearchIndex = (activeSearchIndex + 1) % currentSearchResults.length;
+                updateSearchHighlight();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeSearchIndex = (activeSearchIndex - 1 + currentSearchResults.length) % currentSearchResults.length;
+                updateSearchHighlight();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeSearchIndex >= 0 && activeSearchIndex < currentSearchResults.length) {
+                    selectSearchResult(activeSearchIndex);
+                } else if (currentSearchResults.length > 0) {
+                    selectSearchResult(0);
+                }
+            } else if (e.key === 'Escape') {
+                clearSearchInput();
+            }
+        }
+
+        function updateSearchHighlight() {
+            document.querySelectorAll('.search-result-item').forEach((el, idx) => {
+                if (idx === activeSearchIndex) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ block: 'nearest' });
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        // Close search popup on clicking outside
+        document.addEventListener('click', (e) => {
+            const wrapper = document.querySelector('.search-bar-wrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                const popup = document.getElementById('searchResultsPopup');
+                if (popup) popup.style.display = 'none';
+            }
+        });
+
         function onCategoryChanged(catKey) {
             const actSelect = document.getElementById('actSelect');
             if (catKey && FIVE_CATEGORIES[catKey]) {
@@ -1714,6 +2107,17 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
                 resp = {"matrix": [], "error": str(e)}
 
             self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path == "/api/search_commands":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            q = query_params.get("q", [""])[0]
+            from excel_assistant.ui.command_search import search_commands
+            results = search_commands(q, limit=12)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"results": results}, ensure_ascii=False).encode("utf-8"))
             return
 
         self.send_response(404)

@@ -4,13 +4,15 @@ Main Window for Excel AI Assistant (PySide6 / RTL Persian).
 import sys
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot, QEvent, QObject
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QEvent, QObject, QStringListModel
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
     QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog,
-    QScrollArea, QComboBox, QSizePolicy
+    QScrollArea, QComboBox, QSizePolicy, QCompleter
 )
+
+from excel_assistant.ui.command_search import search_commands, COMMAND_SEARCH_REGISTRY
 
 from excel_assistant.core.connection import ExcelConnectionManager
 from excel_assistant.analyzer.inspector import SheetInspector, WorkbookInspector
@@ -231,6 +233,44 @@ class MainWindow(QMainWindow):
         self.btn_run_action.clicked.connect(self._on_run_action_clicked)
         chips_frame_layout.addWidget(self.btn_run_action, stretch=0)
 
+        # 3. Search Bar for instant command discovery (جستجوی سریع قابلیت‌ها)
+        search_frame = QFrame()
+        search_frame.setObjectName("searchFrame")
+        search_layout = QHBoxLayout(search_frame)
+        search_layout.setContentsMargins(12, 4, 12, 4)
+        search_layout.setSpacing(8)
+
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("commandSearchInput")
+        self.search_input.setPlaceholderText("🔍 جستجوی سریع قابلیت‌ها (مثلاً: سود، سود سالانه، کارکرد، فروش، فیلتر)...")
+        self.search_input.setLayoutDirection(Qt.RightToLeft)
+        search_layout.addWidget(self.search_input, stretch=1)
+
+        self.btn_clear_search = QPushButton("✕")
+        self.btn_clear_search.setObjectName("clearSearchButton")
+        self.btn_clear_search.setToolTip("پاک کردن جستجو")
+        self.btn_clear_search.setVisible(False)
+        self.btn_clear_search.clicked.connect(self._clear_search)
+        search_layout.addWidget(self.btn_clear_search)
+
+        # Setup Auto-Completer for Search Input
+        self._search_cmd_map = {}
+        self.search_model = QStringListModel(self)
+        self.search_completer = QCompleter(self.search_model, self)
+        self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.search_completer.setFilterMode(Qt.MatchContains)
+        self.search_completer.setCompletionMode(QCompleter.PopupCompletion)
+        if self.search_completer.popup():
+            self.search_completer.popup().setObjectName("searchCompleterPopup")
+            self.search_completer.popup().setLayoutDirection(Qt.RightToLeft)
+        self.search_input.setCompleter(self.search_completer)
+
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        self.search_completer.activated[str].connect(self._on_search_item_activated)
+        self.search_input.returnPressed.connect(self._on_search_return_pressed)
+
+        main_layout.addWidget(search_frame)
+
         main_layout.addWidget(chips_frame)
 
         # 4. Input bar
@@ -244,6 +284,16 @@ class MainWindow(QMainWindow):
         self.input_edit.setObjectName("chatInput")
         self.input_edit.setPlaceholderText("دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن و در C بنویس)")
         self.input_edit.returnPressed.connect(self._on_send_clicked)
+
+        # Setup Completer for Chat Input as well
+        self.chat_completer = QCompleter([item["cmd"] for item in COMMAND_SEARCH_REGISTRY], self)
+        self.chat_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.chat_completer.setFilterMode(Qt.MatchContains)
+        self.chat_completer.setCompletionMode(QCompleter.PopupCompletion)
+        if self.chat_completer.popup():
+            self.chat_completer.popup().setObjectName("searchCompleterPopup")
+            self.chat_completer.popup().setLayoutDirection(Qt.RightToLeft)
+        self.input_edit.setCompleter(self.chat_completer)
 
         self.btn_send = QPushButton("ارسال دستور ✈️")
         self.btn_send.setObjectName("sendButton")
@@ -388,6 +438,47 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_assistant_message(f"📌 شیت فعال به **`{sheet_name}`** تغییر یافت.")
         except Exception as e:
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
+
+    def _on_search_text_changed(self, text: str):
+        q = text.strip()
+        if not q:
+            self.search_model.setStringList([])
+            self.btn_clear_search.setVisible(False)
+            return
+        self.btn_clear_search.setVisible(True)
+        results = search_commands(q, limit=15)
+        self._search_cmd_map = {r["title"]: r["cmd"] for r in results}
+        titles = [r["title"] for r in results]
+        self.search_model.setStringList(titles)
+        self.search_completer.complete()
+
+    def _clear_search(self):
+        self.search_input.clear()
+        self.btn_clear_search.setVisible(False)
+        self.search_input.setFocus()
+
+    def _on_search_item_activated(self, text: str):
+        cmd = self._search_cmd_map.get(text, text)
+        if cmd:
+            self.search_input.blockSignals(True)
+            self.search_input.clear()
+            self.btn_clear_search.setVisible(False)
+            self.search_input.blockSignals(False)
+
+            self.input_edit.setText(cmd)
+            self._on_quick_chip_clicked(cmd)
+
+    def _on_search_return_pressed(self):
+        text = self.search_input.text().strip()
+        if not text:
+            return
+        results = search_commands(text, limit=1)
+        if results:
+            self._on_search_item_activated(results[0]["title"])
+        else:
+            self.input_edit.setText(text)
+            self._on_send_clicked()
+            self._clear_search()
 
     def _on_category_selected(self, index: int):
         cat_key = self.category_combo.itemData(index)

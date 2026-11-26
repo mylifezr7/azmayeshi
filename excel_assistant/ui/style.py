@@ -527,6 +527,58 @@ QScrollBar::handle:vertical:hover {{
     background: #38BDF8;
 }}
 
+/* Command Search Bar & Autocomplete Popup */
+QFrame#searchFrame {{
+    background: rgba(3, 20, 18, 0.95);
+    border-top: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 3px 12px;
+}}
+
+QLineEdit#commandSearchInput {{
+    background: #031412;
+    border: 2px solid #0F766E;
+    border-radius: 12px;
+    color: #FFFFFF;
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 8px 16px;
+    min-height: 40px;
+}}
+
+QLineEdit#commandSearchInput:focus {{
+    border: 2px solid #10B981;
+    background: #04201C;
+}}
+
+QPushButton#clearSearchButton {{
+    background: #1E293B;
+    color: #94A3B8;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 28px;
+    min-height: 28px;
+    border: 1px solid #334155;
+}}
+
+QPushButton#clearSearchButton:hover {{
+    background: #EF4444;
+    color: #FFFFFF;
+    border-color: #F87171;
+}}
+
+QAbstractItemView#searchCompleterPopup {{
+    background-color: #031412;
+    border: 2px solid #10B981;
+    border-radius: 10px;
+    color: #E2E8F0;
+    selection-background-color: #047857;
+    selection-color: #FFFFFF;
+    padding: 6px;
+    font-size: 13px;
+    font-weight: 500;
+}}
+
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
 }}
