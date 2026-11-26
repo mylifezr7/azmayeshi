@@ -13,8 +13,46 @@ from excel_assistant.nlp.intent_models import (
     ColumnArithmeticAction, ColumnStatsAction, ApplyDiscountAction, SalesSummaryAction, ProfitCalculationAction
 )
 from excel_assistant.core.utils import (
-    col_letter_to_index, col_index_to_letter, bounds_to_range_str
+    col_letter_to_index, col_index_to_letter, bounds_to_range_str, to_float_safe
 )
+
+
+def parse_date_smart(d_val: Any, default_year: str = "1405") -> tuple:
+    """
+    Parses date into (display_date, month_key, year_key).
+    Prevents MM/DD from being converted to Gregorian format by Excel (e.g. '03/02' -> '1405/03/02').
+    Accurately groups months into e.g. 'ماه ۰۳' or '1405/03'.
+    """
+    if d_val is None:
+        return ("نامشخص", "نامشخص", "نامشخص")
+    if hasattr(d_val, 'strftime'):
+        sd = d_val.strftime("%Y/%m/%d")
+    else:
+        sd = str(d_val).strip()
+
+    if not sd or sd == "نامشخص":
+        return ("نامشخص", "نامشخص", "نامشخص")
+
+    m_full = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', sd)
+    if m_full:
+        yr = m_full.group(1)
+        mo = f"{int(m_full.group(2)):02d}"
+        day = f"{int(m_full.group(3)):02d}"
+        return (f"{yr}/{mo}/{day}", f"ماه {mo}", yr)
+
+    m_short = re.search(r'^(\d{1,2})[/-](\d{1,2})$', sd)
+    if m_short:
+        mo = f"{int(m_short.group(1)):02d}"
+        day = f"{int(m_short.group(2)):02d}"
+        yr = default_year
+        return (f"{yr}/{mo}/{day}", f"ماه {mo}", yr)
+
+    parts = re.split(r'[/-]', sd)
+    if len(parts) >= 2 and parts[0].isdigit():
+        mo = f"{int(parts[0]):02d}" if len(parts[0]) <= 2 else parts[0]
+        return (sd, f"ماه {mo}", default_year)
+
+    return (sd, sd, default_year)
 
 
 class MathActionHandler:
@@ -364,27 +402,76 @@ class MathActionHandler:
 
     @classmethod
     def execute_sales_summary(cls, action: SalesSummaryAction, ctx: ActionContext) -> ActionResult:
+        driver = ctx.manager.active_driver if ctx.manager else None
         sheet = ctx.sheet
+        if driver:
+            sheet_names = driver.get_sheet_names()
+            smart = cls.classify_workbook_sheets(driver, sheet_names)
+            if smart.get("sales"):
+                curr_name = (sheet.name if sheet else "").lower()
+                if not any(k in curr_name for k in ["فروش", "sales", "sale"]):
+                    try:
+                        sheet = ctx.manager.get_sheet(smart["sales"])
+                    except Exception:
+                        pass
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
         # 1. Determine Amount & Date Columns
         date_col = None
         amount_col = None
+        qty_col = None
+        price_col = None
+        disc_col = None
+        computed_desc = None
 
         if action.date_col:
             d_raw = str(action.date_col).strip().upper()
             date_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+
+        # Scan sheet headers for structural detection
+        explicit_total_col = None
+        total_kws = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش", "فروش کل", "مبلغ نهایی", "کل مبلغ", "قیمت بعد از تخفیف", "مبلغ بعد از تخفیف", "مبلغ خالص", "total amount", "total sales"]
+        qty_kws = ["تعداد", "مقدار", "حجم", "qty", "quantity"]
+        price_kws = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
+        disc_kws = ["درصد تخفیف", "تخفیف درصد", "تخفیف", "discount"]
+        disc_exclude_kws = ["بعد از تخفیف", "پس از تخفیف", "با تخفیف", "بعد تخفیف", "قیمت بعد", "مبلغ بعد", "خالص پس از تخفیف"]
+
+        for c_idx in range(min_c, max_c + 1):
+            c_let = col_index_to_letter(c_idx)
+            hdr = str(sheet.get_value(f"{c_let}{min_r}") or "").lower()
+            if not explicit_total_col and any(k in hdr for k in total_kws):
+                explicit_total_col = c_let
+            if not qty_col and any(k in hdr for k in qty_kws):
+                qty_col = c_let
+            if not price_col and any(k in hdr for k in price_kws):
+                price_col = c_let
+            if not disc_col and any(k in hdr for k in disc_kws) and not any(k in hdr for k in disc_exclude_kws):
+                disc_col = c_let
+
         if action.amount_col:
             a_raw = str(action.amount_col).strip().upper()
-            amount_col = col_index_to_letter(int(a_raw)) if a_raw.isdigit() else a_raw
+            chosen_col = col_index_to_letter(int(a_raw)) if a_raw.isdigit() else a_raw
+            chosen_hdr = str(sheet.get_value(f"{chosen_col}{min_r}") or "").lower()
+            # If the user or wizard selected a unit price column (e.g. "قیمت واحد (ریال)") instead of total amount
+            if any(k in chosen_hdr for k in price_kws) and not any(k in chosen_hdr for k in total_kws):
+                price_col = chosen_col
+                amount_col = None
+            else:
+                amount_col = chosen_col
 
-        # Auto-detect if missing
-        if not date_col or not amount_col:
+        if not amount_col:
+            if explicit_total_col:
+                amount_col = explicit_total_col
+            elif qty_col and price_col:
+                computed_desc = f"تعداد ({qty_col}) × قیمت واحد ({price_col}){' - تخفیف (' + disc_col + ')' if disc_col else ''}"
+
+        # Auto-detect date_col or amount_col if still missing
+        if not date_col or (not amount_col and not computed_desc):
             col_scores_date = {}
             col_scores_amount = {}
 
             date_keywords = ["تاریخ", "date", "روز", "زمان", "time", "day", "month", "سال"]
-            amount_keywords = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع", "fee"]
+            amount_keywords = ["مبلغ", "فروش", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع", "fee"]
 
             for c_idx in range(min_c, max_c + 1):
                 c_let = col_index_to_letter(c_idx)
@@ -415,7 +502,7 @@ class MathActionHandler:
                 best_date = max(col_scores_date, key=col_scores_date.get) if col_scores_date else "A"
                 date_col = best_date if col_scores_date.get(best_date, 0) > 0 else "A"
 
-            if not amount_col:
+            if not amount_col and not computed_desc:
                 sorted_amounts = sorted(col_scores_amount.items(), key=lambda x: x[1], reverse=True)
                 for c_let, sc in sorted_amounts:
                     if c_let != date_col:
@@ -426,36 +513,44 @@ class MathActionHandler:
 
         # 2. Extract Data
         date_vals = sheet.get_column_values(date_col, include_header=False)
-        amount_vals = sheet.get_column_values(amount_col, include_header=False)
+        if computed_desc and qty_col and price_col:
+            qty_vals = sheet.get_column_values(qty_col, include_header=False)
+            price_vals = sheet.get_column_values(price_col, include_header=False)
+            disc_vals = sheet.get_column_values(disc_col, include_header=False) if disc_col else [0] * len(qty_vals)
+            amount_vals = []
+            for q_raw, p_raw, d_raw in zip(qty_vals, price_vals, disc_vals):
+                q = to_float_safe(q_raw)
+                p = to_float_safe(p_raw)
+                d = to_float_safe(d_raw)
+                if d > 1.0:
+                    d = d / 100.0
+                d = max(0.0, min(1.0, d))
+                amount_vals.append(max(0.0, q * p * (1.0 - d)))
+        else:
+            amount_vals = sheet.get_column_values(amount_col, include_header=False)
 
+        min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
         records = []
-        for d_raw, a_raw in zip(date_vals, amount_vals):
+        for idx, (d_raw, a_raw) in enumerate(zip(date_vals, amount_vals)):
             if d_raw is None and a_raw is None:
                 continue
-            amt = 0.0
-            if a_raw is not None:
-                s_amt = str(a_raw).replace(',', '').replace('تومان', '').replace('ریال', '').strip()
-                try:
-                    amt = float(s_amt)
-                except ValueError:
-                    amt = 0.0
+            amt = to_float_safe(a_raw) if a_raw is not None else 0.0
+            r_num = min_r + 1 + idx
 
-            d_str = None
-            if d_raw is not None:
-                if hasattr(d_raw, 'strftime'):
-                    d_str = d_raw.strftime("%Y/%m/%d")
-                else:
-                    s_d = str(d_raw).strip()
-                    m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', s_d)
-                    if m:
-                        d_str = f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
-                    elif len(s_d) >= 4:
-                        d_str = s_d
+            row_str = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r_num}") or "") for c in range(min_c, max_c + 1)).lower()
+            is_sales_return = any(rk in row_str for rk in ["برگشت از فروش", "برگشت از", "مرجوعی فروش", "مرجوعی", "برگشت"]) or bool(re.search(r'\bsr\d+', row_str))
+            if is_sales_return:
+                amt = -abs(amt)
 
-            if amt > 0 or d_str:
+            d_disp, mo_key, yr_key = parse_date_smart(d_raw)
+
+            if amt != 0 or d_disp != "نامشخص":
                 records.append({
-                    "date": d_str or "نامشخص",
-                    "amount": amt
+                    "date": d_disp,
+                    "month": mo_key,
+                    "year": yr_key,
+                    "amount": amt,
+                    "is_return": is_sales_return
                 })
 
         if not records:
@@ -466,9 +561,10 @@ class MathActionHandler:
 
         # 3. Aggregate
         total_sales = sum(r["amount"] for r in records)
+        sales_records_only = [r for r in records if not r.get("is_return")]
         total_count = len(records)
-        avg_sale = total_sales / total_count if total_count > 0 else 0.0
-        max_sale = max(r["amount"] for r in records) if records else 0.0
+        avg_sale = (sum(r["amount"] for r in sales_records_only) / len(sales_records_only)) if sales_records_only else (total_sales / total_count if total_count > 0 else 0.0)
+        max_sale = max((r["amount"] for r in sales_records_only), default=0.0)
 
         daily_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
         monthly_map = defaultdict(lambda: {"sum": 0.0, "count": 0})
@@ -476,17 +572,17 @@ class MathActionHandler:
 
         for r in records:
             dt = r["date"]
+            mo = r["month"]
+            yr = r["year"]
             amt = r["amount"]
             daily_map[dt]["sum"] += amt
-            daily_map[dt]["count"] += 1
+            daily_map[dt]["count"] += (1 if not r.get("is_return") else 0)
 
-            mo_key = dt[:7] if len(dt) >= 7 and dt[4] in ('/', '-') else dt
-            monthly_map[mo_key]["sum"] += amt
-            monthly_map[mo_key]["count"] += 1
+            monthly_map[mo]["sum"] += amt
+            monthly_map[mo]["count"] += (1 if not r.get("is_return") else 0)
 
-            yr_key = dt[:4] if len(dt) >= 4 and dt[:4].isdigit() else "نامشخص"
-            yearly_map[yr_key]["sum"] += amt
-            yearly_map[yr_key]["count"] += 1
+            yearly_map[yr]["sum"] += amt
+            yearly_map[yr]["count"] += (1 if not r.get("is_return") else 0)
 
         sorted_daily = sorted(daily_map.items(), key=lambda x: str(x[0]))
         sorted_monthly = sorted(monthly_map.items(), key=lambda x: str(x[0]))
@@ -501,6 +597,12 @@ class MathActionHandler:
             existing_sheets = ctx.manager.active_driver.get_sheet_names()
             if report_sheet_name in existing_sheets:
                 report_sheet = ctx.manager.active_driver.get_sheet(report_sheet_name)
+                try:
+                    ub_r1, ub_c1, ub_r2, ub_c2 = report_sheet.get_used_range_bounds()
+                    if ub_r2 >= ub_r1 and ub_r2 > 0:
+                        report_sheet.delete_rows(list(range(ub_r1, ub_r2 + 1)))
+                except Exception:
+                    pass
             else:
                 report_sheet = ctx.manager.active_driver.create_sheet(report_sheet_name)
 
@@ -520,12 +622,13 @@ class MathActionHandler:
             for idx, h in enumerate(headers_s1):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
             curr_r += 1
 
+            kpi_basis = f"بر اساس {computed_desc}" if computed_desc else f"بر اساس ستون {amount_col}"
             kpis = [
-                ("💰 جمع کل فروش", f"{total_sales:,.0f} تومان", f"بر اساس ستون {amount_col}"),
+                ("💰 جمع کل فروش", f"{total_sales:,.0f} تومان", kpi_basis),
                 ("🔢 تعداد کل فاکتورها / تراکنش‌ها", f"{total_count:,}", "تعداد ردیف‌های ثبت شده"),
                 ("📈 میانگین ارزش هر فاکتور", f"{avg_sale:,.0f} تومان", "فروش کل تقسیم بر تعداد"),
                 ("🏆 بالاترین مبلغ ثبت‌شده در یک فاکتور", f"{max_sale:,.0f} تومان", "حداکثر مبلغ فروش"),
@@ -549,10 +652,11 @@ class MathActionHandler:
             for idx, h in enumerate(headers_yr):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0F766E")
             curr_r += 1
 
+            start_yr_r = curr_r
             for yr, data in sorted_yearly:
                 share_pct = (data["sum"] / total_sales * 100) if total_sales > 0 else 0
                 report_sheet.set_value(f"A{curr_r}", str(yr))
@@ -560,6 +664,10 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{curr_r}", data["count"])
                 report_sheet.set_value(f"D{curr_r}", f"{share_pct:.1f}%")
                 curr_r += 1
+            try:
+                report_sheet.set_number_format(f"B{start_yr_r}:B{curr_r-1}", "#,##0")
+            except Exception:
+                pass
             curr_r += 2
 
             # Section 3: Monthly Sales Table
@@ -571,10 +679,11 @@ class MathActionHandler:
             for idx, h in enumerate(headers_mo):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E40AF")
             curr_r += 1
 
+            start_mo_r = curr_r
             for mo, data in sorted_monthly:
                 mo_avg = data["sum"] / data["count"] if data["count"] > 0 else 0
                 report_sheet.set_value(f"A{curr_r}", str(mo))
@@ -582,6 +691,11 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{curr_r}", data["count"])
                 report_sheet.set_value(f"D{curr_r}", f"{mo_avg:,.0f}")
                 curr_r += 1
+            try:
+                report_sheet.set_number_format(f"B{start_mo_r}:B{curr_r-1}", "#,##0")
+                report_sheet.set_number_format(f"D{start_mo_r}:D{curr_r-1}", "#,##0")
+            except Exception:
+                pass
             curr_r += 2
 
             # Section 4: Daily Sales Table
@@ -593,10 +707,11 @@ class MathActionHandler:
             for idx, h in enumerate(headers_dy):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0369A1")
             curr_r += 1
 
+            start_dy_r = curr_r
             for dy, data in sorted_daily:
                 dy_avg = data["sum"] / data["count"] if data["count"] > 0 else 0
                 report_sheet.set_value(f"A{curr_r}", str(dy))
@@ -604,6 +719,11 @@ class MathActionHandler:
                 report_sheet.set_value(f"C{curr_r}", data["count"])
                 report_sheet.set_value(f"D{curr_r}", f"{dy_avg:,.0f}")
                 curr_r += 1
+            try:
+                report_sheet.set_number_format(f"B{start_dy_r}:B{curr_r-1}", "#,##0")
+                report_sheet.set_number_format(f"D{start_dy_r}:D{curr_r-1}", "#,##0")
+            except Exception:
+                pass
 
             report_sheet.auto_fit_columns()
             ctx.manager.activate_sheet(report_sheet_name)
@@ -647,6 +767,130 @@ class MathActionHandler:
         )
 
     @classmethod
+    def classify_workbook_sheets(cls, driver, sheet_names):
+        """
+        Intelligently classifies all sheets in the workbook by examining both
+        their names and header row contents across columns.
+        Returns a mapping of categories ('sales', 'purchase', 'beginning_inventory', 'expenses', 'bank').
+        """
+        report_exclude = ["گزارش_سود", "گزارش سود", "خلاصه_فروش", "داشبورد", "dashboard", "report", "تحلیل"]
+        classified = {
+            "sales": None,
+            "purchase": None,
+            "beginning_inventory": None,
+            "expenses": None,
+            "bank": None
+        }
+        scores = {
+            "sales": {},
+            "purchase": {},
+            "beginning_inventory": {},
+            "expenses": {},
+            "bank": {}
+        }
+
+        for sn in sheet_names:
+            sn_l = sn.strip().lower()
+            if any(ex in sn_l for ex in report_exclude):
+                continue
+
+            hdrs = []
+            try:
+                ws = driver.get_sheet(sn)
+                min_r, min_c, max_r, max_c = ws.get_used_range_bounds()
+                if min_r > 0 and max_c >= min_c:
+                    for c in range(min_c, min(max_c + 1, min_c + 20)):
+                        c_let = col_index_to_letter(c)
+                        val = str(ws.get_value(f"{c_let}{min_r}") or "").strip().lower()
+                        if val:
+                            hdrs.append(val)
+            except Exception:
+                hdrs = []
+
+            hl = " ".join(hdrs)
+
+            # 1. Sales Score
+            s_score = 0
+            if sn_l in ["فروش", "sales", "sale"]:
+                s_score += 25
+            elif any(k in sn_l for k in ["فروش", "sales", "فاکتور فروش"]):
+                s_score += 15
+            elif any(k in sn_l for k in ["فاکتور", "invoice"]):
+                s_score += 5
+
+            if any(k in hl for k in ["نام مشتری", "کد مشتری", "مشتری", "customer", "client"]):
+                s_score += 12
+            if any(k in hl for k in ["قیمت فروش", "فی فروش", "نرخ فروش"]):
+                s_score += 10
+            if any(k in hl for k in ["تعداد فروش"]):
+                s_score += 10
+            if any(k in hl for k in ["تخفیف", "discount"]):
+                s_score += 5
+            if any(k in hl for k in ["تامین کننده", "تامین", "supplier", "vendor"]):
+                s_score -= 15
+            if any(k in sn_l for k in ["اول دوره", "opening", "موجودی اولیه"]) or "اول دوره" in hl:
+                s_score -= 25
+            if any(k in sn_l for k in ["هزینه", "expense"]) or "هزینه" in hl:
+                s_score -= 25
+
+            # 2. Purchase Score
+            p_score = 0
+            if any(k in sn_l for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "opening stock", "beginning inventory"]) or "اول دوره" in hl:
+                p_score -= 30
+            elif sn_l in ["خرید", "purchase", "buy"]:
+                p_score += 25
+            elif any(k in sn_l for k in ["خرید", "purchase", "فاکتور خرید"]):
+                p_score += 15
+            elif any(k in sn_l for k in ["موجودی", "انبار", "inventory", "stock"]):
+                p_score += 5
+
+            if any(k in hl for k in ["نام تامین کننده", "کد تامین کننده", "تامین کننده", "تامین‌کننده", "تامین", "supplier", "vendor"]):
+                p_score += 14
+            if any(k in hl for k in ["قیمت خرید", "فی خرید", "نرخ خرید", "بهای واحد خرید"]):
+                p_score += 10
+            if any(k in hl for k in ["تعداد خرید"]):
+                p_score += 10
+            if any(k in hl for k in ["مشتری", "customer"]):
+                p_score -= 15
+            if any(k in sn_l for k in ["هزینه", "expense"]):
+                p_score -= 25
+
+            # 3. Beginning Inventory Score
+            b_score = 0
+            if any(k in sn_l for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "موجودی پایه", "opening stock", "beginning inventory"]):
+                b_score += 30
+            if "اول دوره" in hl or "اول_دوره" in hl:
+                b_score += 15
+
+            # 4. Expenses Score
+            e_score = 0
+            if any(k in sn_l for k in ["هزینه", "هزینه‌ها", "expense", "expenses", "مخارج"]):
+                e_score += 30
+            if any(k in hl for k in ["شرح هزینه", "مبلغ هزینه", "مرکز هزینه", "نوع هزینه", "مبلغ (ریال)"]) and "هزینه" in hl:
+                e_score += 20
+
+            # 5. Bank Score
+            bk_score = 0
+            if any(k in sn_l for k in ["بانک", "صورتحساب بانک", "bank"]):
+                bk_score += 25
+            if any(k in hl for k in ["واریز", "برداشت", "مانده حساب"]):
+                bk_score += 15
+
+            scores["sales"][sn] = s_score
+            scores["purchase"][sn] = p_score
+            scores["beginning_inventory"][sn] = b_score
+            scores["expenses"][sn] = e_score
+            scores["bank"][sn] = bk_score
+
+        for cat in ["sales", "purchase", "beginning_inventory", "expenses", "bank"]:
+            if scores[cat]:
+                best_s = max(scores[cat].items(), key=lambda x: x[1])
+                if best_s[1] > 0:
+                    classified[cat] = best_s[0]
+
+        return classified
+
+    @classmethod
     def execute_profit_calculation(cls, action: ProfitCalculationAction, ctx: ActionContext) -> ActionResult:
         driver = ctx.manager.active_driver
         sheet_names = driver.get_sheet_names()
@@ -654,15 +898,19 @@ class MathActionHandler:
         if not sheet_names:
             return ActionResult(success=False, message_persian="⚠️ هیچ شیتی در ورک‌بوک یافت نشد.")
 
-        # 1. Resolve Sales Sheet (Sheet 1) and Purchase Sheet (Sheet 2)
-        sales_sheet_name = None
-        purchase_sheet_name = None
+        # 1. Resolve Sales Sheet (Sheet 1) and Purchase Sheet (Sheet 2) with Smart Auto-Detection
+        smart_sheets = cls.classify_workbook_sheets(driver, sheet_names)
+        auto_sales_sheet = smart_sheets.get("sales")
+        auto_purch_sheet = smart_sheets.get("purchase")
 
-        def resolve_sheet_name(target_val, fallback):
+        def resolve_sheet_name(target_val, fallback, smart_detected=None):
             if not target_val:
-                return fallback
+                return smart_detected or fallback
             val_str = str(target_val).strip()
+            # If target_val is a generic number (e.g. "1", "2"), prefer smart detection if available
             if val_str.isdigit():
+                if smart_detected:
+                    return smart_detected
                 idx = int(val_str) - 1
                 if 0 <= idx < len(sheet_names):
                     return sheet_names[idx]
@@ -674,11 +922,149 @@ class MathActionHandler:
             for name in sheet_names:
                 if val_str.lower() in name.lower():
                     return name
-            return fallback
+            return smart_detected or fallback
 
-        sales_sheet_name = resolve_sheet_name(action.sales_sheet, sheet_names[0])
-        purchase_fallback = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
-        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, purchase_fallback)
+        default_sales = auto_sales_sheet or (ctx.sheet.name if ctx.sheet and ctx.sheet.name in sheet_names else sheet_names[0])
+        default_purch = auto_purch_sheet or (sheet_names[1] if len(sheet_names) >= 2 else default_sales)
+
+        sales_sheet_name = resolve_sheet_name(action.sales_sheet, default_sales, auto_sales_sheet)
+        purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, default_purch, auto_purch_sheet)
+
+        val_method = getattr(action, "valuation_method", "fifo") or "fifo"
+        if val_method not in ["fifo", "lifo", "average", "compare"]:
+            val_method = "fifo"
+
+        if val_method == "compare":
+            # Run calculations for FIFO, LIFO, and Average without creating separate individual report sheets
+            action_fifo = action.model_copy(update={"valuation_method": "fifo", "create_report_sheet": False})
+            action_lifo = action.model_copy(update={"valuation_method": "lifo", "create_report_sheet": False})
+            action_avg = action.model_copy(update={"valuation_method": "average", "create_report_sheet": False})
+
+            res_fifo = cls.execute_profit_calculation(action_fifo, ctx)
+            res_lifo = cls.execute_profit_calculation(action_lifo, ctx)
+            res_avg = cls.execute_profit_calculation(action_avg, ctx)
+
+            d_f = res_fifo.data or {}
+            d_l = res_lifo.data or {}
+            d_a = res_avg.data or {}
+
+            tot_sales = d_f.get("total_sales", 0.0)
+            cogs_fifo = d_f.get("total_purchase", 0.0)
+            cogs_lifo = d_l.get("total_purchase", 0.0)
+            cogs_avg = d_a.get("total_purchase", 0.0)
+
+            profit_fifo = d_f.get("total_profit", 0.0)
+            profit_lifo = d_l.get("total_profit", 0.0)
+            profit_avg = d_a.get("total_profit", 0.0)
+
+            margin_fifo = d_f.get("margin_pct", 0.0)
+            margin_lifo = d_l.get("margin_pct", 0.0)
+            margin_avg = d_a.get("margin_pct", 0.0)
+
+            stock_val_fifo = d_f.get("stock_value", 0.0)
+            stock_val_lifo = d_l.get("stock_value", 0.0)
+            stock_val_avg = d_a.get("stock_value", 0.0)
+
+            rem_stock = d_f.get("remaining_stock", 0.0)
+            expenses = d_f.get("operating_expenses", 0.0)
+            profit_diff = profit_fifo - profit_lifo
+
+            report_sheet_name = "مقایسه_روش‌های_سود"
+            if action.create_report_sheet:
+                existing = driver.get_sheet_names()
+                cnt = 1
+                t_name = report_sheet_name
+                while t_name in existing:
+                    t_name = f"{report_sheet_name}_{cnt}"
+                    cnt += 1
+                rep_s = driver.create_sheet(t_name)
+                report_sheet_name = t_name
+
+                rep_s.set_value("A1", "📊 جدول مقایسه جامع و تطبیقی سود به روش‌های فایفو (FIFO)، لایفو (LIFO) و میانگین موزون")
+                rep_s.merge_cells("A1:E1")
+                rep_s.set_cell_color("A1:E1", "#09132B")
+                rep_s.set_font("A1:E1", bold=True, size=13, color_hex="#38BDF8")
+
+                cmp_headers = ["شاخص کلیدی مالی", "روش فایفو (FIFO)", "روش لایفو (LIFO)", "روش میانگین موزون", "تفاوت (فایفو منهای لایفو)"]
+                for i, h in enumerate(cmp_headers, 1):
+                    col_l = col_index_to_letter(i)
+                    rep_s.set_value(f"{col_l}3", h)
+                rep_s.set_cell_color("A3:E3", "#1E3A8A")
+                rep_s.set_font("A3:E3", bold=True, color_hex="#FFFFFF")
+
+                rows_data = [
+                    ("فروش ناخالص دوره", f"{tot_sales:,.0f} تومان", f"{tot_sales:,.0f} تومان", f"{tot_sales:,.0f} تومان", "۰ تومان (فروش یکسان)"),
+                    ("بهای تمام‌شده کالای فروش‌رفته (COGS)", f"{cogs_fifo:,.0f} تومان", f"{cogs_lifo:,.0f} تومان", f"{cogs_avg:,.0f} تومان", f"{cogs_fifo - cogs_lifo:,.0f} تومان"),
+                    ("سود ناخالص دوره", f"{profit_fifo:,.0f} تومان", f"{profit_lifo:,.0f} تومان", f"{profit_avg:,.0f} تومان", f"{profit_diff:,.0f} تومان"),
+                    ("درصد حاشیه سود ناخالص", f"{margin_fifo:.1f}%", f"{margin_lifo:.1f}%", f"{margin_avg:.1f}%", f"{margin_fifo - margin_lifo:+.1f}%"),
+                    ("هزینه‌های عملیاتی", f"{expenses:,.0f} تومان", f"{expenses:,.0f} تومان", f"{expenses:,.0f} تومان", "۰ تومان"),
+                    ("سود خالص دوره", f"{profit_fifo - expenses:,.0f} تومان", f"{profit_lifo - expenses:,.0f} تومان", f"{profit_avg - expenses:,.0f} تومان", f"{profit_diff:,.0f} تومان"),
+                    ("ارزش ریالی موجودی پایان دوره انبار", f"{stock_val_fifo:,.0f} تومان", f"{stock_val_lifo:,.0f} تومان", f"{stock_val_avg:,.0f} تومان", f"{stock_val_fifo - stock_val_lifo:,.0f} تومان"),
+                    ("مانده فیزیکی انبار (تعداد کالا)", f"{rem_stock:,.0f} عدد", f"{rem_stock:,.0f} عدد", f"{rem_stock:,.0f} عدد", "تعداد یکسان"),
+                ]
+
+                for r_i, r_vals in enumerate(rows_data, 4):
+                    for c_i, val in enumerate(r_vals, 1):
+                        col_l = col_index_to_letter(c_i)
+                        rep_s.set_value(f"{col_l}{r_i}", val)
+                    if r_i in (6, 9):
+                        rep_s.set_cell_color(f"A{r_i}:E{r_i}", "#DCFCE7")
+                        rep_s.set_font(f"A{r_i}:E{r_i}", bold=True, color_hex="#065F46")
+                    elif r_i == 10:
+                        rep_s.set_cell_color(f"A{r_i}:E{r_i}", "#E0F2FE")
+                        rep_s.set_font(f"A{r_i}:E{r_i}", bold=True, color_hex="#0369A1")
+
+                rep_s.auto_fit_columns(["A", "B", "C", "D", "E"])
+                try:
+                    ctx.manager.activate_sheet(report_sheet_name)
+                except Exception:
+                    pass
+
+            diff_sign_desc = "بیشتر" if profit_diff >= 0 else "کمتر"
+            msg = (
+                f"⚖️ **گزارش و جدول مقایسه تطبیقی سود (فایفو vs لایفو vs میانگین موزون):**\n\n"
+                f"• **روش فایفو (FIFO):**\n"
+                f"  - بهای تمام‌شده (COGS): `{cogs_fifo:,.0f}` تومان\n"
+                f"  - سود ناخالص: `{profit_fifo:,.0f}` تومان (حاشیه سود: `{margin_fifo:.1f}%`)\n"
+                f"  - ارزش موجودی پایان دوره انبار: `{stock_val_fifo:,.0f}` تومان\n\n"
+                f"• **روش لایفو (LIFO):**\n"
+                f"  - بهای تمام‌شده (COGS): `{cogs_lifo:,.0f}` تومان\n"
+                f"  - سود ناخالص: `{profit_lifo:,.0f}` تومان (حاشیه سود: `{margin_lifo:.1f}%`)\n"
+                f"  - ارزش موجودی پایان دوره انبار: `{stock_val_lifo:,.0f}` تومان\n\n"
+                f"• **روش میانگین موزون (Average):**\n"
+                f"  - بهای تمام‌شده (COGS): `{cogs_avg:,.0f}` تومان\n"
+                f"  - سود ناخالص: `{profit_avg:,.0f}` تومان (حاشیه سود: `{margin_avg:.1f}%`)\n"
+                f"  - ارزش موجودی پایان دوره انبار: `{stock_val_avg:,.0f}` تومان\n\n"
+                f"📊 **تحلیل مقایسه‌ای:** روش فایفو سود ناخالص را `{abs(profit_diff):,.0f}` تومان {diff_sign_desc} از روش لایفو نشان می‌دهد.\n"
+                f"💡 **نکته مدیریتی و مالیاتی:** در شرایط تورمی، فایفو بالاترین سود دفتری را گزارش می‌دهد در حالی که لایفو با انعکاس آخرین هزینه‌ها به عنوان بهای تمام‌شده، سود محافظه‌کارانه‌تر و صرفه‌جویی مالیاتی در زمان تورم به همراه دارد.\n"
+                f"📑 جدول مقایسه هر ۳ روش در شیت **«{report_sheet_name}»** ثبت گردید."
+            )
+
+            return ActionResult(
+                success=True,
+                message_persian=msg,
+                affected_range=report_sheet_name,
+                data={
+                    "valuation_method": "compare",
+                    "total_sales": tot_sales,
+                    "profit_fifo": profit_fifo,
+                    "profit_lifo": profit_lifo,
+                    "profit_avg": profit_avg,
+                    "cogs_fifo": cogs_fifo,
+                    "cogs_lifo": cogs_lifo,
+                    "cogs_avg": cogs_avg,
+                    "stock_val_fifo": stock_val_fifo,
+                    "stock_val_lifo": stock_val_lifo,
+                    "stock_val_avg": stock_val_avg,
+                    "profit_difference": profit_diff,
+                }
+            )
+
+        method_persian = {
+            "fifo": "فایفو (FIFO)",
+            "lifo": "لایفو (LIFO)",
+            "average": "میانگین موزون (Weighted Average)"
+        }[val_method]
 
         s_sheet = ctx.manager.get_sheet(sales_sheet_name)
         p_sheet = ctx.manager.get_sheet(purchase_sheet_name)
@@ -688,48 +1074,116 @@ class MathActionHandler:
         p_min_r, p_min_c, p_max_r, p_max_c = p_sheet.get_used_range_bounds()
 
         def clean_val(v):
-            if v is None:
-                return 0.0
-            s = str(v).replace(',', '').replace('تومان', '').replace('ریال', '').strip()
-            try:
-                return float(s)
-            except ValueError:
-                return 0.0
+            from excel_assistant.core.utils import to_float_safe
+            return to_float_safe(v, default=0.0)
 
         # Auto-detect columns in Sales Sheet
+        tot_rem_stock = 0.0
+        tot_stock_val = 0.0
+        tot_expenses = 0.0
+        exp_count = 0
         s_qty_col = None
         s_price_col = None
         s_prod_col = None
         s_date_col = None
+        s_disc_col = None
         s_explicit_profit_col = None
         s_explicit_cost_col = None
+        s_total_col = None
 
-        qty_keywords = ["تعداد", "مقدار", "تعداد فروش", "فروش", "qty", "quantity", "count"]
-        price_keywords = ["قیمت", "قیمت فروش", "مبلغ فروش", "فی فروش", "نرخ", "price", "unit price"]
-        prod_keywords = ["کالا", "محصول", "نام", "شرح", "کد", "item", "product", "name"]
-        date_keywords = ["تاریخ", "date", "زمان", "time", "روز"]
-        profit_keywords = ["سود", "profit", "سود خالص", "درآمد خالص", "مارجین"]
-        cost_keywords = ["خرید", "هزینه", "بهای تمام شده", "قیمت تمام شده", "cost"]
+        cust_keywords = [
+            "مشتری", "خریدار", "طرف حساب", "customer", "client",
+            "فروشنده", "تامین کننده", "تامین‌کننده", "تامین", "supplier", "vendor",
+            "نام مشتری", "کد مشتری", "نام تامین کننده", "کد تامین کننده"
+        ]
+        inv_keywords = ["شماره فاکتور", "شماره سند", "کد فاکتور", "فاکتور", "invoice", "doc"]
+        disc_keywords = ["درصد تخفیف", "تخفیف درصد", "تخفیف", "discount", "off"]
+        disc_exclude_keywords = [
+            "بعد از تخفیف", "پس از تخفیف", "با تخفیف", "بعد تخفیف",
+            "قیمت بعد", "مبلغ بعد", "خالص پس از تخفیف", "قیمت با تخفیف", "مبلغ با تخفیف"
+        ]
+        date_keywords = ["تاریخ", "date", "زمان", "time"]
+        qty_keywords = ["تعداد فروش", "تعداد", "مقدار", "حجم", "qty", "quantity", "count"]
+        qty_exclude_keywords = ["خرید", "مانده", "موجودی", "قیمت", "مبلغ"]
+        price_keywords = ["قیمت واحد", "فی فروش", "قیمت فروش", "مبلغ فروش", "بهای واحد", "قیمت", "فی", "بها", "نرخ", "price", "unit price"]
+        price_exclude_keywords = ["خرید", "تمام شده", "بعد از تخفیف", "پس از تخفیف", "با تخفیف", "تخفیف"]
+        prod_code_keywords = ["کد کالا", "کد محصول", "کد آیتم", "کد جنس", "item code", "product code"]
+        prod_name_keywords = ["شرح کالا", "نام کالا", "عنوان کالا", "شرح محصول", "نام محصول", "شرح", "item", "product"]
+        general_prod_keywords = ["کالا", "محصول", "نام"]
+        profit_keywords = ["سود خالص", "سود", "profit", "درآمد خالص", "مارجین"]
+        cost_keywords = ["بهای تمام شده", "قیمت تمام شده", "خرید", "هزینه", "cost"]
+        total_sales_keywords = [
+            "مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "خالص فروش",
+            "فروش کل", "مبلغ نهایی", "کل مبلغ", "مبلغ", "total amount", "total sales"
+        ]
+
+        all_s_hdrs = {}
+        s_prod_code_col = None
+        s_prod_name_col = None
 
         for c in range(s_min_c, s_max_c + 1):
             c_let = col_index_to_letter(c)
-            hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").lower()
-            if not s_prod_col and any(k in hdr for k in prod_keywords):
-                s_prod_col = c_let
-            elif not s_date_col and any(k in hdr for k in date_keywords):
+            hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").strip().lower()
+            if not hdr:
+                continue
+            all_s_hdrs[c_let] = hdr
+
+            # 1. Discount column: MUST NOT be a "price after discount" or "amount after discount"
+            if not s_disc_col and any(k in hdr for k in disc_keywords) and not any(k in hdr for k in disc_exclude_keywords):
+                s_disc_col = c_let
+            # 2. Date column
+            elif not s_date_col and any(k in hdr for k in date_keywords) and not any(k in hdr for k in qty_keywords + inv_keywords + disc_keywords):
                 s_date_col = c_let
-            elif not s_qty_col and any(k in hdr for k in qty_keywords):
+            # 3. Product code column
+            elif not s_prod_code_col and any(k in hdr for k in prod_code_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords):
+                s_prod_code_col = c_let
+            # 4. Product name column
+            elif not s_prod_name_col and any(k in hdr for k in prod_name_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
+                s_prod_name_col = c_let
+            elif not s_prod_name_col and any(k in hdr for k in general_prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + qty_keywords + price_keywords):
+                s_prod_name_col = c_let
+            # 5. Quantity column
+            elif not s_qty_col and any(k in hdr for k in qty_keywords) and not any(k in hdr for k in qty_exclude_keywords + price_keywords + date_keywords + disc_keywords):
                 s_qty_col = c_let
-            elif not s_price_col and any(k in hdr for k in price_keywords):
+            # 6. Price column
+            elif not s_price_col and any(k in hdr for k in price_keywords) and not any(k in hdr for k in price_exclude_keywords + qty_keywords + disc_keywords + date_keywords):
                 s_price_col = c_let
+            # 7. Total sales column
+            elif not s_total_col and any(k in hdr for k in total_sales_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + disc_keywords):
+                s_total_col = c_let
+            # 8. Explicit profit column
             elif not s_explicit_profit_col and any(k in hdr for k in profit_keywords):
                 s_explicit_profit_col = c_let
-            elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords):
+            # 9. Explicit cost column
+            elif not s_explicit_cost_col and any(k in hdr for k in cost_keywords) and not any(k in hdr for k in cust_keywords):
                 s_explicit_cost_col = c_let
+
+        s_prod_col = s_prod_name_col or s_prod_code_col
+
+        # Determine whether discount should be subtracted from sales
+        apply_invoice_discount = False
+        if s_disc_col:
+            disc_hdr = all_s_hdrs.get(s_disc_col, "")
+            has_explicit_total = any(any(k in h for k in ["مبلغ کل", "جمع کل", "مبلغ فاکتور", "مبلغ فروش"]) or (h == "مبلغ") for h in all_s_hdrs.values())
+            has_explicit_net = any(any(k in h for k in ["بعد از تخفیف", "پس از تخفیف", "مبلغ خالص", "قیمت بعد"]) for h in all_s_hdrs.values())
+
+            if has_explicit_total and has_explicit_net:
+                # E.g. image-24.png with 'قیمت', 'مبلغ', 'تخفیف', 'قیمت بعد از تخفیف':
+                # The user's sales total is 'مبلغ' (91,078,000) and unit price is 'قیمت' (23,000).
+                apply_invoice_discount = False
+            elif any(k in disc_hdr for k in ["درصد", "%", "percent"]):
+                # E.g. test_roadmap with 'تخفیف درصد':
+                apply_invoice_discount = True
+            elif not has_explicit_total and not has_explicit_net:
+                apply_invoice_discount = True
 
         if action.date_col:
             d_raw = str(action.date_col).strip().upper()
-            s_date_col = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+            d_cand = col_index_to_letter(int(d_raw)) if d_raw.isdigit() else d_raw
+            # Verify if user-supplied date column is not accidentally quantity or price
+            d_hdr = str(s_sheet.get_value(f"{d_cand}{s_min_r}") or "").strip().lower()
+            if not any(k in d_hdr for k in qty_keywords + price_keywords):
+                s_date_col = d_cand
         if action.profit_col:
             p_raw = str(action.profit_col).strip().upper()
             s_explicit_profit_col = col_index_to_letter(int(p_raw)) if p_raw.isdigit() else p_raw
@@ -747,7 +1201,8 @@ class MathActionHandler:
         if action.sales_col:
             sc_raw = str(action.sales_col).strip().upper()
             action.sales_col = col_index_to_letter(int(sc_raw)) if sc_raw.isdigit() else sc_raw
-            s_price_col = action.sales_col
+            if not s_price_col:
+                s_price_col = action.sales_col
 
         if action.purchase_col:
             pc_raw = str(action.purchase_col).strip().upper()
@@ -760,7 +1215,8 @@ class MathActionHandler:
         if not s_prod_col:
             for c in range(s_min_c, s_max_c + 1):
                 c_let = col_index_to_letter(c)
-                if c_let not in [s_date_col, s_qty_col, s_price_col, s_explicit_cost_col, s_explicit_profit_col]:
+                hdr = str(s_sheet.get_value(f"{c_let}{s_min_r}") or "").strip().lower()
+                if c_let not in [s_date_col, s_qty_col, s_price_col, s_explicit_cost_col, s_explicit_profit_col, s_disc_col] and not any(k in hdr for k in cust_keywords + inv_keywords):
                     s_prod_col = c_let
                     break
 
@@ -770,21 +1226,31 @@ class MathActionHandler:
         # Auto-detect columns in Purchase Sheet
         p_qty_col = None
         p_price_col = None
-        p_prod_col = None
+        p_prod_code_col = None
+        p_prod_name_col = None
 
-        p_qty_keywords = ["تعداد", "تعداد خرید", "مقدار", "qty", "quantity"]
-        p_price_keywords = ["قیمت", "قیمت خرید", "مبلغ خرید", "فی خرید", "هزینه", "خرید", "cost", "purchase price"]
+        p_qty_keywords = ["تعداد خرید", "تعداد", "مقدار", "qty", "quantity"]
+        p_qty_exclude = ["فروش", "مانده", "موجودی"]
+        p_price_keywords = ["بهای واحد خرید", "قیمت واحد خرید", "قیمت خرید", "بهای واحد", "فی خرید", "قیمت", "فی", "بها", "cost", "purchase price"]
+        p_price_exclude = ["فروش", "ارزش", "موجودی", "مانده", "ضرب"]
 
         for c in range(p_min_c, p_max_c + 1):
             c_let = col_index_to_letter(c)
-            hdr = str(p_sheet.get_value(f"{c_let}{p_min_r}") or "").lower()
-            if not p_prod_col and any(k in hdr for k in prod_keywords):
-                p_prod_col = c_let
-            elif not p_qty_col and any(k in hdr for k in p_qty_keywords):
+            hdr = str(p_sheet.get_value(f"{c_let}{p_min_r}") or "").strip().lower()
+            if not hdr:
+                continue
+            if not p_prod_code_col and any(k in hdr for k in prod_code_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords):
+                p_prod_code_col = c_let
+            elif not p_prod_name_col and any(k in hdr for k in prod_name_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
+                p_prod_name_col = c_let
+            elif not p_prod_name_col and any(k in hdr for k in general_prod_keywords) and not any(k in hdr for k in cust_keywords + inv_keywords + p_qty_keywords + p_price_keywords):
+                p_prod_name_col = c_let
+            elif not p_qty_col and any(k in hdr for k in p_qty_keywords) and not any(k in hdr for k in p_qty_exclude + p_price_keywords):
                 p_qty_col = c_let
-            elif not p_price_col and any(k in hdr for k in p_price_keywords):
+            elif not p_price_col and any(k in hdr for k in p_price_keywords) and not any(k in hdr for k in p_price_exclude + p_qty_keywords):
                 p_price_col = c_let
 
+        p_prod_col = p_prod_name_col or p_prod_code_col
         if action.purchase_qty_col:
             pq_raw = str(action.purchase_qty_col).strip().upper()
             p_qty_col = col_index_to_letter(int(pq_raw)) if pq_raw.isdigit() else pq_raw
@@ -797,11 +1263,27 @@ class MathActionHandler:
         if not p_price_col: p_price_col = "C" if p_qty_col != "C" and p_prod_col != "C" else "D"
 
         # 3. Read Data and Match
+        prod_display_names = {}
         sales_records = []
         for r in range(s_min_r + 1, s_max_r + 1):
             prod = s_sheet.get_value(f"{s_prod_col}{r}")
-            qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}"))
-            price = clean_val(s_sheet.get_value(f"{s_price_col}{r}"))
+            qty = clean_val(s_sheet.get_value(f"{s_qty_col}{r}")) if s_qty_col else 1.0
+            price = clean_val(s_sheet.get_value(f"{s_price_col}{r}")) if s_price_col else 0.0
+
+            disc_val = clean_val(s_sheet.get_value(f"{s_disc_col}{r}")) if (s_disc_col and apply_invoice_discount) else 0.0
+            disc_pct = 0.0
+            if apply_invoice_discount and s_disc_col and disc_val > 0.0:
+                if disc_val <= 1.0:
+                    disc_pct = disc_val
+                elif disc_val <= 100.0:
+                    disc_pct = disc_val / 100.0
+                else:
+                    gross = (qty * price) if (qty > 0 and price > 0) else 0.0
+                    if gross > 0 and disc_val < gross:
+                        disc_pct = disc_val / gross
+                    else:
+                        disc_pct = 0.0
+            disc_pct = max(0.0, min(1.0, disc_pct))
 
             d_str = None
             if s_date_col:
@@ -813,81 +1295,232 @@ class MathActionHandler:
                     m = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', sd)
                     if m:
                         d_str = f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/{int(m.group(3)):02d}"
-                    elif len(sd) >= 4:
+                    elif len(sd) >= 4 and ("/" in sd or "-" in sd):
                         d_str = sd
 
-            direct_sales = clean_val(s_sheet.get_value(f"{action.sales_col}{r}")) if action.sales_col else 0.0
+            direct_sales = clean_val(s_sheet.get_value(f"{action.sales_col}{r}")) if (action.sales_col and action.sales_col != s_price_col) else 0.0
             if direct_sales > 0:
-                tot_sales = direct_sales
+                tot_sales = max(0.0, direct_sales * (1.0 - disc_pct))
             elif qty > 0 and price > 0:
-                tot_sales = qty * price
+                tot_sales = max(0.0, (qty * price) * (1.0 - disc_pct))
             elif price > 0:
-                tot_sales = price
+                tot_sales = max(0.0, price * (1.0 - disc_pct))
             else:
                 tot_sales = 0.0
 
             direct_cost = clean_val(s_sheet.get_value(f"{s_explicit_cost_col}{r}")) if s_explicit_cost_col else 0.0
             direct_profit = clean_val(s_sheet.get_value(f"{s_explicit_profit_col}{r}")) if s_explicit_profit_col else None
 
-            if prod is not None or tot_sales > 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str:
-                p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else f"ردیف {r}"
+            # Check for Sales Return (برگشت از فروش)
+            row_s_str = " ".join(str(s_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+            is_sales_return = any(rk in row_s_str for rk in ["برگشت از فروش", "برگشت از", "مرجوعی فروش", "مرجوعی", "برگشت"]) or bool(re.search(r'\bsr\d+', row_s_str))
+            if is_sales_return:
+                qty = -abs(qty if qty != 0 else 1.0)
+                tot_sales = -abs(tot_sales)
+
+            sc = str(s_sheet.get_value(f"{s_prod_code_col}{r}") or "").strip() if s_prod_code_col else ""
+            sn = str(s_sheet.get_value(f"{s_prod_name_col}{r}") or "").strip() if s_prod_name_col else ""
+
+            if prod is not None or tot_sales != 0 or direct_cost > 0 or (direct_profit is not None and direct_profit != 0) or d_str or sc or sn:
+                p_label = str(prod).strip() if (prod is not None and not str(prod).replace('.', '').isdigit()) else (sn or sc or f"ردیف {r}")
+                if is_sales_return and not any(k in p_label for k in ["برگشت", "مرجوع"]):
+                    p_label = f"{p_label} (برگشت)"
+                effective_unit_price = abs(tot_sales / qty) if (qty != 0 and tot_sales != 0) else price
                 sales_records.append({
                     "row": r,
                     "product": p_label,
-                    "qty": qty if qty > 0 else 1.0,
-                    "price": price if price > 0 else tot_sales,
+                    "code": sc,
+                    "name": sn,
+                    "qty": qty,
+                    "price": effective_unit_price,
                     "total_sales": tot_sales,
                     "direct_cost": direct_cost,
                     "direct_profit": direct_profit,
-                    "date": d_str
+                    "date": d_str,
+                    "is_return": is_sales_return
                 })
 
+        # Collect purchase batches per product in order of arrival (supports multi-batch FIFO)
+        purchase_batches_by_prod = defaultdict(list)
         purchase_records = []
+
+        # 2.5 Load Beginning Inventory Sheet if present
+        beg_sheet_name = smart_sheets.get("beginning_inventory")
+        if not beg_sheet_name:
+            for sn in sheet_names:
+                if any(k in sn.lower() for k in ["اول دوره", "اول_دوره", "موجودی اول", "موجودی اولیه", "opening stock", "beginning inventory"]):
+                    beg_sheet_name = sn
+                    break
+
+        if beg_sheet_name and ctx.manager:
+            try:
+                beg_sheet = ctx.manager.get_sheet(beg_sheet_name)
+                b_min_r, b_min_c, b_max_r, b_max_c = beg_sheet.get_used_range_bounds()
+                b_code_c, b_name_c, b_qty_c, b_price_c = None, None, None, None
+                for c in range(b_min_c, b_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(beg_sheet.get_value(f"{c_let}{b_min_r}") or "").strip().lower()
+                    if not b_code_c and any(k in h for k in prod_code_keywords):
+                        b_code_c = c_let
+                    elif not b_name_c and any(k in h for k in prod_name_keywords + general_prod_keywords):
+                        b_name_c = c_let
+                    elif not b_qty_c and any(k in h for k in ["تعداد", "مقدار", "qty"]):
+                        b_qty_c = c_let
+                    elif not b_price_c and any(k in h for k in ["قیمت", "بها", "فی", "price", "cost"]):
+                        b_price_c = c_let
+                b_prod_col = b_name_c or b_code_c
+                for r in range(b_min_r + 1, b_max_r + 1):
+                    bc = str(beg_sheet.get_value(f"{b_code_c}{r}") or "").strip() if b_code_c else ""
+                    bn = str(beg_sheet.get_value(f"{b_name_c}{r}") or "").strip() if b_name_c else ""
+                    bq = clean_val(beg_sheet.get_value(f"{b_qty_c}{r}")) if b_qty_c else 0.0
+                    bp = clean_val(beg_sheet.get_value(f"{b_price_c}{r}")) if b_price_c else 0.0
+                    if (bc or bn) and (bq > 0 or bp > 0):
+                        blbl = f"{bn} ({bc})" if (bc and bn and bc != bn) else (bn or bc)
+                        if bc:
+                            purchase_batches_by_prod[bc].append((bq, bp))
+                            prod_display_names[bc] = blbl
+                        if bn and bn != bc:
+                            purchase_batches_by_prod[bn].append((bq, bp))
+                            prod_display_names[bn] = blbl
+                        if blbl and blbl not in (bc, bn):
+                            purchase_batches_by_prod[blbl].append((bq, bp))
+                        purchase_records.append({
+                            "row": r,
+                            "product": blbl,
+                            "code": bc,
+                            "name": bn,
+                            "qty": bq,
+                            "price": bp,
+                            "total_purchase": bq * bp
+                        })
+            except Exception:
+                pass
+
+        # 2.6 Load Expenses Sheet if present (هزینه‌ها)
+        exp_sheet_name = smart_sheets.get("expenses")
+        tot_expenses = 0.0
+        exp_count = 0
+        if exp_sheet_name and ctx.manager:
+            try:
+                exp_sheet = ctx.manager.get_sheet(exp_sheet_name)
+                e_min_r, e_min_c, e_max_r, e_max_c = exp_sheet.get_used_range_bounds()
+                e_amt_c = None
+                exp_exclude = ["کد", "شرح", "مرکز", "نوع", "عنوان", "نام", "تاریخ", "توضیحات", "code", "desc", "date"]
+                exp_amt_kws = ["مبلغ هزینه", "مبلغ کل", "مبلغ", "amount", "ریال", "تومان", "قیمت", "cost"]
+
+                for c in range(e_min_c, e_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(exp_sheet.get_value(f"{c_let}{e_min_r}") or "").strip().lower()
+                    if any(k in h for k in exp_amt_kws) and not any(k in h for k in exp_exclude):
+                        e_amt_c = c_let
+                        break
+                if not e_amt_c and e_max_c >= e_min_c:
+                    e_amt_c = col_index_to_letter(e_max_c)
+                if e_amt_c:
+                    for r in range(e_min_r + 1, e_max_r + 1):
+                        row_vals_str = " ".join(str(exp_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(e_min_c, e_max_c + 1)).lower()
+                        # Skip capital asset purchases / fixed assets (دارایی ثابت / عمر مفید / اسقاط / capex)
+                        if any(ck in row_vals_str for ck in ["دارایی ثابت", "داراییهای ثابت", "سرمایه ای", "سرمایه‌ای", "عمر مفید", "اسقاط", "capex", "fixed asset"]):
+                            continue
+                        v = clean_val(exp_sheet.get_value(f"{e_amt_c}{r}"))
+                        if v > 0:
+                            tot_expenses += v
+                            exp_count += 1
+            except Exception:
+                pass
+
         if sales_sheet_name != purchase_sheet_name:
             for r in range(p_min_r + 1, p_max_r + 1):
+                pc = str(p_sheet.get_value(f"{p_prod_code_col}{r}") or "").strip() if p_prod_code_col else ""
+                pn = str(p_sheet.get_value(f"{p_prod_name_col}{r}") or "").strip() if p_prod_name_col else ""
                 prod = p_sheet.get_value(f"{p_prod_col}{r}")
                 qty = clean_val(p_sheet.get_value(f"{p_qty_col}{r}"))
                 price = clean_val(p_sheet.get_value(f"{p_price_col}{r}"))
-                if prod is not None or qty > 0 or price > 0:
+
+                # Check for Purchase Return (برگشت از خرید)
+                row_p_str = " ".join(str(p_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(p_min_c, p_max_c + 1)).lower()
+                is_purch_ret = any(k in row_p_str for k in ["برگشت از خرید", "برگشت به", "مرجوعی خرید", "مرجوعی", "برگشت"]) or bool(re.search(r'\bpr\d+', row_p_str))
+                if is_purch_ret:
+                    qty = -abs(qty)
+
+                if (pc or pn or prod is not None) and (qty != 0 or price > 0):
+                    p_name = str(prod).strip() if prod is not None else (pn or pc)
+                    plbl = f"{pn} ({pc})" if (pc and pn and pc != pn) else (pn or pc or p_name)
+                    if is_purch_ret:
+                        rem_ret = abs(qty)
+                        for target_k in [pc, pn, plbl, p_name]:
+                            if target_k and target_k in purchase_batches_by_prod:
+                                blist = purchase_batches_by_prod[target_k]
+                                for b_idx in range(len(blist) - 1, -1, -1):
+                                    bq, bp = blist[b_idx]
+                                    if bq >= rem_ret:
+                                        blist[b_idx] = (bq - rem_ret, bp)
+                                        rem_ret = 0
+                                        break
+                                    else:
+                                        rem_ret -= bq
+                                        blist[b_idx] = (0.0, bp)
+                    else:
+                        if pc:
+                            purchase_batches_by_prod[pc].append((qty, price))
+                            if pc not in prod_display_names: prod_display_names[pc] = plbl
+                        if pn and pn != pc:
+                            purchase_batches_by_prod[pn].append((qty, price))
+                            if pn not in prod_display_names: prod_display_names[pn] = plbl
+                        if plbl and plbl not in (pc, pn):
+                            purchase_batches_by_prod[plbl].append((qty, price))
+                        if not pc and not pn:
+                            purchase_batches_by_prod[p_name].append((qty, price))
+                            if p_name not in prod_display_names: prod_display_names[p_name] = plbl
                     purchase_records.append({
                         "row": r,
-                        "product": str(prod).strip() if prod is not None else f"ردیف {r}",
+                        "product": plbl,
+                        "code": pc,
+                        "name": pn,
                         "qty": qty,
                         "price": price,
-                        "total_purchase": qty * price
+                        "total_purchase": qty * price,
+                        "is_return": is_purch_ret
                     })
 
         has_named_products = any(sr["product"] and not sr["product"].startswith("ردیف ") for sr in sales_records) and \
-                             any(pr["product"] and not pr["product"].startswith("ردیف ") for pr in purchase_records)
+                             (any(pr["product"] and not pr["product"].startswith("ردیف ") for pr in purchase_records) or len(purchase_batches_by_prod) > 0)
 
         purchase_by_name = {pr["product"]: pr for pr in purchase_records}
         matched_items = []
+        consumed_stock_by_prod = defaultdict(float)
 
         if sales_sheet_name == purchase_sheet_name:
             # Single sheet profit calculation (e.g. Sales col - Cost col or explicit profit)
             for sr in sales_records:
-                s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
-                s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
+                if sr.get("is_return"):
+                    s_qty = -abs(sr["qty"] if sr["qty"] != 0 else 1.0)
+                    s_total = -abs(sr["total_sales"])
+                    s_price = abs(sr["price"])
+                else:
+                    s_qty = sr["qty"] if sr["qty"] != 0 else 1.0
+                    s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty != 0 else 0.0)
+                    s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
 
                 if sr["direct_profit"] is not None:
                     profit = sr["direct_profit"]
-                    cogs = sr["total_sales"] - profit if sr["total_sales"] > 0 else 0.0
+                    cogs = s_total - profit if s_total > 0 else 0.0
                     p_unit_price = cogs / s_qty if s_qty > 0 else cogs
                 elif sr["direct_cost"] > 0:
-                    cogs = sr["direct_cost"] * s_qty if (sr["direct_cost"] < sr["price"] and sr["qty"] > 1) else sr["direct_cost"]
+                    cogs = sr["direct_cost"] * s_qty if (sr["direct_cost"] < s_price and s_qty > 1) else sr["direct_cost"]
                     p_unit_price = cogs / s_qty if s_qty > 0 else cogs
-                    profit = sr["total_sales"] - cogs
+                    profit = s_total - cogs
                 else:
                     cogs = 0.0
                     p_unit_price = 0.0
-                    profit = sr["total_sales"]
+                    profit = s_total
 
-                margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
+                margin = (profit / s_total * 100) if s_total != 0 else 0.0
                 matched_items.append({
                     "product": sr["product"],
                     "s_qty": s_qty,
                     "s_price": s_price,
-                    "s_total": sr["total_sales"],
+                    "s_total": s_total,
                     "p_qty": s_qty,
                     "p_price": p_unit_price,
                     "p_total": cogs,
@@ -899,35 +1532,101 @@ class MathActionHandler:
                 })
         elif has_named_products:
             for sr in sales_records:
-                pr = purchase_by_name.get(sr["product"])
-                s_qty = sr["qty"] if sr["qty"] > 0 else 1.0
-                s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty > 0 else 0.0)
+                prod = sr["product"]
+                if sr.get("is_return"):
+                    s_qty = -abs(sr["qty"] if sr["qty"] != 0 else 1.0)
+                    s_total = -abs(sr["total_sales"])
+                    s_price = abs(sr["price"])
+                else:
+                    s_qty = sr["qty"] if sr["qty"] != 0 else 1.0
+                    s_price = sr["price"] if sr["price"] > 0 else (sr["total_sales"] / s_qty if s_qty != 0 else 0.0)
+                    s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else sr["total_sales"]
 
-                p_total_bought = pr["qty"] if pr else 0.0
-                p_unit_price = pr["price"] if pr else 0.0
-                if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
-                    p_unit_price = pr["total_purchase"] / p_total_bought
+                b_key = None
+                if sr.get("code") and sr.get("code") in purchase_batches_by_prod:
+                    b_key = sr.get("code")
+                elif sr.get("name") and sr.get("name") in purchase_batches_by_prod:
+                    b_key = sr.get("name")
+                elif prod in purchase_batches_by_prod:
+                    b_key = prod
+                else:
+                    for k in purchase_batches_by_prod:
+                        if (sr.get("code") and sr.get("code") == k) or (sr.get("name") and sr.get("name") == k):
+                            b_key = k
+                            break
 
-                # CRITICAL: Cost of Goods Sold (COGS) = sold quantity * unit purchase price!
-                # E.g. 4 pens sold * 10,000 purchase price = 40,000 COGS (NOT 30 pens * 10,000 = 300,000!)
-                cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
-                profit = sr["total_sales"] - cogs
-                margin = (profit / sr["total_sales"] * 100) if sr["total_sales"] > 0 else 0.0
-                remaining_stock = max(0.0, p_total_bought - s_qty) if p_total_bought > 0 else 0.0
-                stock_value = remaining_stock * p_unit_price
+                batches = purchase_batches_by_prod.get(b_key, []) if b_key else []
+                disp_label = prod_display_names.get(sr.get("code")) or prod_display_names.get(sr.get("name")) or prod
+
+                if batches:
+                    prior_consumed = consumed_stock_by_prod[b_key]
+                    if s_qty < 0:
+                        ret_qty = abs(s_qty)
+                        consumed_stock_by_prod[b_key] = max(0.0, prior_consumed - ret_qty)
+                        unit_cost = batches[0][1] if batches else 0.0
+                        cogs = -abs(ret_qty * unit_cost)
+                        p_unit_price = unit_cost
+                    else:
+                        consumed_stock_by_prod[b_key] += s_qty
+                        cogs = 0.0
+                        if val_method == "average":
+                            tot_b_cost = sum(q * p for q, p in batches)
+                            tot_b_qty = sum(q for q, _ in batches)
+                            unit_cost = (tot_b_cost / tot_b_qty) if tot_b_qty > 0 else 0.0
+                            cogs = s_qty * unit_cost
+                        elif val_method == "lifo":
+                            # Allocate COGS in LIFO order (latest purchases consumed first)
+                            accum_b = 0.0
+                            sale_start = prior_consumed
+                            sale_end = prior_consumed + s_qty
+                            for b_qty, b_price in reversed(batches):
+                                b_start = accum_b
+                                b_end = accum_b + b_qty
+                                accum_b += b_qty
+                                overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                                if overlap > 0:
+                                    cogs += overlap * b_price
+                        else:
+                            # Allocate COGS in FIFO order (earliest purchases consumed first)
+                            accum_b = 0.0
+                            sale_start = prior_consumed
+                            sale_end = prior_consumed + s_qty
+                            for b_qty, b_price in batches:
+                                b_start = accum_b
+                                b_end = accum_b + b_qty
+                                accum_b += b_qty
+                                overlap = max(0.0, min(sale_end, b_end) - max(sale_start, b_start))
+                                if overlap > 0:
+                                    cogs += overlap * b_price
+                        p_unit_price = (cogs / s_qty) if s_qty > 0 else 0.0
+
+                    p_total_bought = sum(b[0] for b in batches)
+                else:
+                    pr = purchase_by_name.get(prod) or purchase_by_name.get(sr.get("code")) or purchase_by_name.get(sr.get("name"))
+                    p_total_bought = pr["qty"] if pr else 0.0
+                    p_unit_price = pr["price"] if pr else 0.0
+                    if p_unit_price == 0.0 and pr and pr.get("total_purchase", 0) > 0 and p_total_bought > 0:
+                        p_unit_price = pr["total_purchase"] / p_total_bought
+                    cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
+
+                s_total = s_qty * s_price if (s_qty != 0 and s_price > 0) else sr["total_sales"]
+                profit = s_total - cogs
+                margin = (profit / s_total * 100) if s_total != 0 else 0.0
+                rem_key = b_key or prod
+                remaining_stock = max(0.0, p_total_bought - consumed_stock_by_prod[rem_key]) if p_total_bought > 0 else 0.0
 
                 matched_items.append({
-                    "product": sr["product"],
+                    "product": disp_label,
                     "s_qty": s_qty,
                     "s_price": s_price,
-                    "s_total": sr["total_sales"],
+                    "s_total": s_total,
                     "p_qty": p_total_bought,
                     "p_price": p_unit_price,
                     "p_total": cogs,
                     "profit": profit,
                     "margin": margin,
                     "remaining_stock": remaining_stock,
-                    "stock_value": stock_value,
+                    "stock_value": remaining_stock * p_unit_price,
                     "date": sr["date"]
                 })
         else:
@@ -937,9 +1636,14 @@ class MathActionHandler:
                 pr = purchase_records[i] if i < len(purchase_records) else None
 
                 prod = sr["product"] if sr else (pr["product"] if pr else f"آیتم {i+1}")
-                s_qty = sr["qty"] if (sr and sr["qty"] > 0) else 1.0
-                s_price = sr["price"] if sr else 0.0
-                s_total = sr["total_sales"] if sr else 0.0
+                if sr and sr.get("is_return"):
+                    s_qty = -abs(sr["qty"] if sr["qty"] != 0 else 1.0)
+                    s_total = -abs(sr["total_sales"])
+                    s_price = abs(sr["price"])
+                else:
+                    s_qty = sr["qty"] if (sr and sr["qty"] != 0) else 1.0
+                    s_price = sr["price"] if sr else 0.0
+                    s_total = s_qty * s_price if (s_qty > 0 and s_price > 0) else (sr["total_sales"] if sr else 0.0)
 
                 p_total_bought = pr["qty"] if pr else 0.0
                 p_unit_price = pr["price"] if pr else 0.0
@@ -948,7 +1652,7 @@ class MathActionHandler:
 
                 cogs = s_qty * p_unit_price if p_unit_price > 0 else (pr["total_purchase"] if pr else 0.0)
                 profit = s_total - cogs
-                margin = (profit / s_total * 100) if s_total > 0 else 0.0
+                margin = (profit / s_total * 100) if s_total != 0 else 0.0
                 remaining_stock = max(0.0, p_total_bought - s_qty) if p_total_bought > 0 else 0.0
                 stock_value = remaining_stock * p_unit_price
 
@@ -990,22 +1694,22 @@ class MathActionHandler:
                 p_tot = it["p_total"]
                 prof = it["profit"]
 
-                daily_map[dt]["sales"] += s_tot
-                daily_map[dt]["purchase"] += p_tot
-                daily_map[dt]["profit"] += prof
-                daily_map[dt]["count"] += 1
+                d_disp, mo_key, yr_key = parse_date_smart(dt, default_year="1405")
 
-                mo_key = dt[:7] if len(dt) >= 7 and dt[4] in ('/', '-') else dt
+                daily_map[d_disp]["sales"] += s_tot
+                daily_map[d_disp]["purchase"] += p_tot
+                daily_map[d_disp]["profit"] += prof
+                daily_map[d_disp]["count"] += (1 if it["s_qty"] > 0 else 0)
+
                 monthly_map[mo_key]["sales"] += s_tot
                 monthly_map[mo_key]["purchase"] += p_tot
                 monthly_map[mo_key]["profit"] += prof
-                monthly_map[mo_key]["count"] += 1
+                monthly_map[mo_key]["count"] += (1 if it["s_qty"] > 0 else 0)
 
-                yr_key = dt[:4] if len(dt) >= 4 and dt[:4].isdigit() else "نامشخص"
                 yearly_map[yr_key]["sales"] += s_tot
                 yearly_map[yr_key]["purchase"] += p_tot
                 yearly_map[yr_key]["profit"] += prof
-                yearly_map[yr_key]["count"] += 1
+                yearly_map[yr_key]["count"] += (1 if it["s_qty"] > 0 else 0)
 
         best_item = max(matched_items, key=lambda x: x["profit"]) if matched_items else {"product": "-", "profit": 0}
         loss_items = [it for it in matched_items if it["profit"] < 0]
@@ -1015,13 +1719,25 @@ class MathActionHandler:
         if action.create_report_sheet:
             existing_sheets = driver.get_sheet_names()
             if report_sheet_name in existing_sheets:
-                report_sheet = driver.get_sheet(report_sheet_name)
-            else:
+                try:
+                    if hasattr(driver, 'delete_sheet'):
+                        driver.delete_sheet(report_sheet_name)
+                    else:
+                        report_sheet = driver.get_sheet(report_sheet_name)
+                        ub_r1, ub_c1, ub_r2, ub_c2 = report_sheet.get_used_range_bounds()
+                        if ub_r2 >= ub_r1 and ub_r2 > 0:
+                            report_sheet.delete_rows(list(range(ub_r1, ub_r2 + 1)))
+                except Exception:
+                    pass
+            existing_sheets = driver.get_sheet_names()
+            if report_sheet_name not in existing_sheets:
                 report_sheet = driver.create_sheet(report_sheet_name)
+            else:
+                report_sheet = driver.get_sheet(report_sheet_name)
 
             curr_r = 1
             # Banner
-            report_sheet.set_value(f"A{curr_r}", "📊 داشبورد و گزارش جامع سود و زیان (مبلغ فروش منهای مبلغ خرید)")
+            report_sheet.set_value(f"A{curr_r}", f"📊 داشبورد و گزارش جامع سود و زیان | روش ارزیابی: {method_persian}")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=14, color_hex="#38BDF8")
             report_sheet.set_cell_color(f"A{curr_r}", "#09132B")
             curr_r += 2
@@ -1035,18 +1751,69 @@ class MathActionHandler:
             for idx, h in enumerate(headers_kpi):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
             curr_r += 1
 
             kpis = [
                 ("💰 کل مبلغ فروش", f"{total_sales_all:,.0f} تومان", f"شیت: {sales_sheet_name}"),
-                ("🛒 کل مبلغ خرید اقلام فروش‌رفته (COGS)", f"{total_purchase_all:,.0f} تومان", f"تعداد فروش × فی خرید ({purchase_sheet_name})"),
+                ("🛒 کل مبلغ خرید اقلام فروش‌رفته (COGS)", f"{total_purchase_all:,.0f} تومان", f"محاسبه بر مبنای روش {method_persian}"),
                 ("💵 سود خالص کل", f"{total_profit_all:,.0f} تومان", "فروش کل منهای بهای خرید اقلام فروش‌رفته"),
                 ("📈 میانگین حاشیه سود", f"{overall_margin:.1f}%", "درصد سود از کل فروش"),
             ]
-            tot_rem_stock = sum(it.get("remaining_stock", 0) for it in matched_items)
-            tot_stock_val = sum(it.get("stock_value", 0) for it in matched_items)
+            # Calculate true unique remaining stock and inventory valuation across products
+            product_remaining = {}
+            for it in matched_items:
+                product_remaining[it["product"]] = it.get("remaining_stock", 0.0)
+
+            # Also include purchased / opening stock items with 0 sales
+            for pr in purchase_records:
+                plbl = pr["product"]
+                if plbl not in product_remaining:
+                    b_key = pr.get("code") or pr.get("name") or plbl
+                    tot_b = sum(b[0] for b in purchase_batches_by_prod.get(b_key, []))
+                    if tot_b > 0:
+                        product_remaining[plbl] = tot_b
+
+            tot_rem_stock = sum(product_remaining.values())
+
+            product_stock_val = {}
+            if purchase_batches_by_prod:
+                for p, rem_q in product_remaining.items():
+                    batches = purchase_batches_by_prod.get(p)
+                    if not batches:
+                        for k, b_list in purchase_batches_by_prod.items():
+                            if k and (k in p or p in k):
+                                batches = b_list
+                                break
+                    batches = batches or []
+                    val = 0.0
+                    if val_method == "average":
+                        tot_b_cost = sum(q * pr for q, pr in batches)
+                        tot_b_qty = sum(q for q, _ in batches)
+                        unit_cost = (tot_b_cost / tot_b_qty) if tot_b_qty > 0 else 0.0
+                        val = rem_q * unit_cost
+                    elif val_method == "lifo":
+                        # LIFO: remaining inventory comes from earliest batches
+                        to_val = rem_q
+                        for b_q, b_p in batches:
+                            take = min(to_val, b_q)
+                            val += take * b_p
+                            to_val -= take
+                            if to_val <= 0:
+                                break
+                    else:
+                        # FIFO: remaining inventory comes from latest batches
+                        to_val = rem_q
+                        for b_q, b_p in reversed(batches):
+                            take = min(to_val, b_q)
+                            val += take * b_p
+                            to_val -= take
+                            if to_val <= 0:
+                                break
+                    product_stock_val[p] = val
+            tot_stock_val = sum(product_stock_val.values())
+
             if tot_rem_stock > 0:
                 kpis.append(("📦 ارزش موجودی باقیمانده انبار", f"{tot_stock_val:,.0f} تومان", f"{tot_rem_stock:,.0f} عدد کالا در انبار"))
 
@@ -1060,6 +1827,12 @@ class MathActionHandler:
             kpis.append(("🏆 پر سودترین کالا", f"{best_item['product']} ({best_item['profit']:,.0f} تومان)", "بیشترین سود ریالی"))
             kpis.append(("⚠️ تعداد اقلام زیان‌ده", f"{len(loss_items)} کالا", "اقلام با سود منفی"))
 
+            if tot_expenses > 0:
+                net_operating_profit = total_profit_all - tot_expenses
+                net_margin = (net_operating_profit / total_sales_all * 100) if total_sales_all > 0 else 0.0
+                kpis.append(("🧾 هزینه‌های جاری عملیاتی", f"{tot_expenses:,.0f} تومان", f"شیت: {exp_sheet_name} ({exp_count} قلم هزینه)"))
+                kpis.append(("🏆 سود خالص عملیاتی (پس از کسر هزینه‌ها)", f"{net_operating_profit:,.0f} تومان", f"حاشیه سود خالص عملیاتی: {net_margin:.1f}%"))
+
             for title, val, desc in kpis:
                 report_sheet.set_value(f"A{curr_r}", title)
                 report_sheet.set_value(f"B{curr_r}", val)
@@ -1067,6 +1840,7 @@ class MathActionHandler:
                 report_sheet.set_font(f"B{curr_r}", bold=True)
                 if "سود خالص" in title:
                     report_sheet.set_cell_color(f"B{curr_r}", "#064E3B" if total_profit_all >= 0 else "#7F1D1D")
+                    report_sheet.set_font(f"B{curr_r}", bold=True, color_hex="#FFFFFF")
                 curr_r += 1
             curr_r += 2
 
@@ -1080,7 +1854,7 @@ class MathActionHandler:
                 for idx, h in enumerate(d_headers):
                     col_c = col_index_to_letter(idx + 1)
                     report_sheet.set_value(f"{col_c}{curr_r}", h)
-                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{curr_r}", "#1E3A8A")
                 curr_r += 1
 
@@ -1095,7 +1869,7 @@ class MathActionHandler:
                     report_sheet.set_formula(f"F{r_num}", f"=D{r_num}-E{r_num}")
                     report_sheet.set_formula(f"G{r_num}", f'=IF(D{r_num}>0, (F{r_num}/D{r_num})*100, 0)')
 
-                    report_sheet.set_font(f"F{r_num}", bold=True)
+                    report_sheet.set_font(f"F{r_num}", bold=True, color_hex="#FFFFFF")
                     if d_data["profit"] >= 0:
                         report_sheet.set_cell_color(f"F{r_num}", "#064E3B")
                     else:
@@ -1104,7 +1878,7 @@ class MathActionHandler:
 
                 last_d_r = curr_r
                 report_sheet.set_value(f"A{last_d_r}", "جمع کل روزانه")
-                report_sheet.set_font(f"A{last_d_r}", bold=True)
+                report_sheet.set_font(f"A{last_d_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_formula(f"C{last_d_r}", f"=SUM(C{start_d_r}:C{last_d_r-1})")
                 report_sheet.set_formula(f"D{last_d_r}", f"=SUM(D{start_d_r}:D{last_d_r-1})")
                 report_sheet.set_formula(f"E{last_d_r}", f"=SUM(E{start_d_r}:E{last_d_r-1})")
@@ -1112,8 +1886,14 @@ class MathActionHandler:
                 report_sheet.set_formula(f"G{last_d_r}", f'=IF(D{last_d_r}>0, (F{last_d_r}/D{last_d_r})*100, 0)')
                 for c_idx in range(1, 8):
                     col_c = col_index_to_letter(c_idx)
-                    report_sheet.set_font(f"{col_c}{last_d_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{last_d_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{last_d_r}", "#0B1938")
+
+                try:
+                    report_sheet.set_number_format(f"D{start_d_r}:F{last_d_r}", "#,##0")
+                    report_sheet.set_number_format(f"G{start_d_r}:G{last_d_r}", "0.0")
+                except Exception:
+                    pass
                 curr_r += 2
 
             # Section 3: Monthly Profit Breakdown (if dates exist and requested)
@@ -1126,7 +1906,7 @@ class MathActionHandler:
                 for idx, h in enumerate(m_headers):
                     col_c = col_index_to_letter(idx + 1)
                     report_sheet.set_value(f"{col_c}{curr_r}", h)
-                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{curr_r}", "#7C2D12")
                 curr_r += 1
 
@@ -1141,7 +1921,7 @@ class MathActionHandler:
                     report_sheet.set_formula(f"F{r_num}", f"=D{r_num}-E{r_num}")
                     report_sheet.set_formula(f"G{r_num}", f'=IF(D{r_num}>0, (F{r_num}/D{r_num})*100, 0)')
 
-                    report_sheet.set_font(f"F{r_num}", bold=True)
+                    report_sheet.set_font(f"F{r_num}", bold=True, color_hex="#FFFFFF")
                     if m_data["profit"] >= 0:
                         report_sheet.set_cell_color(f"F{r_num}", "#064E3B")
                     else:
@@ -1150,7 +1930,7 @@ class MathActionHandler:
 
                 last_m_r = curr_r
                 report_sheet.set_value(f"A{last_m_r}", "جمع کل ماهانه")
-                report_sheet.set_font(f"A{last_m_r}", bold=True)
+                report_sheet.set_font(f"A{last_m_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_formula(f"C{last_m_r}", f"=SUM(C{start_m_r}:C{last_m_r-1})")
                 report_sheet.set_formula(f"D{last_m_r}", f"=SUM(D{start_m_r}:D{last_m_r-1})")
                 report_sheet.set_formula(f"E{last_m_r}", f"=SUM(E{start_m_r}:E{last_m_r-1})")
@@ -1158,12 +1938,18 @@ class MathActionHandler:
                 report_sheet.set_formula(f"G{last_m_r}", f'=IF(D{last_m_r}>0, (F{last_m_r}/D{last_m_r})*100, 0)')
                 for c_idx in range(1, 8):
                     col_c = col_index_to_letter(c_idx)
-                    report_sheet.set_font(f"{col_c}{last_m_r}", bold=True)
+                    report_sheet.set_font(f"{col_c}{last_m_r}", bold=True, color_hex="#FFFFFF")
                     report_sheet.set_cell_color(f"{col_c}{last_m_r}", "#0B1938")
+
+                try:
+                    report_sheet.set_number_format(f"D{start_m_r}:F{last_m_r}", "#,##0")
+                    report_sheet.set_number_format(f"G{start_m_r}:G{last_m_r}", "0.0")
+                except Exception:
+                    pass
                 curr_r += 2
 
-            # Section 4: Detailed Profit Table by Item
-            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان و موجودی به ازای هر کالا")
+            # Section 4: Detailed Profit Table by Sales Transaction
+            report_sheet.set_value(f"A{curr_r}", "📋 جدول تفکیک سود و زیان معاملات فروش")
             report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
             curr_r += 1
 
@@ -1175,16 +1961,13 @@ class MathActionHandler:
                 "مبلغ کل فروش",
                 f"قیمت خرید هر واحد ({purchase_sheet_name})",
                 "بهای تمام‌شده اقلام فروش‌رفته (COGS)",
-                "سود خالص (تومان)",
-                "درصد حاشیه سود",
-                f"کل خرید اولیه ({purchase_sheet_name})",
-                "موجودی باقیمانده انبار",
-                "ارزش موجودی انبار"
+                "سود ناخالص (تومان)",
+                "درصد حاشیه سود"
             ]
             for idx, h in enumerate(table_headers):
                 col_c = col_index_to_letter(idx + 1)
                 report_sheet.set_value(f"{col_c}{curr_r}", h)
-                report_sheet.set_font(f"{col_c}{curr_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{curr_r}", "#047857")
             curr_r += 1
 
@@ -1200,11 +1983,8 @@ class MathActionHandler:
                 report_sheet.set_formula(f"G{r_num}", f"=C{r_num}*F{r_num}")
                 report_sheet.set_formula(f"H{r_num}", f"=E{r_num}-G{r_num}")
                 report_sheet.set_formula(f"I{r_num}", f'=IF(E{r_num}>0, (H{r_num}/E{r_num})*100, 0)')
-                report_sheet.set_value(f"J{r_num}", it["p_qty"])
-                report_sheet.set_formula(f"K{r_num}", f'=IF(J{r_num}>C{r_num}, J{r_num}-C{r_num}, 0)')
-                report_sheet.set_formula(f"L{r_num}", f'=K{r_num}*F{r_num}')
 
-                report_sheet.set_font(f"H{r_num}", bold=True)
+                report_sheet.set_font(f"H{r_num}", bold=True, color_hex="#FFFFFF")
                 if it["profit"] >= 0:
                     report_sheet.set_cell_color(f"H{r_num}", "#064E3B")
                 else:
@@ -1212,23 +1992,87 @@ class MathActionHandler:
 
                 curr_r += 1
 
-            # Total Summary Row at bottom
+            # Total Summary Row at bottom of transactions table
             last_r = curr_r
-            report_sheet.set_value(f"A{last_r}", "جمع کل")
-            report_sheet.set_font(f"A{last_r}", bold=True)
+            report_sheet.set_value(f"A{last_r}", "جمع کل معاملات")
+            report_sheet.set_font(f"A{last_r}", bold=True, color_hex="#FFFFFF")
             report_sheet.set_formula(f"C{last_r}", f"=SUM(C{start_table_r}:C{last_r-1})")
             report_sheet.set_formula(f"E{last_r}", f"=SUM(E{start_table_r}:E{last_r-1})")
             report_sheet.set_formula(f"G{last_r}", f"=SUM(G{start_table_r}:G{last_r-1})")
             report_sheet.set_formula(f"H{last_r}", f"=E{last_r}-G{last_r}")
             report_sheet.set_formula(f"I{last_r}", f'=IF(E{last_r}>0, (H{last_r}/E{last_r})*100, 0)')
-            report_sheet.set_formula(f"J{last_r}", f"=SUM(J{start_table_r}:J{last_r-1})")
-            report_sheet.set_formula(f"K{last_r}", f"=SUM(K{start_table_r}:K{last_r-1})")
-            report_sheet.set_formula(f"L{last_r}", f"=SUM(L{start_table_r}:L{last_r-1})")
 
-            for c_idx in range(1, 13):
+            for c_idx in range(1, 10):
                 col_c = col_index_to_letter(c_idx)
-                report_sheet.set_font(f"{col_c}{last_r}", bold=True)
+                report_sheet.set_font(f"{col_c}{last_r}", bold=True, color_hex="#FFFFFF")
                 report_sheet.set_cell_color(f"{col_c}{last_r}", "#0B1938")
+
+            try:
+                report_sheet.set_number_format(f"D{start_table_r}:H{last_r}", "#,##0")
+                report_sheet.set_number_format(f"I{start_table_r}:I{last_r}", "0.0")
+            except Exception:
+                pass
+            curr_r += 2
+
+            # Section 5: Unique Inventory Stock Status & Valuation by Product
+            if tot_rem_stock > 0 and product_remaining:
+                report_sheet.set_value(f"A{curr_r}", "📦 جدول کاردکس و وضعیت موجودی انبار به ازای هر کالا")
+                report_sheet.set_font(f"A{curr_r}", bold=True, size=12)
+                curr_r += 1
+
+                inv_headers = [
+                    "ردیف",
+                    "نام و شرح کالا",
+                    "کل ورودی انبار (تعداد)",
+                    "کل فروش دوره (تعداد)",
+                    "موجودی پایان دوره (تعداد)",
+                    "ارزش ریالی موجودی انبار (تومان)"
+                ]
+                for idx, h in enumerate(inv_headers):
+                    col_c = col_index_to_letter(idx + 1)
+                    report_sheet.set_value(f"{col_c}{curr_r}", h)
+                    report_sheet.set_font(f"{col_c}{curr_r}", bold=True, color_hex="#FFFFFF")
+                    report_sheet.set_cell_color(f"{col_c}{curr_r}", "#0E7490")
+                curr_r += 1
+
+                product_sold_qty = defaultdict(float)
+                for it in matched_items:
+                    product_sold_qty[it["product"]] += it["s_qty"]
+
+                start_inv_r = curr_r
+                for idx, (p_name, rem_qty) in enumerate(sorted(product_remaining.items())):
+                    r_num = curr_r
+                    sold_q = product_sold_qty.get(p_name, 0.0)
+                    total_in = rem_qty + sold_q
+                    p_val = product_stock_val.get(p_name, 0.0)
+
+                    report_sheet.set_value(f"A{r_num}", idx + 1)
+                    report_sheet.set_value(f"B{r_num}", p_name)
+                    report_sheet.set_value(f"C{r_num}", total_in)
+                    report_sheet.set_value(f"D{r_num}", sold_q)
+                    report_sheet.set_formula(f"E{r_num}", f"=C{r_num}-D{r_num}")
+                    report_sheet.set_value(f"F{r_num}", p_val)
+
+                    curr_r += 1
+
+                last_inv_r = curr_r
+                report_sheet.set_value(f"A{last_inv_r}", "جمع کل موجودی انبار")
+                report_sheet.set_font(f"A{last_inv_r}", bold=True, color_hex="#FFFFFF")
+                report_sheet.set_formula(f"C{last_inv_r}", f"=SUM(C{start_inv_r}:C{last_inv_r-1})")
+                report_sheet.set_formula(f"D{last_inv_r}", f"=SUM(D{start_inv_r}:D{last_inv_r-1})")
+                report_sheet.set_formula(f"E{last_inv_r}", f"=SUM(E{start_inv_r}:E{last_inv_r-1})")
+                report_sheet.set_formula(f"F{last_inv_r}", f"=SUM(F{start_inv_r}:F{last_inv_r-1})")
+
+                for c_idx in range(1, 7):
+                    col_c = col_index_to_letter(c_idx)
+                    report_sheet.set_font(f"{col_c}{last_inv_r}", bold=True, color_hex="#FFFFFF")
+                    report_sheet.set_cell_color(f"{col_c}{last_inv_r}", "#083344")
+
+                try:
+                    report_sheet.set_number_format(f"C{start_inv_r}:E{last_inv_r}", "#,##0")
+                    report_sheet.set_number_format(f"F{start_inv_r}:F{last_inv_r}", "#,##0")
+                except Exception:
+                    pass
 
             report_sheet.auto_fit_columns()
             ctx.manager.activate_sheet(report_sheet_name)
@@ -1246,15 +2090,20 @@ class MathActionHandler:
 
         tot_sold_qty = sum(it["s_qty"] for it in matched_items)
         msg_lines = [
-            f"💵 **محاسبه سود ({period_title}) با موفقیت انجام شد ({profit_status}):**",
+            f"💵 **محاسبه سود به روش {method_persian} ({period_title}) با موفقیت انجام شد ({profit_status}):**",
             f"💰 **کل مبلغ فروش ({sales_sheet_name}):** `{total_sales_all:,.0f}` تومان (تعداد فروش: `{tot_sold_qty:,.0f}` عدد در `{len(matched_items)}` قلم)",
-            f"🛒 **بهای تمام‌شده اقلام فروش‌رفته (COGS):** `{total_purchase_all:,.0f}` تومان (محاسبه‌شده از: تعداد فروش × قیمت خرید واحد)",
+            f"🛒 **بهای تمام‌شده اقلام فروش‌رفته (COGS):** `{total_purchase_all:,.0f}` تومان (محاسبه‌شده بر مبنای روش {method_persian})",
             "───────────────────────────────",
-            f"✨ **سود خالص کل (فروش منهای بهای خرید اقلام فروخته‌شده):** **`{total_profit_all:,.0f}` تومان**",
-            f"📈 **میانگین حاشیه سود:** **`{overall_margin:.1f}%`**"
+            f"✨ **سود ناخالص کل (فروش منهای بهای خرید اقلام فروخته‌شده):** **`{total_profit_all:,.0f}` تومان**",
+            f"📈 **میانگین حاشیه سود ناخالص:** **`{overall_margin:.1f}%`**"
         ]
+        if tot_expenses > 0:
+            net_operating_profit = total_profit_all - tot_expenses
+            net_status = "🟢 سودآور" if net_operating_profit >= 0 else "🔴 زیان‌ده"
+            msg_lines.append(f"🧾 **کل هزینه‌های جاری عملیاتی ({exp_sheet_name}):** `{tot_expenses:,.0f}` تومان ({exp_count} قلم هزینه)")
+            msg_lines.append(f"🏆 **سود خالص عملیاتی (پس از کسر هزینه‌ها):** **`{net_operating_profit:,.0f}` تومان** ({net_status})")
         if tot_rem_stock > 0:
-            msg_lines.append(f"📦 **موجودی باقیمانده در انبار:** `{tot_rem_stock:,.0f}` قلم به ارزش `{tot_stock_val:,.0f}` تومان (سرمایه در گردش که جزء هزینه این فروش نیست)")
+            msg_lines.append(f"📦 **موجودی باقیمانده در انبار:** `{tot_rem_stock:,.0f}` قلم به ارزش `{tot_stock_val:,.0f}` تومان (ارزیابی شده به روش {method_persian})")
         if has_dates and daily_map:
             best_day = max(daily_map.items(), key=lambda x: x[1]["profit"])
             msg_lines.append(f"📅 **تعداد روزهای ثبت‌شده:** `{len(daily_map)}` روز (پرسودترین روز: `{best_day[0]}` با سود `{best_day[1]['profit']:,.0f}` تومان)")
@@ -1278,11 +2127,21 @@ class MathActionHandler:
                 "total_sales": total_sales_all,
                 "total_purchase": total_purchase_all,
                 "total_profit": total_profit_all,
+                "gross_profit": total_profit_all,
+                "operating_expenses": tot_expenses,
+                "net_profit": total_profit_all - tot_expenses,
                 "margin_pct": overall_margin,
                 "remaining_stock": tot_rem_stock,
                 "stock_value": tot_stock_val,
+                "valuation_method": val_method,
                 "item_count": len(matched_items),
                 "daily_count": len(daily_map) if has_dates else 0,
-                "monthly_count": len(monthly_map) if has_dates else 0
+                "monthly_count": len(monthly_map) if has_dates else 0,
+                "matched_sheets": {
+                    "sales": sales_sheet_name,
+                    "purchase": purchase_sheet_name,
+                    "beginning_inventory": beg_sheet_name,
+                    "expenses": exp_sheet_name
+                }
             }
         )

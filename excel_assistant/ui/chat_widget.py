@@ -9,24 +9,146 @@ import re
 import time
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, Signal, QEvent
-from PySide6.QtGui import QPainter, QPixmap, QColor
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QScrollArea
-)
+try:
+    from PySide6.QtCore import Qt, Signal, QEvent
+    from PySide6.QtGui import QPainter, QPixmap, QColor
+    from PySide6.QtWidgets import (
+        QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+        QPushButton, QFrame, QScrollArea
+    )
+except ImportError:
+    Qt = QEvent = None
+    Signal = lambda *args, **kwargs: None
+    QPainter = QPixmap = QColor = None
+    QWidget = QVBoxLayout = QHBoxLayout = QLabel = object
+    QPushButton = QFrame = QScrollArea = object
 
 # Resolve background wallpaper path
 RESOURCES_DIR = Path(__file__).parent / "resources"
 BACKGROUND_IMAGE_PATH = (RESOURCES_DIR / "background.jpg").as_posix()
 
+ACCOUNTING_KEYWORDS_MAP = {
+    # Financial Statements & Profit/Loss
+    "صورت سود و زیان جامع": ("#064E3B", "#6EE7B7"),
+    "صورت سود و زیان": ("#064E3B", "#6EE7B7"),
+    "سود و زیان": ("#064E3B", "#6EE7B7"),
+    "سود ناخالص": ("#064E3B", "#6EE7B7"),
+    "سود خالص": ("#064E3B", "#6EE7B7"),
+    "سود عملیاتی": ("#064E3B", "#6EE7B7"),
+    "پرسودترین": ("#064E3B", "#34D399"),
+    "سود": ("#064E3B", "#34D399"),
+    "زیان ناخالص": ("#881337", "#FDA4AF"),
+    "زیان خالص": ("#881337", "#FDA4AF"),
+    "زیان": ("#881337", "#FDA4AF"),
+
+    # Inventory Valuation Methods
+    "میانگین موزون": ("#581C87", "#E9D5FF"),
+    "میانگین": ("#581C87", "#DDD6FE"),
+    "فایفو": ("#064E3B", "#6EE7B7"),
+    "لایفو": ("#1E3A8A", "#93C5FD"),
+    "FIFO": ("#064E3B", "#6EE7B7"),
+    "LIFO": ("#1E3A8A", "#93C5FD"),
+
+    # Balance Sheet & Trial Balance
+    "صورت وضعیت مالی": ("#78350F", "#FDE68A"),
+    "تراز آزمایشی": ("#78350F", "#FDE68A"),
+    "ترازنامه": ("#78350F", "#FDE68A"),
+    "تراز": ("#78350F", "#FDE68A"),
+
+    # Sales & Revenue
+    "فروش خالص": ("#065F46", "#A7F3D0"),
+    "برگشت از فروش": ("#881337", "#FECDD3"),
+    "پرفروش‌ترین": ("#065F46", "#6EE7B7"),
+    "فروش": ("#065F46", "#6EE7B7"),
+
+    # Purchases & COGS
+    "بهای تمام شده": ("#7C2D12", "#FED7AA"),
+    "بهای تمام‌شده": ("#7C2D12", "#FED7AA"),
+    "COGS": ("#7C2D12", "#FED7AA"),
+    "برگشت از خرید": ("#7C2D12", "#FED7AA"),
+    "خرید": ("#7C2D12", "#FED7AA"),
+
+    # Inventory & Cardex
+    "کاردکس انبار": ("#581C87", "#DDD6FE"),
+    "موجودی انبار": ("#581C87", "#DDD6FE"),
+    "انبارگردانی": ("#581C87", "#DDD6FE"),
+    "موجودی کالا": ("#581C87", "#DDD6FE"),
+    "کاردکس": ("#581C87", "#DDD6FE"),
+    "انبار": ("#581C87", "#C4B5FD"),
+
+    # Payroll & Personnel
+    "حقوق و دستمزد": ("#075985", "#BAE6FD"),
+    "فیش حقوقی": ("#075985", "#BAE6FD"),
+    "فیش حقوق": ("#075985", "#BAE6FD"),
+    "حقوق": ("#075985", "#BAE6FD"),
+    "دستمزد": ("#075985", "#BAE6FD"),
+
+    # Attendance & Timesheet
+    "ورود و خروج": ("#115E59", "#5EEAD4"),
+    "ورود خروج": ("#115E59", "#5EEAD4"),
+    "حضور و غیاب": ("#115E59", "#5EEAD4"),
+    "حضور غیاب": ("#115E59", "#5EEAD4"),
+    "تایم شیت": ("#115E59", "#5EEAD4"),
+    "تایمشیت": ("#115E59", "#5EEAD4"),
+    "تایم‌شیت": ("#115E59", "#5EEAD4"),
+    "ساعت کارکرد": ("#0E7490", "#67E8F9"),
+    "ساعات کارکرد": ("#0E7490", "#67E8F9"),
+    "ساعت کاری": ("#0E7490", "#67E8F9"),
+    "ساعات کاری": ("#0E7490", "#67E8F9"),
+    "ساعت کار": ("#0E7490", "#67E8F9"),
+    "کارکرد": ("#0E7490", "#BAE6FD"),
+    "اضافه‌کاری": ("#064E3B", "#86EFAC"),
+    "اضافه کاری": ("#064E3B", "#86EFAC"),
+    "اضافه‌کار": ("#064E3B", "#86EFAC"),
+    "اضافه کار": ("#064E3B", "#86EFAC"),
+    "کسری کار": ("#9A3412", "#FFEDD5"),
+    "مرخصی": ("#1E3A8A", "#BFDBFE"),
+    "تأخیرات": ("#991B1B", "#FECACA"),
+    "تأخیر": ("#991B1B", "#FECACA"),
+    "تاخیر": ("#991B1B", "#FECACA"),
+
+    # Fixed Assets & Depreciation
+    "استهلاک انباشته": ("#78350F", "#FEF08A"),
+    "استهلاک": ("#78350F", "#FEF08A"),
+    "دارایی ثابت": ("#0F766E", "#99F6E4"),
+    "دارایی": ("#0F766E", "#99F6E4"),
+    "بدهی": ("#881337", "#FECACA"),
+    "سرمایه": ("#78350F", "#FDE68A"),
+
+    # Banking & Reconciliation
+    "صورت مغایرت": ("#0284C7", "#7DD3FC"),
+    "مغایرت بانکی": ("#0284C7", "#7DD3FC"),
+    "بانک": ("#0284C7", "#7DD3FC"),
+
+    # Tax & Insurance
+    "ارزش افزوده": ("#1E3A8A", "#BFDBFE"),
+    "مالیات": ("#1E3A8A", "#BFDBFE"),
+    "بیمه": ("#065F46", "#A7F3D0"),
+}
+
+_SORTED_ACC_KWS = sorted(ACCOUNTING_KEYWORDS_MAP.keys(), key=len, reverse=True)
+_DELIM = r'[^\s\(\)\[\]{}،؛:\.,!?«»\-–—\*\`\'\"\u200c]'
+_ACC_PATTERN = re.compile(rf'(?<!{_DELIM})(' + '|'.join(re.escape(k) for k in _SORTED_ACC_KWS) + rf')(?!{_DELIM})')
+
+
+def highlight_accounting_terms(text: str) -> str:
+    """Highlights key accounting terms with solid executive badge formatting compatible with Qt RichText."""
+    def _repl(m):
+        kw = m.group(1)
+        bg, fg = ACCOUNTING_KEYWORDS_MAP[kw]
+        return f'<span style="background-color: {bg}; color: {fg}; font-weight: bold;">&nbsp;{kw}&nbsp;</span>'
+    return _ACC_PATTERN.sub(_repl, text)
+
 
 def format_markdown_to_rich_text(text: str) -> str:
-    """Converts basic markdown (bold, code, line breaks) to clean Qt HTML."""
+    """Converts basic markdown (bold, code, line breaks) to clean Qt HTML with accounting highlights."""
     if not text:
         return ""
     # Escape HTML special chars first
     escaped = html.escape(text)
+
+    # Highlight classic accounting keywords
+    escaped = highlight_accounting_terms(escaped)
 
     # Convert **bold** to <b>bold</b>
     escaped = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', escaped)
@@ -34,13 +156,13 @@ def format_markdown_to_rich_text(text: str) -> str:
     # Convert `code` to formatted span
     escaped = re.sub(
         r'`(.+?)`',
-        r'<span style="background-color: rgba(30, 58, 138, 0.4); color: #38BDF8; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; border: 1px solid #1D4ED8;">\1</span>',
+        r'<span style="background-color: rgba(6, 78, 59, 0.5); color: #FCD34D; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; border: 1px solid #D97706;">\1</span>',
         escaped
     )
 
     # Convert newlines to <br>
     escaped = escaped.replace('\n', '<br>')
-    return f"<div style='line-height: 1.6; font-size: 13px; color: #FFFFFF;'>{escaped}</div>"
+    return f"<div style='line-height: 1.7; font-family: \"Vazirmatn\", sans-serif; font-size: 13px; color: #FFFFFF;'>{escaped}</div>"
 
 
 class MessageBubble(QFrame):
@@ -62,7 +184,7 @@ class MessageBubble(QFrame):
         time_str = time.strftime("%H:%M")
         header_text = f"👤 {sender} ({time_str})" if is_user else f"🤖 {sender} ({time_str})"
         header_lbl = QLabel(header_text)
-        header_color = "#38BDF8" if is_user else "#60A5FA"
+        header_color = "#5EEAD4" if is_user else "#FBBF24"
         header_lbl.setStyleSheet(f"font-size: 11px; color: {header_color}; font-weight: bold; border: none; background: transparent;")
         layout.addWidget(header_lbl)
 
@@ -114,8 +236,8 @@ class MessageBubble(QFrame):
         elif is_user:
             self.setStyleSheet("""
                 QFrame#messageBubble {
-                    background-color: rgba(12, 25, 58, 0.92);
-                    border: 1.5px solid #2563EB;
+                    background-color: rgba(6, 36, 30, 0.95);
+                    border: 1.5px solid #0D9488;
                     border-radius: 14px;
                 }
                 QLabel {
@@ -126,8 +248,8 @@ class MessageBubble(QFrame):
         else:
             self.setStyleSheet("""
                 QFrame#messageBubble {
-                    background-color: rgba(8, 16, 38, 0.88);
-                    border: 1.5px solid #1D4ED8;
+                    background-color: rgba(3, 20, 18, 0.92);
+                    border: 1.5px solid #D97706;
                     border-radius: 14px;
                 }
                 QLabel {
@@ -157,7 +279,7 @@ class ChatScrollArea(QScrollArea):
         if obj is self.viewport() and event.type() == QEvent.Paint:
             try:
                 painter = QPainter(self.viewport())
-                painter.fillRect(self.viewport().rect(), QColor("#020617"))
+                painter.fillRect(self.viewport().rect(), QColor("#031412"))
                 if self._bg_pixmap and not self._bg_pixmap.isNull():
                     vp_w = self.viewport().width()
                     vp_h = self.viewport().height()
@@ -167,7 +289,7 @@ class ChatScrollArea(QScrollArea):
                         Qt.SmoothTransformation
                     )
                     x = (vp_w - scaled.width()) // 2
-                    y = max(0, vp_h - scaled.height())
+                    y = (vp_h - scaled.height()) // 2
                     painter.drawPixmap(x, y, scaled)
                 painter.end()
             except Exception:
@@ -193,7 +315,7 @@ class ChatWidget(QWidget):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_area.setStyleSheet(
             f"QScrollArea#chatScrollArea {{"
-            f"  background-color: #020617;"
+            f"  background-color: #031412;"
             f"  background-image: url('{BACKGROUND_IMAGE_PATH}');"
             f"  background-position: center bottom;"
             f"  background-repeat: no-repeat;"
@@ -215,7 +337,7 @@ class ChatWidget(QWidget):
         main_layout.addWidget(self.scroll_area)
 
     def add_user_message(self, text: str):
-        bubble = MessageBubble(sender="MIYUM", text=text, is_user=True)
+        bubble = MessageBubble(sender="MUYUM", text=text, is_user=True)
         self._append_bubble(bubble)
 
     def add_assistant_message(self, text: str):

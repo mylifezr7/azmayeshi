@@ -158,6 +158,14 @@ class ExcelConnectionManager:
             raise WorkbookNotFoundError("No Excel workbook currently connected.")
         return self.active_driver.create_sheet(name)
 
+    def delete_sheet(self, name: str) -> bool:
+        self._ensure_connected()
+        if not self.is_connected():
+            raise WorkbookNotFoundError("No Excel workbook currently connected.")
+        if hasattr(self.active_driver, 'delete_sheet'):
+            return self.active_driver.delete_sheet(name)
+        return False
+
     def save(self, path: Optional[str] = None) -> str:
         if not self.is_connected():
             raise WorkbookNotFoundError("No Excel workbook currently connected.")

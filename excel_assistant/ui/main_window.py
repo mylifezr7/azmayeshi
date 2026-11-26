@@ -4,13 +4,15 @@ Main Window for Excel AI Assistant (PySide6 / RTL Persian).
 import sys
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot, QEvent, QObject
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QEvent, QObject, QStringListModel
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
     QPushButton, QLabel, QFrame, QMessageBox, QApplication, QDialog,
-    QScrollArea, QComboBox, QSizePolicy
+    QScrollArea, QComboBox, QSizePolicy, QCompleter
 )
+
+from excel_assistant.ui.command_search import search_commands, COMMAND_SEARCH_REGISTRY
 
 from excel_assistant.core.connection import ExcelConnectionManager
 from excel_assistant.analyzer.inspector import SheetInspector, WorkbookInspector
@@ -64,11 +66,16 @@ class MainWindow(QMainWindow):
 
     def __init__(self, manager: Optional[ExcelConnectionManager] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setWindowTitle("Excel AI Assistant - MIYUM")
+        self.setWindowTitle("MUYUM | دستیار هوشمند مالی و حسابداری مایکروسافت اکسل")
         self.resize(1050, 720)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(QSS_STYLE)
         self.setAcceptDrops(True)
+
+        app = QApplication.instance()
+        if app:
+            from excel_assistant.ui.app import setup_application_font
+            setup_application_font(app)
 
         # Core components
         self.manager = manager or ExcelConnectionManager()
@@ -135,21 +142,32 @@ class MainWindow(QMainWindow):
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    ("💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", "محاسبه سود"),
-                    ("💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", "محاسبه فروش"),
-                    ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
+                    ("🏷️ محاسبه بهای تمام شده (فایفو / لایفو / میانگین)...", "روش بهای تمام شده"),
+                    ("💵 محاسبه و مقایسه سود (فایفو / لایفو / میانگین موزون)...", "روش سود"),
+                    ("🏷️ بهای تمام شده به روش فایفو (FIFO)", "محاسبه بهای تمام شده به روش فایفو"),
+                    ("🏷️ بهای تمام شده به روش لایفو (LIFO)", "محاسبه بهای تمام شده به روش لایفو"),
+                    ("⚖️ مقایسه بهای تمام شده فایفو و لایفو", "مقایسه بهای تمام شده فایفو و لایفو"),
+                    ("⏱️ محاسبه ساعت کاری، ورود و خروج کارمندان (تایم‌شیت)", "محاسبه ساعت کاری"),
+                    ("💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", "محاسبه فروش"),
+                    ("💼 لیست حقوق و دستمزد، بیمه و مالیات (تشخیص خودکار)", "محاسبه حقوق و دستمزد"),
                     ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
                     ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
                     ("💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", "محاسبه مانده حساب"),
-                    ("💼 لیست حقوق و دستمزد، بیمه و مالیات", "محاسبه حقوق و دستمزد"),
                     ("📉 محاسبه جدول استهلاک دارایی‌ها", "محاسبه استهلاک"),
                     ("📈 تهیه صورت سود و زیان جامع دوره", "صورت سود و زیان جامع"),
                     ("🏛️ تهیه ترازنامه مالی (بیلان)", "ترازنامه"),
+                    ("⚙️ تنظیمات دستی ستون‌های محاسبه سود...", "تنظیمات سود"),
+                    ("⚙️ تنظیمات دستی ستون‌های گزارش فروش...", "تنظیمات فروش"),
+                    ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
                 ]
             },
             "sales_inventory": {
                 "title": "🛒 ۳. قابلیت‌های فروش و انبارداری",
                 "commands": [
+                    ("🟢 ارزش‌گذاری موجودی انبار به روش فایفو (FIFO)", "ارزش‌گذاری انبار به روش فایفو"),
+                    ("🔵 ارزش‌گذاری موجودی انبار به روش لایفو (LIFO)", "ارزش‌گذاری انبار به روش لایفو"),
+                    ("🟣 ارزش‌گذاری انبار به روش میانگین موزون (Average)", "ارزش‌گذاری انبار به روش میانگین موزون"),
+                    ("📑 مقایسه همزمان هر ۳ روش ارزش‌گذاری در انبار", "مقایسه روش‌های فایفو و لایفو و میانگین در انبار"),
                     ("🏷️ محاسبه تخفیف کالاها...", "محاسبه تخفیف"),
                     ("🧾 صدور و ثبت فاکتور رسمی فروش", "ثبت فاکتور فروش"),
                     ("🛒 صدور و ثبت فاکتور رسمی خرید", "ثبت فاکتور خرید"),
@@ -219,6 +237,44 @@ class MainWindow(QMainWindow):
         self.btn_run_action.clicked.connect(self._on_run_action_clicked)
         chips_frame_layout.addWidget(self.btn_run_action, stretch=0)
 
+        # 3. Search Bar for instant command discovery (جستجوی سریع قابلیت‌ها)
+        search_frame = QFrame()
+        search_frame.setObjectName("searchFrame")
+        search_layout = QHBoxLayout(search_frame)
+        search_layout.setContentsMargins(12, 4, 12, 4)
+        search_layout.setSpacing(8)
+
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("commandSearchInput")
+        self.search_input.setPlaceholderText("🔍 جستجوی سریع قابلیت‌ها (مثلاً: سود، سود سالانه، کارکرد، فروش، فیلتر)...")
+        self.search_input.setLayoutDirection(Qt.RightToLeft)
+        search_layout.addWidget(self.search_input, stretch=1)
+
+        self.btn_clear_search = QPushButton("✕")
+        self.btn_clear_search.setObjectName("clearSearchButton")
+        self.btn_clear_search.setToolTip("پاک کردن جستجو")
+        self.btn_clear_search.setVisible(False)
+        self.btn_clear_search.clicked.connect(self._clear_search)
+        search_layout.addWidget(self.btn_clear_search)
+
+        # Setup Auto-Completer for Search Input
+        self._search_cmd_map = {}
+        self.search_model = QStringListModel(self)
+        self.search_completer = QCompleter(self.search_model, self)
+        self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.search_completer.setFilterMode(Qt.MatchContains)
+        self.search_completer.setCompletionMode(QCompleter.PopupCompletion)
+        if self.search_completer.popup():
+            self.search_completer.popup().setObjectName("searchCompleterPopup")
+            self.search_completer.popup().setLayoutDirection(Qt.RightToLeft)
+        self.search_input.setCompleter(self.search_completer)
+
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        self.search_completer.activated[str].connect(self._on_search_item_activated)
+        self.search_input.returnPressed.connect(self._on_search_return_pressed)
+
+        main_layout.addWidget(search_frame)
+
         main_layout.addWidget(chips_frame)
 
         # 4. Input bar
@@ -232,6 +288,16 @@ class MainWindow(QMainWindow):
         self.input_edit.setObjectName("chatInput")
         self.input_edit.setPlaceholderText("دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن و در C بنویس)")
         self.input_edit.returnPressed.connect(self._on_send_clicked)
+
+        # Setup Completer for Chat Input as well
+        self.chat_completer = QCompleter([item["cmd"] for item in COMMAND_SEARCH_REGISTRY], self)
+        self.chat_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.chat_completer.setFilterMode(Qt.MatchContains)
+        self.chat_completer.setCompletionMode(QCompleter.PopupCompletion)
+        if self.chat_completer.popup():
+            self.chat_completer.popup().setObjectName("searchCompleterPopup")
+            self.chat_completer.popup().setLayoutDirection(Qt.RightToLeft)
+        self.input_edit.setCompleter(self.chat_completer)
 
         self.btn_send = QPushButton("ارسال دستور ✈️")
         self.btn_send.setObjectName("sendButton")
@@ -260,28 +326,32 @@ class MainWindow(QMainWindow):
         self.history_panel.discount_requested.connect(self._open_discount_dialog)
         self.history_panel.date_requested.connect(self._open_date_dialog)
         self.history_panel.unique_col_requested.connect(self._open_unique_col_dialog)
-        self.history_panel.sales_requested.connect(self._open_sales_dialog)
-        self.history_panel.profit_requested.connect(self._open_profit_dialog)
+        self.history_panel.sales_requested.connect(lambda: self._on_message_submitted("محاسبه فروش"))
+        self.history_panel.profit_requested.connect(self._open_profit_method_dialog)
 
         # Keyboard shortcuts (میانبرهای کیبورد)
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self._on_save_clicked)
 
+        # Ctrl+P: انتخاب سریع روش سود (فایفو / لایفو / میانگین) و اجرای خودکار
         self.shortcut_profit = QShortcut(QKeySequence("Ctrl+P"), self)
-        self.shortcut_profit.activated.connect(self._open_profit_dialog)
+        self.shortcut_profit.activated.connect(self._open_profit_method_dialog)
+        # Ctrl+Shift+P: باز کردن ویزارد تنظیمات دستی ستون‌ها
         self.shortcut_profit_shift = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
         self.shortcut_profit_shift.activated.connect(self._open_profit_dialog)
 
+        # Ctrl+Shift+S: تشخیص و محاسبه خودکار فروش
         self.shortcut_sales = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
-        self.shortcut_sales.activated.connect(self._open_sales_dialog)
+        self.shortcut_sales.activated.connect(lambda: self._on_message_submitted("محاسبه فروش"))
 
     def _perform_initial_connection(self):
         try:
             from excel_assistant.core.xlwings_driver import check_xlwings, XLWINGS_AVAILABLE
             check_xlwings()
 
+            target_path = self.manager.file_path if (self.manager and self.manager.file_path) else None
             if not self.manager.is_connected() or (sys.platform == 'win32' and self.manager.driver_type != 'xlwings'):
-                info = self.manager.connect()
+                info = self.manager.connect(target_path)
             else:
                 info = self.manager.get_workbook_info()
 
@@ -292,14 +362,14 @@ class MainWindow(QMainWindow):
 
             if self.manager.driver_type == "xlwings":
                 self.chat_widget.add_assistant_message(
-                    f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                    f"سلام **MUYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
                     f"🟢 **اتصال زنده به نرم‌افزار Microsoft Excel برقرار شد.**\n"
                     f"فایل فعال: **`{info.name}`** | شیت: **`{info.active_sheet}`**\n"
                     f"💡 هر دستوری بدهید، تغییرات مستقیماً و به صورت زنده در نرم‌افزار اکسل شما اعمال خواهد شد."
                 )
             else:
                 warn_text = (
-                    f"سلام **MIYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
+                    f"سلام **MUYUM** عزیز! من دستیار هوشمند Microsoft Excel شما هستم.\n"
                     f"📌 برنامه در حال حاضر با **موتور مستقل اکسل (آفلاین)** به فایل **`{info.name}`** متصل است.\n"
                 )
                 if sys.platform == "win32":
@@ -374,6 +444,47 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.chat_widget.add_assistant_message(f"❌ خطا در تغییر شیت: {e}")
 
+    def _on_search_text_changed(self, text: str):
+        q = text.strip()
+        if not q:
+            self.search_model.setStringList([])
+            self.btn_clear_search.setVisible(False)
+            return
+        self.btn_clear_search.setVisible(True)
+        results = search_commands(q, limit=15)
+        self._search_cmd_map = {r["title"]: r["cmd"] for r in results}
+        titles = [r["title"] for r in results]
+        self.search_model.setStringList(titles)
+        self.search_completer.complete()
+
+    def _clear_search(self):
+        self.search_input.clear()
+        self.btn_clear_search.setVisible(False)
+        self.search_input.setFocus()
+
+    def _on_search_item_activated(self, text: str):
+        cmd = self._search_cmd_map.get(text, text)
+        if cmd:
+            self.search_input.blockSignals(True)
+            self.search_input.clear()
+            self.btn_clear_search.setVisible(False)
+            self.search_input.blockSignals(False)
+
+            self.input_edit.setText(cmd)
+            self._on_quick_chip_clicked(cmd)
+
+    def _on_search_return_pressed(self):
+        text = self.search_input.text().strip()
+        if not text:
+            return
+        results = search_commands(text, limit=1)
+        if results:
+            self._on_search_item_activated(results[0]["title"])
+        else:
+            self.input_edit.setText(text)
+            self._on_send_clicked()
+            self._clear_search()
+
     def _on_category_selected(self, index: int):
         cat_key = self.category_combo.itemData(index)
         self.action_combo.blockSignals(True)
@@ -398,7 +509,10 @@ class MainWindow(QMainWindow):
         cmd = self.action_combo.itemData(index) or self.action_combo.itemText(index)
         if cmd:
             self.input_edit.setText(cmd)
-            self.input_edit.setFocus()
+            self._on_quick_chip_clicked(cmd)
+            self.action_combo.blockSignals(True)
+            self.action_combo.setCurrentIndex(0)
+            self.action_combo.blockSignals(False)
 
     def _on_run_action_clicked(self):
         curr_idx = self.action_combo.currentIndex()
@@ -424,9 +538,13 @@ class MainWindow(QMainWindow):
         self.quick_combo.blockSignals(False)
 
     def _on_quick_chip_clicked(self, command: str):
-        if "سود" in command:
+        if command in ["روش سود", "انتخاب روش سود", "روش محاسبه سود"]:
+            self._open_profit_method_dialog()
+        elif command in ["روش بهای تمام شده", "بهای تمام شده", "محاسبه بهای تمام شده", "انتخاب روش بهای تمام شده", "cogs"]:
+            self._open_cogs_method_dialog()
+        elif any(w in command for w in ["تنظیمات دستی ستون‌های محاسبه سود", "تنظیمات سود", "ویزارد سود", "دستی ستون سود"]):
             self._open_profit_dialog()
-        elif "فروش" in command and any(w in command for w in ["محاسبه", "گزارش", "روزانه", "ماهانه", "سالانه", "کل"]):
+        elif any(w in command for w in ["تنظیمات دستی ستون‌های گزارش فروش", "تنظیمات فروش", "ویزارد فروش", "دستی ستون فروش"]):
             self._open_sales_dialog()
         elif "جلوگیری" in command or "یکتا" in command:
             if any(w in command for w in ["بردار", "حذف", "برداشتن", "لغو", "باز"]):
@@ -437,18 +555,13 @@ class MainWindow(QMainWindow):
             self._open_date_dialog()
         elif "تحلیل" in command:
             self._on_analyze_clicked()
-        elif "تخفیف" in command:
+        elif "تخفیف" in command and any(w in command for w in ["ویزارد", "پنجره", "دستی"]):
             self._open_discount_dialog()
         elif "۴ عمل" in command or "4 عمل" in command or "عمل اصلی" in command:
             self._open_arithmetic_dialog("add")
-        elif "جمع" in command:
-            self._open_arithmetic_dialog("add")
-        elif "تفریق" in command or "منها" in command:
-            self._open_arithmetic_dialog("subtract")
-        elif "ضرب" in command:
-            self._open_arithmetic_dialog("multiply")
-        elif "تقسیم" in command:
-            self._open_arithmetic_dialog("divide")
+        elif command.strip() in ["جمع", "تفریق", "ضرب", "تقسیم"]:
+            op_map = {"جمع": "add", "تفریق": "subtract", "ضرب": "multiply", "تقسیم": "divide"}
+            self._open_arithmetic_dialog(op_map.get(command.strip(), "add"))
         else:
             self.input_edit.setText(command)
             self._on_send_clicked()
@@ -472,6 +585,40 @@ class MainWindow(QMainWindow):
             self.chat_widget.add_user_message(action.description_persian)
             self.history_panel.add_command(action.description_persian)
             self._execute_action_pipeline(action)
+
+    def _open_profit_method_dialog(self):
+        """Opens quick 1-click method selector for FIFO, LIFO, Weighted Average, or Side-by-Side Comparison."""
+        from excel_assistant.ui.profit_dialog import ProfitMethodSelectorDialog
+        dialog = ProfitMethodSelectorDialog(parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            if dialog.open_advanced:
+                self._open_profit_dialog()
+            elif dialog.selected_method == "compare":
+                self._on_message_submitted("مقایسه سود به روش فایفو و لایفو")
+            else:
+                method_names = {
+                    "fifo": "فایفو (FIFO)",
+                    "lifo": "لایفو (LIFO)",
+                    "average": "میانگین موزون (Average)"
+                }
+                m_str = method_names.get(dialog.selected_method, "فایفو (FIFO)")
+                self._on_message_submitted(f"محاسبه سود به روش {m_str}")
+
+    def _open_cogs_method_dialog(self):
+        """Opens quick 1-click method selector for COGS: FIFO, LIFO, Weighted Average, Comparison, or Periodic."""
+        from excel_assistant.ui.cogs_dialog import CogsMethodSelectorDialog
+        dialog = CogsMethodSelectorDialog(parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            if dialog.selected_method == "fifo":
+                self._on_message_submitted("محاسبه بهای تمام شده به روش فایفو")
+            elif dialog.selected_method == "lifo":
+                self._on_message_submitted("محاسبه بهای تمام شده به روش لایفو")
+            elif dialog.selected_method == "average":
+                self._on_message_submitted("محاسبه بهای تمام شده با میانگین موزون")
+            elif dialog.selected_method == "compare":
+                self._on_message_submitted("مقایسه بهای تمام شده فایفو و لایفو")
+            else:
+                self._on_message_submitted("محاسبه بهای تمام شده کالای فروش رفته")
 
     def _open_profit_dialog(self):
         """Opens interactive wizard dialog for calculating profit by subtracting purchase from sales."""
@@ -548,11 +695,15 @@ class MainWindow(QMainWindow):
                 self._open_unique_col_dialog(initial_mode="lock")
             return
 
-        if "سود" in lower and len(lower.split()) <= 4:
+        if any(k in lower for k in ["تنظیمات سود", "ویزارد سود", "پنجره سود", "دستی سود", "تنظیمات محاسبه سود"]):
             self._open_profit_dialog()
             return
 
-        if "فروش" in lower and any(k in lower for k in ["روزانه", "ماهانه", "سالانه", "کل", "محاسبه", "گزارش"]) and len(lower.split()) <= 4:
+        if any(k in lower for k in ["روش سود", "روش محاسبه سود", "انتخاب روش سود", "انتخاب روش محاسبه سود"]) or lower in ["محاسبه سود", "سود", "محاسبه سود و زیان"]:
+            self._open_profit_method_dialog()
+            return
+
+        if any(k in lower for k in ["تنظیمات فروش", "ویزارد فروش", "پنجره فروش", "دستی فروش", "تنظیمات گزارش فروش"]):
             self._open_sales_dialog()
             return
 
@@ -571,6 +722,13 @@ class MainWindow(QMainWindow):
         if lower in ["جمع", "ضرب", "تفریق", "تقسیم", "4 عمل اصلی", "۴ عمل اصلی", "محاسبه", "محاسبات", "ماشین حساب"]:
             op_map = {"جمع": "add", "تفریق": "subtract", "ضرب": "multiply", "تقسیم": "divide"}
             self._open_arithmetic_dialog(op_map.get(lower, "add"))
+            return
+
+        self._on_message_submitted(text)
+
+    def _on_message_submitted(self, text: str):
+        text = text.strip()
+        if not text:
             return
 
         self.btn_send.setEnabled(False)
@@ -643,3 +801,9 @@ class MainWindow(QMainWindow):
     def _on_cancel_destructive_action(self):
         self.pending_destructive_action = None
         self.chat_widget.add_assistant_message("عملیات به درخواست شما لغو شد.")
+
+
+if __name__ == "__main__":
+    from excel_assistant.ui.app import run_gui
+    sys.exit(run_gui())
+

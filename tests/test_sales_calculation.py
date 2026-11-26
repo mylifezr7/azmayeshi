@@ -130,3 +130,85 @@ def test_sales_auto_detection_of_columns():
     assert res.data["total_count"] == 2
 
     manager.close()
+
+
+def test_sales_auto_compute_when_unit_price_selected():
+    """Verify sales amount is calculated as qty * unit_price * (1 - disc) when unit price column is selected."""
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+    sheet = manager.get_active_sheet()
+
+    sheet.set_value("A1", "تاریخ")
+    sheet.set_value("B1", "تعداد")
+    sheet.set_value("C1", "قیمت واحد (ریال)")
+    sheet.set_value("D1", "تخفیف درصد")
+
+    # Row 1: 10 * 100,000 = 1,000,000 (0% disc)
+    sheet.set_value("A2", "1405/01/01")
+    sheet.set_value("B2", 10)
+    sheet.set_value("C2", 100000)
+    sheet.set_value("D2", 0)
+
+    # Row 2: 20 * 50,000 * 0.9 = 900,000 (10% disc)
+    sheet.set_value("A3", "1405/01/02")
+    sheet.set_value("B3", 20)
+    sheet.set_value("C3", 50000)
+    sheet.set_value("D3", 10)
+
+    executor = ActionExecutor()
+    # User or dialog picked amount_col="C" (which is unit price)
+    action = SalesSummaryAction(date_col="A", amount_col="C", period="all", create_report_sheet=True)
+    ctx = ActionContext(manager=manager, sheet=sheet)
+
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Instead of summing 100,000 + 50,000 = 150,000, it computes 1,000,000 + 900,000 = 1,900,000!
+    assert res.data["total_sales"] == 1900000.0
+    assert res.data["total_count"] == 2
+
+    manager.close()
+
+
+def test_sales_short_date_smart_month_and_year_grouping():
+    """Verify MM/DD dates (e.g. 03/02, 03/05, 04/16, 05/20) correctly group into exactly 3 months."""
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+    sheet = manager.get_active_sheet()
+
+    sheet.set_value("A1", "سند")
+    sheet.set_value("B1", "تاریخ")
+    sheet.set_value("C1", "مبلغ")
+
+    # 2 rows in Month 03
+    sheet.set_value("A2", "SI01")
+    sheet.set_value("B2", "03/02")
+    sheet.set_value("C2", 1000)
+
+    sheet.set_value("A3", "SI02")
+    sheet.set_value("B3", "03/05")
+    sheet.set_value("C3", 2000)
+
+    # 1 row in Month 04
+    sheet.set_value("A4", "SI03")
+    sheet.set_value("B4", "04/16")
+    sheet.set_value("C4", 3000)
+
+    # 1 row in Month 05
+    sheet.set_value("A5", "SI04")
+    sheet.set_value("B5", "05/20")
+    sheet.set_value("C5", 4000)
+
+    executor = ActionExecutor()
+    action = SalesSummaryAction(date_col="B", amount_col="C", period="all", create_report_sheet=True)
+    ctx = ActionContext(manager=manager, sheet=sheet)
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    assert res.data["total_sales"] == 10000.0
+    # Must group into exactly 3 months ('ماه 03', 'ماه 04', 'ماه 05'), NOT 4 separate days!
+    assert res.data["monthly_count"] == 3
+
+    manager.close()
+
+

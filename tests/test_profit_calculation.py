@@ -245,3 +245,351 @@ def test_execute_profit_calculation_cogs_and_inventory_accounting():
 
     manager.close()
 
+
+def test_execute_profit_calculation_with_discount_and_net_columns():
+    """
+    Test user's exact reported bug where sales sheet has columns:
+    [نام کالا, تعداد, قیمت, مبلغ, تخفیف, قیمت بعد از تخفیف, تاریخ]
+    and purchase sheet has:
+    [نام کالا, قیمت, تعداد, ضرب B و C, تاریخ, تعداد فروش (فروش), مانده موجودی انبار, ...]
+    Ensures 'قیمت بعد از تخفیف' is not falsely parsed as a discount percentage,
+    avoiding negative trillions in daily/monthly tables and KPI summary cards.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # Sheet 1: Sales
+    ws_sales = manager.get_active_sheet()
+    sales_rows = [
+        ["نام کالا", "تعداد", "قیمت", "مبلغ", "تخفیف", "قیمت بعد از تخفیف", "تاریخ"],
+        ["ماست", 3, 23000, 69000, 0.20, 55200, "1405/09/01"],
+        ["خودکار", 6, 14000, 84000, 0.03, 81480, "1405/09/01"],
+        ["بستنی", 3, 50000, 150000, 0.08, 138000, "1405/09/02"],
+    ]
+    for r_idx, row in enumerate(sales_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    # Sheet 2: Purchases
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    purch_rows = [
+        ["نام کالا", "قیمت", "تعداد", "ضرب B و C", "تاریخ", "تعداد فروش (فروش)", "مانده موجودی انبار", "وضعیت موجودی انبار", "ارزش ریالی موجودی"],
+        ["ماست", 18000, 10, 180000, "1405/08/25", 0, 10, "موجود", 180000],
+        ["خودکار", 10000, 20, 200000, "1405/08/25", 0, 20, "موجود", 200000],
+        ["بستنی", 35000, 15, 525000, "1405/08/25", 0, 15, "موجود", 525000],
+    ]
+    for r_idx, row in enumerate(purch_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Sales: 3*23000 + 6*14000 + 3*50000 = 69,000 + 84,000 + 150,000 = 303,000
+    assert res.data["total_sales"] == 303000.0
+    # COGS: 3*18000 + 6*10000 + 3*35000 = 54,000 + 60,000 + 105,000 = 219,000
+    assert res.data["total_purchase"] == 219000.0
+    # Profit: 303,000 - 219,000 = +84,000
+    assert res.data["total_profit"] == 84000.0
+    assert res.data["total_sales"] > 0
+    assert res.data["total_profit"] > 0
+
+    # Verify report sheet consistency
+    report_sheet = manager.active_driver.get_sheet("گزارش_سود")
+    # KPI Cards check
+    kpi_sales = report_sheet.get_value("B5")
+    assert "303,000" in str(kpi_sales)
+    kpi_cogs = report_sheet.get_value("B6")
+    assert "219,000" in str(kpi_cogs)
+    kpi_profit = report_sheet.get_value("B7")
+    assert "84,000" in str(kpi_profit)
+
+    # Daily aggregation checks
+    # Row 18: Day 1 (ماست + خودکار = 69000 + 84000 = 153000)
+    day1_sales = report_sheet.get_value("D18")
+    assert day1_sales == 153000.0
+    day1_cogs = report_sheet.get_value("E18")
+    assert day1_cogs == 114000.0  # 54000 + 60000
+
+    # Row 19: Day 2 (بستنی = 150000)
+    day2_sales = report_sheet.get_value("D19")
+    assert day2_sales == 150000.0
+    day2_cogs = report_sheet.get_value("E19")
+    assert day2_cogs == 105000.0
+
+    manager.close()
+
+
+def test_execute_profit_calculation_with_beginning_inventory_and_supplier_cols():
+    """
+    Test scenario matching user sheets (image-32 to image-41):
+    1. Beginning inventory sheet ('موجودی اول دوره')
+    2. Purchase sheet with supplier column ('نام تامین کننده') which must NOT be confused with product
+    3. Dual code and product name matching
+    4. Accurate FIFO depletion, COGS and stock valuation
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # 1. Beginning inventory
+    ws_beg = manager.active_driver.create_sheet("موجودی اول دوره")
+    beg_data = [
+        ["کد کالا", "شرح کالا", "تعداد", "قیمت واحد"],
+        ["P001", "لپ‌تاپ", 8, 300000000],
+        ["P002", "پرینتر", 10, 120000000],
+    ]
+    for r_idx, row in enumerate(beg_data, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_beg.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    # 2. Purchase sheet with supplier column
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    purch_data = [
+        ["شماره فاکتور", "تاریخ", "کد تامین کننده", "نام تامین کننده", "کد کالا", "شرح کالا", "تعداد", "قیمت واحد"],
+        ["P-2001", "1405/01/01", "V001", "تامین گستر", "P001", "لپ‌تاپ", 10, 310000000],
+        ["P-2002", "1405/01/04", "V002", "فناوران جنوب", "P002", "پرینتر", 12, 125000000],
+    ]
+    for r_idx, row in enumerate(purch_data, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    # 3. Sales sheet
+    ws_sales = manager.active_driver.get_sheet(manager.active_driver.get_sheet_names()[0])
+    sales_data = [
+        ["شماره فاکتور", "تاریخ", "کد مشتری", "نام مشتری", "کد کالا", "شرح کالا", "تعداد", "قیمت واحد", "درصد تخفیف"],
+        ["S-1001", "1405/01/03", "C001", "شرکت آلفا", "P001", "لپ‌تاپ", 5, 420000000, 10],  # 5 * 420M * 0.9 = 1,890M
+        ["S-1002", "1405/01/06", "C002", "بازرگانی بتا", "P002", "پرینتر", 4, 190000000, 5],   # 4 * 190M * 0.95 = 722M
+    ]
+    for r_idx, row in enumerate(sales_data, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+
+    res = executor.execute(action, ctx)
+    assert res.success is True
+
+    # Sales: 1,890,000,000 + 722,000,000 = 2,612,000,000
+    assert res.data["total_sales"] == 2612000000.0
+    # COGS under FIFO:
+    # P001: 5 units from beginning inventory @ 300,000,000 = 1,500,000,000
+    # P002: 4 units from beginning inventory @ 120,000,000 = 480,000,000
+    # Total COGS = 1,980,000,000
+    assert res.data["total_purchase"] == 1980000000.0
+    # Profit = 2,612,000,000 - 1,980,000,000 = 632,000,000
+    assert res.data["total_profit"] == 632000000.0
+
+    # Remaining inventory:
+    # P001: (8 beg + 10 purch) - 5 sold = 13 units (3 @ 300M + 10 @ 310M) = 4,000,000,000
+    # P002: (10 beg + 12 purch) - 4 sold = 18 units (6 @ 120M + 12 @ 125M) = 2,220,000,000
+    # Total remaining stock = 31 units, value = 6,220,000,000
+    report_sheet = manager.active_driver.get_sheet("گزارش_سود")
+    kpi_rem_stock = report_sheet.get_value("B9")
+    assert "6,220,000,000" in str(kpi_rem_stock)
+
+    manager.close()
+
+
+def test_execute_profit_calculation_autonomous_sheet_detection():
+    """
+    Test that the system autonomously detects sales, purchase, and expenses sheets
+    even when the user provides NO sheet names and is currently on an unrelated sheet ('بانک').
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    # Active sheet is 'بانک'
+    ws_bank = manager.active_driver.get_sheet(manager.active_driver.get_sheet_names()[0])
+    # Rename or set bank headers
+    ws_bank.set_value("A1", "تاریخ")
+    ws_bank.set_value("B1", "واریز")
+    ws_bank.set_value("C1", "برداشت")
+    ws_bank.set_value("D1", "مانده")
+
+    # Sheet 'هزینه‌ها'
+    ws_exp = manager.active_driver.create_sheet("هزینه‌ها")
+    ws_exp.set_value("A1", "کد هزینه")
+    ws_exp.set_value("B1", "شرح هزینه")
+    ws_exp.set_value("C1", "مبلغ (ریال)")
+    ws_exp.set_value("A2", "E-101")
+    ws_exp.set_value("B2", "اجاره دفتر")
+    ws_exp.set_value("C2", 50000)
+
+    # Sheet 'خرید'
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    ws_purch.set_value("A1", "نام تامین کننده")
+    ws_purch.set_value("B1", "نام کالا")
+    ws_purch.set_value("C1", "تعداد")
+    ws_purch.set_value("D1", "قیمت خرید")
+    ws_purch.set_value("A2", "تامین گستر")
+    ws_purch.set_value("B2", "ماوس")
+    ws_purch.set_value("C2", 20)
+    ws_purch.set_value("D2", 10000)
+
+    # Sheet 'فروش'
+    ws_sales = manager.active_driver.create_sheet("فروش")
+    ws_sales.set_value("A1", "نام مشتری")
+    ws_sales.set_value("B1", "نام کالا")
+    ws_sales.set_value("C1", "تعداد")
+    ws_sales.set_value("D1", "قیمت فروش")
+    ws_sales.set_value("A2", "مشتری الف")
+    ws_sales.set_value("B2", "ماوس")
+    ws_sales.set_value("C2", 10)
+    ws_sales.set_value("D2", 25000)
+
+    # User initiates profit calculation without mentioning any sheet:
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=None,
+        purchase_sheet=None,
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_bank)
+
+    res = executor.execute(action, ctx)
+    assert res.success is True
+    # Fully autonomous sheet classification
+    assert res.data["matched_sheets"]["sales"] == "فروش"
+    assert res.data["matched_sheets"]["purchase"] == "خرید"
+    assert res.data["matched_sheets"]["expenses"] == "هزینه‌ها"
+
+    # Sales = 10 * 25000 = 250,000
+    assert res.data["total_sales"] == 250000.0
+    # COGS = 10 * 10000 = 100,000
+    assert res.data["total_purchase"] == 100000.0
+    # Gross Profit = 150,000
+    assert res.data["gross_profit"] == 150000.0
+    # Operating expenses = 50,000
+    assert res.data["operating_expenses"] == 50000.0
+    # Net Operating Profit = 100,000
+    assert res.data["net_profit"] == 100000.0
+
+    manager.close()
+
+
+def test_sales_and_purchase_returns_netted_out():
+    """
+    Test Note N6: Sales returns (SR) and purchase returns (PR) must be netted out
+    from gross sales, COGS, and inventory quantity.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    ws_sales = manager.get_active_sheet()
+    sales_rows = [
+        ["سند", "تاریخ", "کد مشتری", "شرح", "تعداد", "قیمت واحد", "تخفیف٪", "تسویه/توضیح"],
+        ["SI01", "03/02", "CU01", "سوئیچ", 8, 100000, 0, "نقد"],
+        ["SR01", "03/24", "CU01", "سوئیچ", 1, 100000, 0, "برگشت از SI01"],
+    ]
+    for r_idx, row in enumerate(sales_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_sales.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    purch_rows = [
+        ["سند", "تاریخ", "شرح", "تعداد", "قیمت واحد"],
+        ["PI01", "03/01", "سوئیچ", 20, 60000],
+        ["PR01", "03/27", "سوئیچ", 2, 60000],
+    ]
+    for r_idx, row in enumerate(purch_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_purch.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Net sales: (8 * 100,000) - (1 * 100,000) = 700,000
+    assert res.data["total_sales"] == 700000.0
+    # Net COGS: (8 * 60,000) - (1 * 60,000) = 420,000
+    assert res.data["total_purchase"] == 420000.0
+    # Gross profit: 700,000 - 420,000 = 280,000
+    assert res.data["gross_profit"] == 280000.0
+
+    manager.close()
+
+
+def test_expenses_exclude_capital_fixed_assets():
+    """
+    Test Note N2: Capital expenditures on fixed assets (دارایی ثابت / عمر مفید)
+    must not be counted as current period operating expenses.
+    """
+    manager = ExcelConnectionManager(preferred_driver="openpyxl")
+    manager.connect()
+
+    ws_sales = manager.get_active_sheet()
+    ws_sales.set_value("A1", "کالا")
+    ws_sales.set_value("B1", "تعداد")
+    ws_sales.set_value("C1", "قیمت")
+    ws_sales.set_value("A2", "ماوس")
+    ws_sales.set_value("B2", 10)
+    ws_sales.set_value("C2", 50000)
+
+    ws_purch = manager.active_driver.create_sheet("خرید")
+    ws_purch.set_value("A1", "کالا")
+    ws_purch.set_value("B1", "تعداد")
+    ws_purch.set_value("C1", "قیمت")
+    ws_purch.set_value("A2", "ماوس")
+    ws_purch.set_value("B2", 20)
+    ws_purch.set_value("C2", 20000)
+
+    ws_exp = manager.active_driver.create_sheet("هزینه")
+    exp_rows = [
+        ["سند", "شرح", "نوع/مرکز", "مبلغ", "توضیح"],
+        ["EX01", "اجاره دفتر", "اداری", 68000000, "هزینه"],
+        ["EX02", "سرور اداری", "دارایی ثابت", 480000000, "عمر مفید 4 سال، اسقاط صفر"],
+        ["EX03", "قبوض", "عمومی", 18500000, "هزینه"],
+    ]
+    for r_idx, row in enumerate(exp_rows, start=1):
+        for c_idx, val in enumerate(row, start=1):
+            ws_exp.set_value(f"{chr(64+c_idx)}{r_idx}", val)
+
+    executor = ActionExecutor()
+    action = ProfitCalculationAction(
+        sales_sheet=manager.active_driver.get_sheet_names()[0],
+        purchase_sheet="خرید",
+        valuation_method="fifo",
+        period="all",
+        create_report_sheet=True
+    )
+    ctx = ActionContext(manager=manager, sheet=ws_sales)
+    res = executor.execute(action, ctx)
+
+    assert res.success is True
+    # Only EX01 (68M) + EX03 (18.5M) = 86,500,000. EX02 (480M fixed asset) excluded!
+    assert res.data["operating_expenses"] == 86500000.0
+
+    manager.close()
+
+
+
+
+

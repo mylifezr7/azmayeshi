@@ -34,6 +34,7 @@ from excel_assistant.nlp.intent_models import (
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    CostOfGoodsSoldAction,
     FilterDataAction,
     ConvertTextToNumberAction,
     SplitTextAction,
@@ -43,11 +44,13 @@ from excel_assistant.nlp.intent_models import (
     ReconciliationAction,
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     TrialBalanceAction,
     AccountBalanceAction,
     PayrollAction,
+    AttendanceAction,
     DepreciationAction,
     FinancialStatementAction,
     DeepFileAuditAction,
@@ -204,6 +207,9 @@ class ActionExecutor:
         elif isinstance(action, InventoryAlertAction):
             return BusinessActionHandler.execute_inventory_alert(action, ctx)
 
+        elif isinstance(action, InventoryValuationAction):
+            return BusinessActionHandler.execute_inventory_valuation(action, ctx)
+
         elif isinstance(action, TopSellingAction):
             return BusinessActionHandler.execute_top_selling(action, ctx)
 
@@ -219,11 +225,17 @@ class ActionExecutor:
         elif isinstance(action, PayrollAction):
             return AccountingActionHandler.execute_payroll(action, ctx)
 
+        elif isinstance(action, AttendanceAction):
+            return AccountingActionHandler.execute_attendance(action, ctx)
+
         elif isinstance(action, DepreciationAction):
             return AccountingActionHandler.execute_depreciation(action, ctx)
 
         elif isinstance(action, FinancialStatementAction):
             return AccountingActionHandler.execute_financial_statement(action, ctx)
+
+        elif isinstance(action, CostOfGoodsSoldAction):
+            return AccountingActionHandler.execute_cogs(action, ctx)
 
         elif isinstance(action, DeepFileAuditAction):
             audit_res = DeepFileAuditor.audit_sheet(ctx.sheet)

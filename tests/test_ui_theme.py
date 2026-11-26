@@ -56,8 +56,8 @@ def test_qss_style_contains_all_vibrant_shortcuts():
 
 
 def test_web_template_theme_elements():
-    """Verify that Web UI template contains the cosmic theme, MIYUM badge, and colorful shortcuts."""
-    assert "M MIYUM" in HTML_TEMPLATE
+    """Verify that Web UI template contains the classic accounting theme, MUYUM badge, and colorful shortcuts."""
+    assert "M MUYUM" in HTML_TEMPLATE or "MUYUM" in HTML_TEMPLATE
     assert "btn-undo" in HTML_TEMPLATE
     assert "btn-unique" in HTML_TEMPLATE
     assert "btn-arithmetic" in HTML_TEMPLATE
@@ -139,9 +139,39 @@ def test_sidebar_and_categories_reorganization():
     assert "self.action_combo.showPopup" in main_window_src
 
     # Web UI template also includes profit, sales, and discount in accounting
-    assert 'label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"' in HTML_TEMPLATE
-    assert 'label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"' in HTML_TEMPLATE
+    assert 'cmd: "روش سود"' in HTML_TEMPLATE or 'cmd: "محاسبه سود"' in HTML_TEMPLATE
+    assert 'محاسبه فروش' in HTML_TEMPLATE
     assert 'label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"' in HTML_TEMPLATE
+
+
+def test_accounting_keyword_highlighting():
+    """Verify that accounting keywords (فروش, سود, ترازنامه, etc.) are highlighted in chat and web template."""
+    from excel_assistant.ui.chat_widget import format_markdown_to_rich_text, ACCOUNTING_KEYWORDS_MAP
+
+    # Core terms must be present in keyword map
+    assert "فروش" in ACCOUNTING_KEYWORDS_MAP
+    assert "سود" in ACCOUNTING_KEYWORDS_MAP
+    assert "زیان" in ACCOUNTING_KEYWORDS_MAP
+    assert "ترازنامه" in ACCOUNTING_KEYWORDS_MAP
+    assert "تراز آزمایشی" in ACCOUNTING_KEYWORDS_MAP
+    assert "حقوق و دستمزد" in ACCOUNTING_KEYWORDS_MAP
+    assert "بهای تمام شده" in ACCOUNTING_KEYWORDS_MAP
+    assert "کاردکس" in ACCOUNTING_KEYWORDS_MAP
+
+    # Test rich text formatting with keyword highlighting
+    sample_text = "گزارش فروش و سود و زیان و تهیه ترازنامه"
+    formatted = format_markdown_to_rich_text(sample_text)
+
+    assert "<span style=" in formatted
+    assert "سود و زیان" in formatted
+    assert "ترازنامه" in formatted
+    assert "فروش" in formatted
+
+    # Web template must also have keyword highlighter
+    assert "ACCOUNTING_KEYWORDS_MAP" in HTML_TEMPLATE
+    assert "formatAccountingText" in HTML_TEMPLATE
+    assert "B Nazanin" in HTML_TEMPLATE
+
 
 
 

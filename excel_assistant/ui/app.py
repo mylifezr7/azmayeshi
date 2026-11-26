@@ -1,19 +1,79 @@
 """
 Application launcher for PySide6 GUI.
 """
+from pathlib import Path
 import sys
 from typing import Optional
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+
+try:
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFont, QFontDatabase
+    from PySide6.QtWidgets import QApplication
+except ImportError:
+    Qt = None
+    QFont = QFontDatabase = QApplication = None
 
 from excel_assistant.core.connection import ExcelConnectionManager
 from excel_assistant.ui.main_window import MainWindow
 
+RESOURCES_DIR = Path(__file__).parent / "resources"
+
+
+def setup_application_font(app):
+    """Loads bundled classic Persian fonts and sets global typography."""
+    if not app:
+        return "Tahoma"
+    try:
+        font_files = [
+            RESOURCES_DIR / "Sahel.ttf",
+            RESOURCES_DIR / "Sahel-Bold.ttf",
+            RESOURCES_DIR / "Vazirmatn-Regular.ttf",
+            RESOURCES_DIR / "Vazirmatn-Bold.ttf"
+        ]
+        loaded_families = []
+        for f in font_files:
+            if f.exists():
+                font_id = QFontDatabase.addApplicationFont(str(f.resolve()))
+                if font_id >= 0:
+                    families = QFontDatabase.applicationFontFamilies(font_id)
+                    for fam in families:
+                        if fam not in loaded_families:
+                            loaded_families.append(fam)
+
+        primary_font = "Sahel" if "Sahel" in loaded_families else ("Vazirmatn" if "Vazirmatn" in loaded_families else "Tahoma")
+        app_font = QFont(primary_font, 10)
+        app_font.setStyleHint(QFont.SansSerif)
+        app.setFont(app_font)
+        return primary_font
+    except Exception as e:
+        print(f"Font initialization note: {e}")
+        return "Tahoma"
+
 
 def run_gui(workbook_path: Optional[str] = None):
     """Initializes and runs the PySide6 modern GUI."""
+    global QApplication, Qt, QFont, QFontDatabase
+    if QApplication is None:
+        print("\n⏳ پکیج PySide6 یافت نشد؛ در حال نصب خودکار PySide6 برای باز شدن پنجره دسکتاپ...")
+        try:
+            import subprocess
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "PySide6"])
+            from PySide6.QtCore import Qt as _Qt
+            from PySide6.QtGui import QFont as _QFont, QFontDatabase as _QFontDatabase
+            from PySide6.QtWidgets import QApplication as _QApplication
+            Qt = _Qt
+            QFont = _QFont
+            QFontDatabase = _QFontDatabase
+            QApplication = _QApplication
+            print("✅ پکیج PySide6 با موفقیت نصب شد! در حال باز کردن پنجره دسکتاپ...\n")
+        except Exception as e:
+            print(f"❌ پکیج PySide6 روی سیستم شما نصب نیست: {e}")
+            print("💡 لطفاً در خط فرمان CMD دستور زیر را اجرا کنید:\npython -m pip install PySide6\n")
+            return 1
+
     app = QApplication.instance() or QApplication(sys.argv)
     app.setLayoutDirection(Qt.RightToLeft)
+    setup_application_font(app)
 
     manager = ExcelConnectionManager()
     if workbook_path:
@@ -22,3 +82,8 @@ def run_gui(workbook_path: Optional[str] = None):
     window = MainWindow(manager=manager)
     window.show()
     return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(run_gui())
+

@@ -1,5 +1,5 @@
 """
-Business, Sales, Inventory and Management Actions for MIYUM Excel Assistant.
+Business, Sales, Inventory and Management Actions for MUYUM Excel Assistant.
 Implements:
 - Sales & Purchase Invoice Generator (صدور و ثبت فاکتور رسمی فروش و خرید)
 - Inventory Management, Low Stock Alerts & Total Valuation (کنترل موجودی انبار، هشدار کسری و ارزش کل)
@@ -22,6 +22,7 @@ from excel_assistant.core.utils import (
 from excel_assistant.nlp.intent_models import (
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     PriceAdjustmentAction,
@@ -29,6 +30,109 @@ from excel_assistant.nlp.intent_models import (
     BackupAction,
     PdfExportAction,
 )
+
+
+class InventoryValuationCalculator:
+    """
+    محاسبه ارزش موجودی انبار و بهای تمام شده کالای فروش‌رفته (COGS) به روش‌های استاندارد حسابداری:
+    - فایفو (FIFO): اولین وارده اولین صادره (First In, First Out)
+    - لایفو (LIFO): آخرین وارده اولین صادره (Last In, First Out)
+    - میانگین موزون (Weighted Average Cost)
+    """
+
+    @staticmethod
+    def calculate_valuation(
+        purchase_batches: List[Tuple[float, float]],  # List of (quantity, unit_price) in chronological order
+        total_sold: float,
+        method: str = "fifo"
+    ) -> Dict[str, float]:
+        """
+        محاسبه مانده موجودی، ارزش دفتری موجودی و بهای تمام شده کالای فروش‌رفته.
+        """
+        total_purchased = sum(qty for qty, _ in purchase_batches)
+        total_purchase_cost = sum(qty * price for qty, price in purchase_batches)
+        remaining_qty = max(0.0, total_purchased - total_sold)
+
+        if remaining_qty <= 0:
+            avg_p = total_purchase_cost / total_purchased if total_purchased > 0 else 0.0
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": 0.0,
+                "remaining_value": 0.0,
+                "cogs": total_purchase_cost,
+                "effective_unit_price": avg_p,
+            }
+
+        if method == "average":
+            weighted_avg_price = total_purchase_cost / total_purchased if total_purchased > 0 else 0.0
+            remaining_value = remaining_qty * weighted_avg_price
+            cogs = total_purchase_cost - remaining_value
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": weighted_avg_price,
+            }
+
+        elif method == "fifo":
+            # در فایفو، اقلام فروخته‌شده از قدیمی‌ترین خریدها برداشته می‌شوند؛
+            # بنابراین موجودی باقیمانده، از جدیدترین خریدها (انتهای لیست به ابتدا) محاسبه می‌گردد.
+            remaining_value = 0.0
+            needed_qty = remaining_qty
+            for qty, price in reversed(purchase_batches):
+                take = min(needed_qty, qty)
+                remaining_value += take * price
+                needed_qty -= take
+                if needed_qty <= 0:
+                    break
+            cogs = total_purchase_cost - remaining_value
+            effective_price = remaining_value / remaining_qty if remaining_qty > 0 else 0.0
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": effective_price,
+            }
+
+        elif method == "lifo":
+            # در لایفو، اقلام فروخته‌شده از جدیدترین خریدها برداشته می‌شوند؛
+            # بنابراین موجودی باقیمانده، از قدیمی‌ترین خریدها (ابتدای لیست به انتها) محاسبه می‌گردد.
+            remaining_value = 0.0
+            needed_qty = remaining_qty
+            for qty, price in purchase_batches:
+                take = min(needed_qty, qty)
+                remaining_value += take * price
+                needed_qty -= take
+                if needed_qty <= 0:
+                    break
+            cogs = total_purchase_cost - remaining_value
+            effective_price = remaining_value / remaining_qty if remaining_qty > 0 else 0.0
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": effective_price,
+            }
+
+        else:
+            latest_price = purchase_batches[-1][1] if purchase_batches else 0.0
+            remaining_value = remaining_qty * latest_price
+            cogs = total_purchase_cost - remaining_value
+            return {
+                "total_purchased": total_purchased,
+                "total_purchase_cost": total_purchase_cost,
+                "remaining_qty": remaining_qty,
+                "remaining_value": remaining_value,
+                "cogs": cogs,
+                "effective_unit_price": latest_price,
+            }
 
 
 class BusinessActionHandler:
@@ -188,10 +292,54 @@ class BusinessActionHandler:
     def execute_inventory_alert(cls, action: InventoryAlertAction, ctx: ActionContext) -> ActionResult:
         """
         مدیریت موجودی انبار، هشدار کمبود موجودی و محاسبه ارزش کل موجودی.
-        بررسی مقادیر موجودی نسبت به حد آستانه (نقطه سفارش)، هایلایت اقلام کسری و محاسبه ارزش دفتری انبار.
+        اگر شیت فروش وجود داشته باشد، به طور خودکار مجموع فروش هر کالا از خرید کسر می‌شود (مانده موجودی = خرید - فروش).
         """
         sheet = ctx.sheet
+        all_sheets = []
+        if ctx.manager:
+            try:
+                all_sheets = ctx.manager.list_sheets() if hasattr(ctx.manager, 'list_sheets') else []
+                if not all_sheets and hasattr(ctx.manager, 'get_sheet_names'):
+                    all_sheets = ctx.manager.get_sheet_names()
+            except Exception:
+                all_sheets = []
+
         min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+
+        # اگر کاربر در شیت فروش بود اما شیت خرید وجود داشت، شیت خرید به عنوان مبنا انتخاب می‌شود
+        is_current_sales = any(kw in sheet.name.lower() for kw in ["فروش", "sales"])
+        if not is_current_sales and max_r >= min_r:
+            for r_c in range(min_r, min(min_r + 5, max_r + 1)):
+                r_txt = " ".join(str(sheet.get_value(f"{col_index_to_letter(c)}{r_c}") or "") for c in range(min_c, max_c + 1)).lower()
+                if "فروش" in r_txt and not any(k in r_txt for k in ["تعداد خرید", "قیمت خرید", "موجودی انبار"]):
+                    is_current_sales = True
+                    break
+
+        if is_current_sales and not action.purchase_sheet:
+            for sh_n in all_sheets:
+                if sh_n != sheet.name:
+                    if any(p_kw in sh_n.lower() for p_kw in ["خرید", "purchase", "انبار", "موجودی"]):
+                        try:
+                            sheet = ctx.manager.get_sheet(sh_n)
+                            min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                            break
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            cand_p = ctx.manager.get_sheet(sh_n)
+                            cp_min_r, cp_min_c, cp_max_r, cp_max_c = cand_p.get_used_range_bounds()
+                            for r_p in range(cp_min_r, min(cp_min_r + 5, cp_max_r + 1)):
+                                p_txt = " ".join(str(cand_p.get_value(f"{col_index_to_letter(c)}{r_p}") or "") for c in range(cp_min_c, cp_max_c + 1)).lower()
+                                if any(k in p_txt for k in ["تعداد خرید", "قیمت خرید", "موجودی انبار", "خرید"]):
+                                    sheet = cand_p
+                                    min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
+                                    break
+                            if sheet == cand_p:
+                                break
+                        except Exception:
+                            pass
+
         if max_r < min_r or max_c < min_c:
             return ActionResult(success=False, message_persian="شیت خالی است و داده‌ای برای بررسی موجودی یافت نشد.")
 
@@ -214,13 +362,119 @@ class BusinessActionHandler:
 
         start_row = header_row + 1
 
-        # 2. تشخیص ستون‌ها و ستون‌های موجود قبلی
+        # 2. جستجوی شیت فروش برای کسر تعداد اقلام فروخته شده از خرید
+        sales_sheet = None
+        s_prod_col = None
+        s_qty_col = None
+        s_start_r = 2
+        s_max_r = 100
+        sales_by_prod: Dict[str, float] = {}
+
+        if action.sales_sheet and ctx.manager:
+            try:
+                sales_sheet = ctx.manager.get_sheet(action.sales_sheet)
+            except Exception:
+                sales_sheet = None
+
+        if not sales_sheet and ctx.manager:
+            for sh_n in all_sheets:
+                if sh_n != sheet.name and any(s_kw in sh_n.lower() for s_kw in ["فروش", "sales", "خروج", "فاکتور فروش"]):
+                    try:
+                        sales_sheet = ctx.manager.get_sheet(sh_n)
+                        break
+                    except Exception:
+                        pass
+
+        if not sales_sheet and ctx.manager:
+            for sh_n in all_sheets:
+                if sh_n != sheet.name:
+                    try:
+                        cand_s = ctx.manager.get_sheet(sh_n)
+                        c_min_r, c_min_c, c_max_r, c_max_c = cand_s.get_used_range_bounds()
+                        for r_c in range(c_min_r, min(c_min_r + 5, c_max_r + 1)):
+                            row_t = " ".join(str(cand_s.get_value(f"{col_index_to_letter(c)}{r_c}") or "") for c in range(c_min_c, c_max_c + 1)).lower()
+                            if "فروش" in row_t and any(k in row_t for k in ["تعداد", "مقدار", "کالا", "محصول", "مبلغ", "قیمت"]):
+                                sales_sheet = cand_s
+                                break
+                        if sales_sheet:
+                            break
+                    except Exception:
+                        pass
+
+        SUMMARY_KEYWORDS = ["مجموع", "جمع", "جمع کل", "سرجمع", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
+
+        def norm_key(s: Any) -> str:
+            if s is None:
+                return ""
+            txt = str(s).strip().lower()
+            char_map = {'ي': 'ی', 'ك': 'ک', 'ة': 'ه', 'ؤ': 'و', 'إ': 'ا', 'أ': 'ا', '\u200c': ' ', '\xa0': ' '}
+            for k, v in char_map.items():
+                txt = txt.replace(k, v)
+            return " ".join(txt.split())
+
+        if sales_sheet:
+            try:
+                s_min_r, s_min_c, s_max_r, s_max_c = sales_sheet.get_used_range_bounds()
+                s_header_r = s_min_r
+                for sr in range(s_min_r, min(s_min_r + 15, s_max_r + 1)):
+                    row_txt = " ".join(str(sales_sheet.get_value(f"{col_index_to_letter(c)}{sr}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+                    if any(kw in row_txt for kw in ["کالا", "محصول", "شرح", "تعداد", "فروش"]):
+                        s_header_r = sr
+                        break
+                s_start_r = s_header_r + 1
+
+                for c in range(s_min_c, s_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h_val = str(sales_sheet.get_value(f"{c_let}{s_header_r}") or "").strip().lower()
+                    if not s_prod_col and any(kw in h_val for kw in ["نام کالا", "نام محصول", "شرح کالا", "کالا", "محصول", "شرح", "product", "item"]) and not any(ck in h_val for ck in ["کد", "شناسه", "بارکد"]):
+                        s_prod_col = c_let
+                    elif not s_qty_col and any(kw in h_val for kw in ["تعداد فروش", "تعداد", "مقدار فروش", "مقدار", "خروج", "qty", "quantity", "count"]):
+                        s_qty_col = c_let
+
+                if not s_prod_col: s_prod_col = "A"
+                if not s_qty_col: s_qty_col = "C" if s_prod_col != "C" else "B"
+
+                for sr in range(s_start_r, s_max_r + 1):
+                    p_raw = sales_sheet.get_value(f"{s_prod_col}{sr}")
+                    if p_raw is None or str(p_raw).strip() == "":
+                        continue
+                    p_name_s = str(p_raw).strip()
+                    if any(kw in p_name_s.lower() for kw in SUMMARY_KEYWORDS):
+                        continue
+                    q_raw = sales_sheet.get_value(f"{s_qty_col}{sr}")
+                    try:
+                        q_num = float(str(q_raw).replace(",", "").strip()) if q_raw is not None else 0.0
+                    except ValueError:
+                        q_num = 0.0
+                    nk = norm_key(p_name_s)
+                    sales_by_prod[nk] = sales_by_prod.get(nk, 0.0) + q_num
+            except Exception:
+                sales_sheet = None
+
+        # 3. تشخیص ستون‌های تحلیلی موجود قبلی در شیت اصلی (ستون‌های ایجادشده در دفعات قبل)
+        existing_sold_col = None
+        existing_rem_col = None
+        existing_status_col = None
+        existing_val_col = None
+
+        for c in range(min_c, max_c + 1):
+            letter = col_index_to_letter(c)
+            h = str(sheet.get_value(f"{letter}{header_row}") or "").strip().lower()
+            if "تعداد فروش (" in h or (sales_sheet and "تعداد فروش" in h and any(sales_sheet.name.lower() in h for _ in [1])):
+                existing_sold_col = letter
+            elif "مانده موجودی" in h or "مانده انبار" in h:
+                existing_rem_col = letter
+            elif "وضعیت موجودی" in h or "وضعیت انبار" in h:
+                existing_status_col = letter
+            elif "ارزش ریالی" in h or "ارزش موجودی" in h:
+                existing_val_col = letter
+
+        known_added_cols = [c for c in [existing_sold_col, existing_rem_col, existing_status_col, existing_val_col] if c]
+
+        # تشخیص ستون‌های داده کاربر (نام کالا، قیمت، تعداد خرید) فقط از میان ستون‌های غیرتحلیلی
         prod_col = action.product_col
         stock_col = action.stock_col
         price_col = action.purchase_price_col
-
-        existing_status_col = None
-        existing_val_col = None
 
         best_prod_score = 0
         best_stock_score = 0
@@ -228,49 +482,71 @@ class BusinessActionHandler:
 
         for c in range(min_c, max_c + 1):
             letter = col_index_to_letter(c)
+            if letter in known_added_cols:
+                continue
+
             h = str(sheet.get_value(f"{letter}{header_row}") or "").strip().lower()
-            if "وضعیت موجودی" in h:
-                existing_status_col = letter
-            elif "ارزش ریالی" in h or "ارزش موجودی" in h:
-                existing_val_col = letter
+            if any(ex in h for ex in ["مانده", "وضعیت", "ارزش"]):
+                continue
 
+            # ستون نام یا شرح کالا
             if not action.product_col:
-                p_score = 0
-                if any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "عنوان کالا"]):
-                    p_score = 10
-                elif any(k in h for k in ["کالا", "محصول", "شرح", "عنوان", "product", "item"]) and not any(ck in h for ck in ["کد", "شناسه", "بارکد", "code", "id"]):
-                    p_score = 5
-                elif "کالا" in h:
-                    p_score = 1
-                if p_score > best_prod_score:
-                    best_prod_score = p_score
-                    prod_col = letter
+                if not any(ex in h for ex in ["تعداد", "مقدار", "قیمت", "مبلغ", "فی", "تاریخ", "ضرب", "جمع", "فروش"]):
+                    p_score = 0
+                    if any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "عنوان کالا"]):
+                        p_score = 15
+                    elif any(k in h for k in ["کالا", "محصول", "شرح", "عنوان", "product", "item"]) and not any(ck in h for ck in ["کد", "شناسه", "بارکد", "code", "id"]):
+                        p_score = 10
+                    elif "کالا" in h:
+                        p_score = 5
+                    if p_score > best_prod_score:
+                        best_prod_score = p_score
+                        prod_col = letter
 
+            # ستون تعداد خرید / موجودی اولیه ورودی (باید عاری از کلمات مانده، فروش، وضعیت، قیمت باشد)
             if not action.stock_col:
-                s_score = 0
-                if any(k in h for k in ["موجودی انبار", "تعداد انبار", "مانده انبار", "موجودی"]):
-                    s_score = 10
-                elif any(k in h for k in ["تعداد", "مقدار", "انبار", "stock", "qty", "quantity"]):
-                    s_score = 5
-                if s_score > best_stock_score:
-                    best_stock_score = s_score
-                    stock_col = letter
+                if not any(ex in h for ex in ["مانده", "فروش", "قیمت", "مبلغ", "فی", "تاریخ", "ضرب", "جمع", "کد", "شناسه", "نام", "شرح"]):
+                    s_score = 0
+                    if any(k in h for k in ["تعداد خرید", "مقدار خرید", "ورودی"]):
+                        s_score = 20
+                    elif any(k in h for k in ["تعداد", "مقدار", "موجودی اولیه", "stock", "qty", "quantity"]):
+                        s_score = 15
+                    elif any(k in h for k in ["موجودی انبار", "تعداد انبار", "موجودی"]):
+                        s_score = 10
+                    if s_score > best_stock_score:
+                        best_stock_score = s_score
+                        stock_col = letter
 
+            # ستون قیمت خرید
             if not action.purchase_price_col:
-                pr_score = 0
-                if any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "نرخ خرید"]):
-                    pr_score = 10
-                elif any(k in h for k in ["قیمت واحد", "فی", "قیمت", "مبلغ واحد", "cost", "unit price", "price"]):
-                    pr_score = 5
-                if pr_score > best_price_score:
-                    best_price_score = pr_score
-                    price_col = letter
+                if not any(ex in h for ex in ["تعداد", "مقدار", "فروش", "مانده", "وضعیت", "تاریخ", "کد", "نام", "شرح"]):
+                    pr_score = 0
+                    if any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "نرخ خرید"]):
+                        pr_score = 20
+                    elif any(k in h for k in ["قیمت واحد", "قیمت", "فی", "مبلغ واحد", "cost", "unit price", "price"]) and "ضرب" not in h and "جمع" not in h:
+                        pr_score = 10
+                    if pr_score > best_price_score:
+                        best_price_score = pr_score
+                        price_col = letter
+
+        # بررسی وجود ستون فروش در همان شیت (در صورتی که شیت مجزای فروش نباشد)
+        same_sheet_sold_col = None
+        if not sales_sheet:
+            for c in range(min_c, max_c + 1):
+                letter = col_index_to_letter(c)
+                if letter in (prod_col, stock_col, price_col, existing_sold_col, existing_rem_col, existing_status_col, existing_val_col):
+                    continue
+                h_c = str(sheet.get_value(f"{letter}{header_row}") or "").strip().lower()
+                if any(kw in h_c for kw in ["تعداد فروش", "مقدار فروش", "میزان فروش"]) or (h_c == "فروش" and letter != stock_col):
+                    same_sheet_sold_col = letter
+                    break
 
         # تعیین آخرین ستون واقعی دارای داده در جدول
+        known_added_cols = [c for c in [existing_sold_col, existing_rem_col, existing_status_col, existing_val_col] if c]
         last_data_c = min_c
         for c in range(min_c, max_c + 1):
             letter = col_index_to_letter(c)
-            if letter in (existing_status_col, existing_val_col):
+            if letter in known_added_cols:
                 continue
             hdr = str(sheet.get_value(f"{letter}{header_row}") or "").strip()
             has_data = bool(hdr)
@@ -286,7 +562,7 @@ class BusinessActionHandler:
         if not prod_col or not stock_col or not price_col:
             for c in range(min_c, last_data_c + 1):
                 letter = col_index_to_letter(c)
-                if letter in (prod_col, stock_col, price_col, existing_status_col, existing_val_col):
+                if letter in [prod_col, stock_col, price_col, same_sheet_sold_col] + known_added_cols:
                     continue
                 text_count = 0
                 num_count = 0
@@ -317,35 +593,120 @@ class BusinessActionHandler:
         if not price_col:
             price_col = "B" if prod_col != "B" else "D"
 
-        # 3. تعیین محل ستون‌های وضعیت و ارزش ریالی
-        if existing_status_col and col_letter_to_index(existing_status_col) <= last_data_c + 2:
-            status_col = existing_status_col
-            val_col = existing_val_col or col_index_to_letter(col_letter_to_index(status_col) + 1)
+        # 4. تعیین محل ستون‌ها
+        target_cols = []
+        if sales_sheet:
+            if existing_sold_col and col_letter_to_index(existing_sold_col) <= last_data_c + 4:
+                sold_col = existing_sold_col
+                rem_col = existing_rem_col or col_index_to_letter(col_letter_to_index(sold_col) + 1)
+                status_col = existing_status_col or col_index_to_letter(col_letter_to_index(rem_col) + 1)
+                val_col = existing_val_col or col_index_to_letter(col_letter_to_index(status_col) + 1)
+            else:
+                sold_col = col_index_to_letter(last_data_c + 1)
+                rem_col = col_index_to_letter(last_data_c + 2)
+                status_col = col_index_to_letter(last_data_c + 3)
+                val_col = col_index_to_letter(last_data_c + 4)
+            target_cols = [sold_col, rem_col, status_col, val_col]
+
+            sheet.set_value(f"{sold_col}{header_row}", f"تعداد فروش ({sales_sheet.name})")
+            sheet.set_value(f"{rem_col}{header_row}", "مانده موجودی انبار")
+            sheet.set_value(f"{status_col}{header_row}", "وضعیت موجودی انبار")
+            sheet.set_value(f"{val_col}{header_row}", "ارزش ریالی موجودی")
+        elif same_sheet_sold_col:
+            sold_col = same_sheet_sold_col
+            if existing_rem_col and col_letter_to_index(existing_rem_col) <= last_data_c + 3:
+                rem_col = existing_rem_col
+                status_col = existing_status_col or col_index_to_letter(col_letter_to_index(rem_col) + 1)
+                val_col = existing_val_col or col_index_to_letter(col_letter_to_index(status_col) + 1)
+            else:
+                rem_col = col_index_to_letter(last_data_c + 1)
+                status_col = col_index_to_letter(last_data_c + 2)
+                val_col = col_index_to_letter(last_data_c + 3)
+            target_cols = [rem_col, status_col, val_col]
+
+            sheet.set_value(f"{rem_col}{header_row}", "مانده موجودی انبار")
+            sheet.set_value(f"{status_col}{header_row}", "وضعیت موجودی انبار")
+            sheet.set_value(f"{val_col}{header_row}", "ارزش ریالی موجودی")
         else:
-            status_col = col_index_to_letter(last_data_c + 1)
-            val_col = col_index_to_letter(last_data_c + 2)
+            sold_col = None
+            rem_col = None
+            if existing_status_col and col_letter_to_index(existing_status_col) <= last_data_c + 2:
+                status_col = existing_status_col
+                val_col = existing_val_col or col_index_to_letter(col_letter_to_index(status_col) + 1)
+            else:
+                status_col = col_index_to_letter(last_data_c + 1)
+                val_col = col_index_to_letter(last_data_c + 2)
+            target_cols = [status_col, val_col]
 
-        # پاک‌سازی ستون‌های دورافتاده قبلی در صورت وجود (مانند ستون K در اثر اجرای قبلی)
-        if existing_status_col and existing_status_col not in (status_col, val_col):
-            for r in range(header_row, max_r + 2):
-                sheet.set_value(f"{existing_status_col}{r}", None)
-                sheet.set_cell_color(f"{existing_status_col}{r}", None)
-        if existing_val_col and existing_val_col not in (status_col, val_col):
-            for r in range(header_row, max_r + 2):
-                sheet.set_value(f"{existing_val_col}{r}", None)
-                sheet.set_cell_color(f"{existing_val_col}{r}", None)
+            sheet.set_value(f"{status_col}{header_row}", "وضعیت موجودی انبار")
+            sheet.set_value(f"{val_col}{header_row}", "ارزش ریالی موجودی")
 
-        sheet.set_value(f"{status_col}{header_row}", "وضعیت موجودی انبار")
-        sheet.set_value(f"{val_col}{header_row}", "ارزش ریالی موجودی")
-        sheet.set_font(f"{status_col}{header_row}:{val_col}{header_row}", bold=True)
-        sheet.set_cell_color(f"{status_col}{header_row}:{val_col}{header_row}", "#E0E7FF")
+        # ایمنی قطعی در برابر ارجاع دایره‌ای (Circular Reference):
+        # ستون موجودی ورودی (stock_col) به هیچ عنوان نباید با ستون‌های تحلیلی/هدف (target_cols) یکی باشد
+        if stock_col in target_cols or (rem_col and stock_col == rem_col):
+            for c in range(min_c, last_data_c + 1):
+                col_let = col_index_to_letter(c)
+                if col_let not in target_cols and col_let != prod_col and col_let != price_col and col_let != sold_col:
+                    stock_col = col_let
+                    break
+
+        # تمیز کردن ستون‌های اضافه دورافتاده قبلی (مثل ستون K)
+        for old_c in known_added_cols:
+            if old_c not in target_cols and old_c != same_sheet_sold_col:
+                for r in range(header_row, max_r + 2):
+                    sheet.set_value(f"{old_c}{r}", None)
+                    sheet.set_cell_color(f"{old_c}{r}", None)
+
+        sheet.set_font(f"{target_cols[0]}{header_row}:{target_cols[-1]}{header_row}", bold=True)
+        sheet.set_cell_color(f"{target_cols[0]}{header_row}:{target_cols[-1]}{header_row}", "#E0E7FF")
+
+        # 5. آماده‌سازی و پردازش سطرهای جدول
+        # تشخیص ستون احتمالی «مبلغ کل» (تعداد * قیمت واحد) در شیت خرید برای پر کردن خودکار سطرهای خالی
+        total_amount_col = None
+        for c in range(min_c, last_data_c + 1):
+            c_let = col_index_to_letter(c)
+            if c_let in [prod_col, stock_col, price_col, same_sheet_sold_col] + known_added_cols:
+                continue
+            h_amt = str(sheet.get_value(f"{c_let}{header_row}") or "").strip().lower()
+            if any(kw in h_amt for kw in ["مبلغ کل", "مبلغ", "جمع کل", "بهای کل", "قیمت کل", "total amount"]):
+                total_amount_col = c_let
+                break
+
+        # پیش‌محاسبه آخرین سطر واقعی و مجموع خریدهای هر کالا برای مدیریت چندپارتی (FIFO)
+        actual_last_row = start_row
+        total_purch_by_prod: Dict[str, float] = {}
+        prod_rows_map: Dict[str, List[int]] = {}
+        for r_check in range(start_row, max_r + 1):
+            row_txt = " ".join(
+                str(sheet.get_value(f"{col_index_to_letter(c)}{r_check}") or "")
+                for c in range(min_c, last_data_c + 1)
+            ).strip().lower()
+            if any(kw in row_txt for kw in SUMMARY_KEYWORDS):
+                continue
+            p_val = sheet.get_value(f"{prod_col}{r_check}")
+            s_val = sheet.get_value(f"{stock_col}{r_check}")
+            if (p_val is not None and str(p_val).strip() != "") or (s_val is not None and str(s_val).strip() != ""):
+                actual_last_row = max(actual_last_row, r_check)
+                if p_val and str(p_val).strip():
+                    p_k = norm_key(str(p_val).strip())
+                    try:
+                        sq = float(str(s_val).replace(",", "").strip()) if s_val is not None else 0.0
+                    except ValueError:
+                        sq = 0.0
+                    total_purch_by_prod[p_k] = total_purch_by_prod.get(p_k, 0.0) + sq
+                    prod_rows_map.setdefault(p_k, []).append(r_check)
+
+        total_rem_by_prod: Dict[str, float] = {}
+        for p_k, tot_p in total_purch_by_prod.items():
+            tot_s = sales_by_prod.get(p_k, 0.0)
+            total_rem_by_prod[p_k] = max(0.0, tot_p - tot_s)
 
         threshold = action.min_threshold
         low_stock_items = []
         total_items_count = 0
         total_valuation = 0.0
+        allocated_sales_by_prod: Dict[str, float] = {}
 
-        SUMMARY_KEYWORDS = ["مجموع", "جمع", "کل", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
         existing_sum_row = None
         last_data_row = start_row - 1
 
@@ -364,7 +725,8 @@ class BusinessActionHandler:
             if is_summary:
                 if existing_sum_row is None:
                     existing_sum_row = r
-                sheet.set_value(f"{status_col}{r}", None)
+                for tc in target_cols:
+                    sheet.set_value(f"{tc}{r}", None)
                 continue
 
             # بررسی سطرهای خالی و فاصله‌دار (Spacer rows)
@@ -374,9 +736,9 @@ class BusinessActionHandler:
 
             if is_prod_empty and is_stock_empty:
                 # پاک کردن فرمول‌ها و رنگ صورتی قبلی از روی سطرهای خالی
-                sheet.set_value(f"{status_col}{r}", None)
-                sheet.set_value(f"{val_col}{r}", None)
-                sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
+                for tc in target_cols:
+                    sheet.set_value(f"{tc}{r}", None)
+                    sheet.set_cell_color(f"{tc}{r}", None)
                 continue
 
             prod_name = str(raw_prod).strip() if not is_prod_empty else f"کالای ردیف {r}"
@@ -390,49 +752,180 @@ class BusinessActionHandler:
             except ValueError:
                 u_price = 0.0
 
+            # پر کردن خودکار ستون خالی مبلغ کل (تعداد * قیمت واحد)
+            if total_amount_col:
+                cur_amt = sheet.get_value(f"{total_amount_col}{r}")
+                if cur_amt is None or str(cur_amt).strip() == "":
+                    sheet.set_formula(
+                        f"{total_amount_col}{r}",
+                        f'=IF(OR({price_col}{r}="", {stock_col}{r}=""), "", {price_col}{r}*{stock_col}{r})'
+                    )
+
             total_items_count += 1
             last_data_row = r
-            item_val = s_qty * u_price
-            total_valuation += item_val
 
-            # فرمول وضعیت: اگر سلول خالی باشد هیچ پیامی درج نشود، در غیر این صورت هشدار کسری
-            sheet.set_formula(
-                f"{status_col}{r}",
-                f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", IF({stock_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
-            )
-            sheet.set_formula(
-                f"{val_col}{r}",
-                f'=IF(OR({stock_col}{r}="", {price_col}{r}=""), "", {stock_col}{r}*{price_col}{r})'
-            )
+            p_k = norm_key(prod_name)
 
-            if s_qty <= threshold:
-                low_stock_items.append({"name": prod_name, "stock": s_qty, "row": r})
-                if action.highlight_low_stock:
-                    sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", "#FEE2E2")
+            if sales_sheet:
+                # تخصیص هوشمند فروش به روش فایفو (FIFO) میان پارت‌های خرید یک کالا
+                tot_p_sales = sales_by_prod.get(p_k, 0.0)
+                already_alloc = allocated_sales_by_prod.get(p_k, 0.0)
+                unallocated = max(0.0, tot_p_sales - already_alloc)
+                this_row_sold = min(s_qty, unallocated)
+                allocated_sales_by_prod[p_k] = already_alloc + this_row_sold
+
+                rem_stock = max(0.0, s_qty - this_row_sold)
+                item_val = rem_stock * u_price
+                total_valuation += item_val
+
+                is_multi = len(prod_rows_map.get(p_k, [])) > 1
+                tot_sales_expr = f"SUMIF('{sales_sheet.name}'!${s_prod_col}${s_start_r}:${s_prod_col}${s_max_r}, {prod_col}{r}, '{sales_sheet.name}'!${s_qty_col}${s_start_r}:${s_qty_col}${s_max_r})"
+
+                if not is_multi:
+                    sold_formula = f'=IF({prod_col}{r}="", "", {tot_sales_expr})'
+                    status_formula = f'=IF(OR({prod_col}{r}="", {rem_col}{r}=""), "", IF({rem_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
+                else:
+                    # فرمول اکسل فروش فایفو: کسر خریدهای ماقبل در پارت‌های بالاتر
+                    if r == prod_rows_map[p_k][0]:
+                        sold_formula = f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", MAX(0, MIN({stock_col}{r}, {tot_sales_expr})))'
+                    else:
+                        prior_purch_expr = f"SUMIF(${prod_col}${start_row}:${prod_col}{r-1}, {prod_col}{r}, ${stock_col}${start_row}:${stock_col}{r-1})"
+                        sold_formula = f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", MAX(0, MIN({stock_col}{r}, {tot_sales_expr} - {prior_purch_expr})))'
+
+                    # وضعیت موجودی: مقایسه مجموع مانده کل این کالا با حد آستانه (جلوگیری از هشدار کاذب برای پارت‌های مصرف‌شده)
+                    tot_rem_expr = f"SUMIF(${prod_col}${start_row}:${prod_col}${actual_last_row}, {prod_col}{r}, ${rem_col}${start_row}:${rem_col}${actual_last_row})"
+                    status_formula = (
+                        f'=IF(OR({prod_col}{r}="", {rem_col}{r}=""), "", '
+                        f'IF({tot_rem_expr}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", '
+                        f'IF({rem_col}{r}=0, "تکمیل پارت ✔️", "موجودی کافی ✅")))'
+                    )
+
+                sheet.set_formula(f"{sold_col}{r}", sold_formula)
+                sheet.set_formula(
+                    f"{rem_col}{r}",
+                    f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", {stock_col}{r}-{sold_col}{r})'
+                )
+                sheet.set_formula(f"{status_col}{r}", status_formula)
+
+                sheet.set_formula(
+                    f"{val_col}{r}",
+                    f'=IF(OR({rem_col}{r}="", {price_col}{r}=""), "", {rem_col}{r}*{price_col}{r})'
+                )
+
+                prod_tot_rem = total_rem_by_prod.get(p_k, rem_stock)
+                if prod_tot_rem <= threshold:
+                    if not any(it["name"] == prod_name for it in low_stock_items):
+                        low_stock_items.append({
+                            "name": prod_name,
+                            "purchase": total_purch_by_prod.get(p_k, s_qty),
+                            "sold": tot_p_sales,
+                            "stock": prod_tot_rem,
+                            "row": r,
+                        })
+                    if action.highlight_low_stock:
+                        sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", "#FEE2E2")
+                else:
+                    sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
+            elif same_sheet_sold_col:
+                raw_s_sold = sheet.get_value(f"{same_sheet_sold_col}{r}")
+                try:
+                    sold_qty = float(str(raw_s_sold).replace(",", "").strip()) if raw_s_sold is not None and str(raw_s_sold).strip() != "" else 0.0
+                except ValueError:
+                    sold_qty = 0.0
+                rem_stock = max(0.0, s_qty - sold_qty)
+                item_val = rem_stock * u_price
+                total_valuation += item_val
+
+                sheet.set_formula(
+                    f"{rem_col}{r}",
+                    f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", {stock_col}{r}-{same_sheet_sold_col}{r})'
+                )
+                sheet.set_formula(
+                    f"{status_col}{r}",
+                    f'=IF(OR({prod_col}{r}="", {rem_col}{r}=""), "", IF({rem_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
+                )
+                sheet.set_formula(
+                    f"{val_col}{r}",
+                    f'=IF(OR({rem_col}{r}="", {price_col}{r}=""), "", {rem_col}{r}*{price_col}{r})'
+                )
+
+                if rem_stock <= threshold:
+                    low_stock_items.append({"name": prod_name, "purchase": s_qty, "sold": sold_qty, "stock": rem_stock, "row": r})
+                    if action.highlight_low_stock:
+                        sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", "#FEE2E2")
+                else:
+                    sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
             else:
-                # اگر موجودی کافی است، هایلایت صورتی قبلی پاک شود
-                sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
+                item_val = s_qty * u_price
+                total_valuation += item_val
 
-        # مدیریت سطر جمع کل
+                # فرمول وضعیت: اگر سلول خالی باشد هیچ پیامی درج نشود، در غیر این صورت هشدار کسری
+                sheet.set_formula(
+                    f"{status_col}{r}",
+                    f'=IF(OR({prod_col}{r}="", {stock_col}{r}=""), "", IF({stock_col}{r}<={threshold}, "⚠️ کسری موجودی (سفارش دهید)", "موجودی کافی ✅"))'
+                )
+                sheet.set_formula(
+                    f"{val_col}{r}",
+                    f'=IF(OR({stock_col}{r}="", {price_col}{r}=""), "", {stock_col}{r}*{price_col}{r})'
+                )
+
+                if s_qty <= threshold:
+                    low_stock_items.append({"name": prod_name, "purchase": s_qty, "sold": 0.0, "stock": s_qty, "row": r})
+                    if action.highlight_low_stock:
+                        sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", "#FEE2E2")
+                else:
+                    sheet.set_cell_color(f"{status_col}{r}:{val_col}{r}", None)
+
+        # 6. سطر جمع کل و اعمال فرمت مناسب اعداد
         if existing_sum_row:
             sum_row = existing_sum_row
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_formula(f"{sold_col}{sum_row}", f"=SUM({sold_col}{start_row}:{sold_col}{last_data_row})")
+                sheet.set_formula(f"{rem_col}{sum_row}", f"=SUM({rem_col}{start_row}:{rem_col}{last_data_row})")
+            elif same_sheet_sold_col and rem_col:
+                sheet.set_formula(f"{rem_col}{sum_row}", f"=SUM({rem_col}{start_row}:{rem_col}{last_data_row})")
             sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{last_data_row})")
-            sheet.set_font(f"{val_col}{sum_row}", bold=True)
+            sheet.set_font(f"{target_cols[0]}{sum_row}:{target_cols[-1]}{sum_row}", bold=True)
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_number_format(f"{sold_col}{sum_row}:{rem_col}{sum_row}", "#,##0.##")
+            elif rem_col:
+                sheet.set_number_format(f"{rem_col}{sum_row}", "#,##0.##")
             sheet.set_number_format(f"{val_col}{sum_row}", "#,##0")
         elif last_data_row >= start_row:
             sum_row = last_data_row + 1
             sheet.set_value(f"{prod_col}{sum_row}", "مجموع کل ارزش موجودی انبار:")
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_formula(f"{sold_col}{sum_row}", f"=SUM({sold_col}{start_row}:{sold_col}{last_data_row})")
+                sheet.set_formula(f"{rem_col}{sum_row}", f"=SUM({rem_col}{start_row}:{rem_col}{last_data_row})")
+            elif same_sheet_sold_col and rem_col:
+                sheet.set_formula(f"{rem_col}{sum_row}", f"=SUM({rem_col}{start_row}:{rem_col}{last_data_row})")
             sheet.set_formula(f"{val_col}{sum_row}", f"=SUM({val_col}{start_row}:{val_col}{last_data_row})")
-            sheet.set_font(f"{prod_col}{sum_row}:{val_col}{sum_row}", bold=True)
-            sheet.set_cell_color(f"{prod_col}{sum_row}:{val_col}{sum_row}", "#DCFCE7")
+            sheet.set_font(f"{prod_col}{sum_row}:{target_cols[-1]}{sum_row}", bold=True)
+            sheet.set_cell_color(f"{prod_col}{sum_row}:{target_cols[-1]}{sum_row}", "#DCFCE7")
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_number_format(f"{sold_col}{sum_row}:{rem_col}{sum_row}", "#,##0.##")
+            elif rem_col:
+                sheet.set_number_format(f"{rem_col}{sum_row}", "#,##0.##")
             sheet.set_number_format(f"{val_col}{sum_row}", "#,##0")
 
         if last_data_row >= start_row:
+            if sales_sheet and sold_col and rem_col:
+                sheet.set_number_format(f"{sold_col}{start_row}:{rem_col}{last_data_row}", "#,##0.##")
+            elif rem_col:
+                sheet.set_number_format(f"{rem_col}{start_row}:{rem_col}{last_data_row}", "#,##0.##")
             sheet.set_number_format(f"{val_col}{start_row}:{val_col}{last_data_row}", "#,##0")
-        sheet.auto_fit_columns([status_col, val_col])
+            if total_amount_col:
+                sheet.set_number_format(f"{total_amount_col}{start_row}:{total_amount_col}{last_data_row}", "#,##0")
+        sheet.auto_fit_columns(target_cols)
 
         alert_text = ""
-        if low_stock_items:
+        has_deduction = bool(sales_sheet or same_sheet_sold_col)
+        if has_deduction and low_stock_items:
+            alert_text = "\n⚠️ **اقلام نیازمند شارژ فوری انبار (پس از کسر فروش):**\n" + "\n".join(
+                f"• {it['name']}: خرید: **{it['purchase']:.0f}** | فروش: **{it['sold']:.0f}** | مانده موجودی: فقط **{it['stock']:.0f}** عدد (ردیف {it['row']})"
+                for it in low_stock_items[:10]
+            )
+        elif low_stock_items:
             alert_text = "\n⚠️ **اقلام نیازمند شارژ فوری انبار:**\n" + "\n".join(
                 f"• {it['name']}: فقط **{it['stock']:.0f}** عدد باقی‌مانده (ردیف {it['row']})"
                 for it in low_stock_items[:10]
@@ -440,16 +933,420 @@ class BusinessActionHandler:
         else:
             alert_text = "\n✅ کلیه اقلام دارای موجودی کافی بالای حد آستانه هستند."
 
+        sheet_info = f"• شیت‌های بررسی‌شده: خرید (**`{sheet.name}`**) و فروش (**`{sales_sheet.name}`**)\n" if sales_sheet else ""
         return ActionResult(
             success=True,
             message_persian=(
-                f"📦 **گزارش کنترل و ارزش‌گذاری موجودی انبار:**\n\n"
+                f"📦 **گزارش کنترل و ارزش‌گذاری موجودی انبار ({'کسر فروش از خرید' if has_deduction else 'شیت جاری'}):**\n\n"
+                f"{sheet_info}"
                 f"• تعداد کل ردیف‌های انبار: **{total_items_count}** قلم\n"
                 f"• حد آستانه کمبود موجودی: **{threshold:.0f} عدد**\n"
                 f"• تعداد اقلام دارای کسری موجودی: **{len(low_stock_items)}** مورد (با رنگ صورتی هایلایت شدند)\n"
-                f"• ارزش ریالی کل موجودی انبار: **{total_valuation:,.0f}**\n"
-                f"• ستون‌های «وضعیت موجودی» و «ارزش ریالی موجودی» به انتهای جدول اضافه شدند.{alert_text}"
+                f"• ارزش ریالی کل موجودی باقی‌مانده انبار: **{total_valuation:,.0f}** تومان\n"
+                f"• ستون‌های تحلیلی و فرمول‌های محاسبه مانده به جدول اضافه شدند.{alert_text}"
             )
+        )
+
+    @classmethod
+    def execute_inventory_valuation(cls, action: InventoryValuationAction, ctx: ActionContext) -> ActionResult:
+        """
+        محاسبه ارزش موجودی انبار به روش‌های استاندارد حسابداری:
+        - فایفو (FIFO): اولین وارده اولین صادره
+        - لایفو (LIFO): آخرین وارده اولین صادره
+        - میانگین موزون (Weighted Average Cost)
+        امکان مقایسه جامع سه روش و بهای تمام شده کالای فروش‌رفته (COGS) و ایجاد شیت تحلیلی اختصاصی.
+        """
+        driver = ctx.manager.active_driver if ctx.manager else None
+        if not driver:
+            return ActionResult(success=False, message_persian="ارتباط با اکسل برقرار نیست.")
+
+        all_sheets = driver.get_sheet_names()
+        sheet = ctx.sheet
+
+        # 1. شناسایی شیت‌های خرید (انبار) و فروش
+        purchase_sheet = None
+        sales_sheet = None
+
+        if action.purchase_sheet:
+            try:
+                purchase_sheet = driver.get_sheet(action.purchase_sheet)
+            except Exception:
+                purchase_sheet = None
+
+        if action.sales_sheet:
+            try:
+                sales_sheet = driver.get_sheet(action.sales_sheet)
+            except Exception:
+                sales_sheet = None
+
+        # اگر تعیین نشده بود، شناسایی هوشمند شیت‌ها
+        if not purchase_sheet:
+            for sh_n in all_sheets:
+                if any(k in sh_n.lower() for k in ["خرید", "انبار", "purchase", "موجودی"]):
+                    purchase_sheet = driver.get_sheet(sh_n)
+                    break
+
+        if not sales_sheet:
+            for sh_n in all_sheets:
+                if (not purchase_sheet or sh_n != purchase_sheet.name) and any(k in sh_n.lower() for k in ["فروش", "sales", "خروج"]):
+                    sales_sheet = driver.get_sheet(sh_n)
+                    break
+
+        if not purchase_sheet:
+            purchase_sheet = sheet
+
+        SUMMARY_KEYWORDS = ["مجموع", "جمع", "جمع کل", "سرجمع", "خلاصه", "میانگین", "تراز", "total", "sum", "average", "grand total"]
+
+        def norm_key(s: Any) -> str:
+            if s is None:
+                return ""
+            txt = str(s).strip().lower()
+            char_map = {'ي': 'ی', 'ك': 'ک', 'ة': 'ه', 'ؤ': 'و', 'إ': 'ا', 'أ': 'ا', '\u200c': ' ', '\xa0': ' '}
+            for k, v in char_map.items():
+                txt = txt.replace(k, v)
+            return " ".join(txt.split())
+
+        # 2. استخراج فروش هر کالا از شیت فروش
+        sales_by_prod: Dict[str, float] = {}
+        if sales_sheet:
+            s_min_r, s_min_c, s_max_r, s_max_c = sales_sheet.get_used_range_bounds()
+            s_hdr_r = s_min_r
+            for sr in range(s_min_r, min(s_min_r + 15, s_max_r + 1)):
+                row_t = " ".join(str(sales_sheet.get_value(f"{col_index_to_letter(c)}{sr}") or "") for c in range(s_min_c, s_max_c + 1)).lower()
+                if any(k in row_t for k in ["کالا", "محصول", "شرح", "تعداد", "فروش"]):
+                    s_hdr_r = sr
+                    break
+            s_prod_c, s_qty_c = None, None
+            for c in range(s_min_c, s_max_c + 1):
+                c_let = col_index_to_letter(c)
+                h = str(sales_sheet.get_value(f"{c_let}{s_hdr_r}") or "").strip().lower()
+                if not s_prod_c and any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "کالا", "محصول"]) and not any(ck in h for ck in ["کد", "شناسه"]):
+                    s_prod_c = c_let
+                elif not s_qty_c and any(k in h for k in ["تعداد فروش", "تعداد", "مقدار", "خروج", "qty"]):
+                    s_qty_c = c_let
+            if not s_prod_c: s_prod_c = "A"
+            if not s_qty_c: s_qty_c = "C" if s_prod_c != "C" else "B"
+
+            for sr in range(s_hdr_r + 1, s_max_r + 1):
+                p_raw = sales_sheet.get_value(f"{s_prod_c}{sr}")
+                if not p_raw or str(p_raw).strip() == "":
+                    continue
+                p_str = str(p_raw).strip()
+                if any(kw in p_str.lower() for kw in SUMMARY_KEYWORDS):
+                    continue
+                q_raw = sales_sheet.get_value(f"{s_qty_c}{sr}")
+                try:
+                    q_val = float(str(q_raw).replace(",", "").strip()) if q_raw is not None else 0.0
+                except ValueError:
+                    q_val = 0.0
+                nk = norm_key(p_str)
+                sales_by_prod[nk] = sales_by_prod.get(nk, 0.0) + q_val
+
+        # 3. استخراج پارت‌های خرید از شیت خرید
+        p_min_r, p_min_c, p_max_r, p_max_c = purchase_sheet.get_used_range_bounds()
+        p_hdr_r = p_min_r
+        for pr in range(p_min_r, min(p_min_r + 15, p_max_r + 1)):
+            row_t = " ".join(str(purchase_sheet.get_value(f"{col_index_to_letter(c)}{pr}") or "") for c in range(p_min_c, p_max_c + 1)).lower()
+            if any(k in row_t for k in ["کالا", "محصول", "شرح", "تعداد", "خرید", "قیمت"]):
+                p_hdr_r = pr
+                break
+
+        p_prod_c, p_qty_c, p_price_c, same_sheet_sold_c = None, None, None, None
+        for c in range(p_min_c, p_max_c + 1):
+            c_let = col_index_to_letter(c)
+            h = str(purchase_sheet.get_value(f"{c_let}{p_hdr_r}") or "").strip().lower()
+            if any(ex in h for ex in ["مانده", "وضعیت", "ارزش"]):
+                continue
+            if not p_prod_c and any(k in h for k in ["نام کالا", "نام محصول", "شرح کالا", "کالا", "محصول"]) and not any(ck in h for ck in ["کد", "شناسه"]):
+                p_prod_c = c_let
+            elif not p_qty_c and any(k in h for k in ["تعداد خرید", "موجودی اولیه", "تعداد", "مقدار"]) and "فروش" not in h:
+                p_qty_c = c_let
+            elif not p_price_c and any(k in h for k in ["قیمت خرید", "بهای تمام شده", "فی خرید", "قیمت واحد", "فی", "قیمت"]) and "فروش" not in h:
+                p_price_c = c_let
+            elif not sales_sheet and not same_sheet_sold_c and any(k in h for k in ["تعداد فروش", "مقدار فروش", "فروش"]):
+                same_sheet_sold_c = c_let
+
+        if not p_prod_c: p_prod_c = "A"
+        if not p_qty_c: p_qty_c = "C" if p_prod_c != "C" else "B"
+        if not p_price_c: p_price_c = "B" if p_prod_c != "B" else "D"
+
+        # دسته‌بندی پارت‌های خرید به ترتیب وقوع (ردیف یا تاریخ)
+        batches_by_prod: Dict[str, List[Tuple[float, float]]] = {}
+        prod_names_ordered: List[str] = []
+        prod_display_map: Dict[str, str] = {}
+
+        for pr in range(p_hdr_r + 1, p_max_r + 1):
+            p_raw = purchase_sheet.get_value(f"{p_prod_c}{pr}")
+            if not p_raw or str(p_raw).strip() == "":
+                continue
+            p_str = str(p_raw).strip()
+            if any(kw in p_str.lower() for kw in SUMMARY_KEYWORDS):
+                continue
+
+            q_raw = purchase_sheet.get_value(f"{p_qty_c}{pr}")
+            try:
+                q_val = float(str(q_raw).replace(",", "").strip()) if q_raw is not None else 0.0
+            except ValueError:
+                q_val = 0.0
+
+            prc_raw = purchase_sheet.get_value(f"{p_price_c}{pr}")
+            try:
+                prc_val = float(str(prc_raw).replace(",", "").strip()) if prc_raw is not None else 0.0
+            except ValueError:
+                prc_val = 0.0
+
+            if same_sheet_sold_c:
+                s_sold_raw = purchase_sheet.get_value(f"{same_sheet_sold_c}{pr}")
+                try:
+                    s_sold_val = float(str(s_sold_raw).replace(",", "").strip()) if s_sold_raw is not None else 0.0
+                except ValueError:
+                    s_sold_val = 0.0
+                sales_by_prod[norm_key(p_str)] = sales_by_prod.get(norm_key(p_str), 0.0) + s_sold_val
+
+            nk = norm_key(p_str)
+            if nk not in batches_by_prod:
+                batches_by_prod[nk] = []
+                prod_names_ordered.append(nk)
+                prod_display_map[nk] = p_str
+            batches_by_prod[nk].append((q_val, prc_val))
+
+        if not prod_names_ordered:
+            return ActionResult(success=False, message_persian="کالایی برای ارزش‌گذاری انبار یافت نشد.")
+
+        # 4. محاسبه مقادیر فایفو، لایفو و میانگین موزون برای هر کالا
+        prod_evals = []
+        total_fifo_val = 0.0
+        total_lifo_val = 0.0
+        total_avg_val = 0.0
+        total_fifo_cogs = 0.0
+        total_lifo_cogs = 0.0
+        total_avg_cogs = 0.0
+        total_all_purchased_qty = 0.0
+        total_all_purchased_cost = 0.0
+        total_all_sold_qty = 0.0
+        total_all_remaining_qty = 0.0
+
+        for nk in prod_names_ordered:
+            p_name = prod_display_map[nk]
+            batches = batches_by_prod[nk]
+            sold_qty = sales_by_prod.get(nk, 0.0)
+
+            fifo_res = InventoryValuationCalculator.calculate_valuation(batches, sold_qty, "fifo")
+            lifo_res = InventoryValuationCalculator.calculate_valuation(batches, sold_qty, "lifo")
+            avg_res = InventoryValuationCalculator.calculate_valuation(batches, sold_qty, "average")
+
+            rem_q = fifo_res["remaining_qty"]
+            is_low = rem_q <= action.min_threshold
+
+            total_fifo_val += fifo_res["remaining_value"]
+            total_lifo_val += lifo_res["remaining_value"]
+            total_avg_val += avg_res["remaining_value"]
+            total_fifo_cogs += fifo_res["cogs"]
+            total_lifo_cogs += lifo_res["cogs"]
+            total_avg_cogs += avg_res["cogs"]
+
+            total_all_purchased_qty += fifo_res["total_purchased"]
+            total_all_purchased_cost += fifo_res["total_purchase_cost"]
+            total_all_sold_qty += sold_qty
+            total_all_remaining_qty += rem_q
+
+            prod_evals.append({
+                "name": p_name,
+                "purchased_qty": fifo_res["total_purchased"],
+                "purchased_cost": fifo_res["total_purchase_cost"],
+                "sold_qty": sold_qty,
+                "remaining_qty": rem_q,
+                "fifo_price": fifo_res["effective_unit_price"],
+                "fifo_val": fifo_res["remaining_value"],
+                "fifo_cogs": fifo_res["cogs"],
+                "lifo_price": lifo_res["effective_unit_price"],
+                "lifo_val": lifo_res["remaining_value"],
+                "lifo_cogs": lifo_res["cogs"],
+                "avg_price": avg_res["effective_unit_price"],
+                "avg_val": avg_res["remaining_value"],
+                "avg_cogs": avg_res["cogs"],
+                "is_low": is_low
+            })
+
+        # 5. ایجاد شیت گزارش ارزش‌گذاری موجودی انبار
+        report_sheet_name = "ارزش‌گذاری_موجودی"
+        if action.create_report_sheet:
+            if report_sheet_name in all_sheets:
+                rep_sheet = driver.get_sheet(report_sheet_name)
+            else:
+                rep_sheet = driver.create_sheet(report_sheet_name)
+
+            if hasattr(rep_sheet, "_ws"):
+                try:
+                    rep_sheet._ws.views.sheetView[0].rightToLeft = True
+                except Exception:
+                    pass
+
+            # پاک‌سازی محتویات قبلی
+            r_min_r, r_min_c, r_max_r, r_max_c = rep_sheet.get_used_range_bounds()
+            if r_max_r >= r_min_r and r_max_c >= r_min_c:
+                for cr in range(r_min_r, r_max_r + 5):
+                    for cc in range(r_min_c, r_max_c + 5):
+                        rep_sheet.set_value(f"{col_index_to_letter(cc)}{cr}", None)
+                        rep_sheet.set_cell_color(f"{col_index_to_letter(cc)}{cr}", None)
+
+            # Header Banner
+            rep_sheet.set_value("A1", "📦 گزارش جامع ارزش‌گذاری موجودی انبار و بهای تمام شده (فایفو، لایفو و میانگین)")
+            rep_sheet.set_font("A1", bold=True, size=14, color_hex="#1E3A8A")
+            rep_sheet.set_cell_color("A1:N1", "#DBEAFE")
+            rep_sheet.merge_cells("A1:N1")
+
+            now_str = datetime.datetime.now().strftime("%Y/%m/%d %H:%M")
+            src_str = f"شیت خرید: {purchase_sheet.name}" + (f" | شیت فروش: {sales_sheet.name}" if sales_sheet else "")
+            rep_sheet.set_value("A2", f"📅 تاریخ گزارش: {now_str} | {src_str} | واحد: ریال/تومان")
+            rep_sheet.set_font("A2", size=10, color_hex="#475569")
+            rep_sheet.merge_cells("A2:N2")
+
+            # KPI Cards (Row 4-5)
+            rep_sheet.set_value("A4", "ارزش موجودی - فایفو (FIFO)")
+            rep_sheet.set_value("A5", round(total_fifo_val, 0))
+            rep_sheet.set_font("A4", bold=True, size=10, color_hex="#1E40AF")
+            rep_sheet.set_font("A5", bold=True, size=13, color_hex="#1E3A8A")
+            rep_sheet.set_cell_color("A4:C5", "#EFF6FF")
+            rep_sheet.merge_cells("A4:C4")
+            rep_sheet.merge_cells("A5:C5")
+
+            rep_sheet.set_value("E4", "ارزش موجودی - لایفو (LIFO)")
+            rep_sheet.set_value("E5", round(total_lifo_val, 0))
+            rep_sheet.set_font("E4", bold=True, size=10, color_hex="#9A3412")
+            rep_sheet.set_font("E5", bold=True, size=13, color_hex="#7C2D12")
+            rep_sheet.set_cell_color("E4:G5", "#FFF7ED")
+            rep_sheet.merge_cells("E4:G4")
+            rep_sheet.merge_cells("E5:G5")
+
+            rep_sheet.set_value("I4", "ارزش موجودی - میانگین موزون")
+            rep_sheet.set_value("I5", round(total_avg_val, 0))
+            rep_sheet.set_font("I4", bold=True, size=10, color_hex="#166534")
+            rep_sheet.set_font("I5", bold=True, size=13, color_hex="#14532D")
+            rep_sheet.set_cell_color("I4:K5", "#F0FDF4")
+            rep_sheet.merge_cells("I4:K4")
+            rep_sheet.merge_cells("I5:K5")
+
+            # Table Headers (Row 7)
+            table_hdr_r = 7
+            headers = [
+                ("A", "ردیف"),
+                ("B", "نام کالا"),
+                ("C", "کل خرید (تعداد)"),
+                ("D", "کل بهای خرید"),
+                ("E", "کل فروش (تعداد)"),
+                ("F", "مانده انبار"),
+                ("G", "نرخ فایفو"),
+                ("H", "ارزش فایفو (FIFO)"),
+                ("I", "نرخ لایفو"),
+                ("J", "ارزش لایفو (LIFO)"),
+                ("K", "نرخ میانگین"),
+                ("L", "ارزش میانگین موزون"),
+                ("M", "بهای تمام شده فروش (فایفو)"),
+                ("N", "وضعیت انبار"),
+            ]
+            for col_l, title in headers:
+                rep_sheet.set_value(f"{col_l}{table_hdr_r}", title)
+            rep_sheet.set_font(f"A{table_hdr_r}:N{table_hdr_r}", bold=True)
+            rep_sheet.set_cell_color(f"A{table_hdr_r}:N{table_hdr_r}", "#E0E7FF")
+
+            # Populate Table Rows
+            start_data_r = 8
+            for idx, item in enumerate(prod_evals, start=1):
+                cur_r = start_data_r + idx - 1
+                rep_sheet.set_value(f"A{cur_r}", idx)
+                rep_sheet.set_value(f"B{cur_r}", item["name"])
+                rep_sheet.set_value(f"C{cur_r}", item["purchased_qty"])
+                rep_sheet.set_value(f"D{cur_r}", item["purchased_cost"])
+                rep_sheet.set_value(f"E{cur_r}", item["sold_qty"])
+                rep_sheet.set_formula(f"F{cur_r}", f'=IF(OR(C{cur_r}="", E{cur_r}=""), "", C{cur_r}-E{cur_r})')
+                rep_sheet.set_value(f"G{cur_r}", round(item["fifo_price"], 0))
+                rep_sheet.set_value(f"H{cur_r}", round(item["fifo_val"], 0))
+                rep_sheet.set_value(f"I{cur_r}", round(item["lifo_price"], 0))
+                rep_sheet.set_value(f"J{cur_r}", round(item["lifo_val"], 0))
+                rep_sheet.set_value(f"K{cur_r}", round(item["avg_price"], 0))
+                rep_sheet.set_value(f"L{cur_r}", round(item["avg_val"], 0))
+                rep_sheet.set_value(f"M{cur_r}", round(item["fifo_cogs"], 0))
+                rep_sheet.set_formula(f"N{cur_r}", f'=IF(F{cur_r}<={action.min_threshold}, "⚠️ کسری موجودی", "موجودی کافی ✅")')
+
+                if item["is_low"] and action.highlight_low_stock:
+                    rep_sheet.set_cell_color(f"A{cur_r}:N{cur_r}", "#FEE2E2")
+
+            last_data_r = start_data_r + len(prod_evals) - 1
+            sum_r = last_data_r + 1
+
+            # Summary Row
+            rep_sheet.set_value(f"B{sum_r}", "مجموع کل انبار:")
+            rep_sheet.set_formula(f"C{sum_r}", f"=SUM(C{start_data_r}:C{last_data_r})")
+            rep_sheet.set_formula(f"D{sum_r}", f"=SUM(D{start_data_r}:D{last_data_r})")
+            rep_sheet.set_formula(f"E{sum_r}", f"=SUM(E{start_data_r}:E{last_data_r})")
+            rep_sheet.set_formula(f"F{sum_r}", f"=SUM(F{start_data_r}:F{last_data_r})")
+            rep_sheet.set_formula(f"H{sum_r}", f"=SUM(H{start_data_r}:H{last_data_r})")
+            rep_sheet.set_formula(f"J{sum_r}", f"=SUM(J{start_data_r}:J{last_data_r})")
+            rep_sheet.set_formula(f"L{sum_r}", f"=SUM(L{start_data_r}:L{last_data_r})")
+            rep_sheet.set_formula(f"M{sum_r}", f"=SUM(M{start_data_r}:M{last_data_r})")
+
+            rep_sheet.set_font(f"A{sum_r}:N{sum_r}", bold=True)
+            rep_sheet.set_cell_color(f"A{sum_r}:N{sum_r}", "#DCFCE7")
+
+            # Formats
+            rep_sheet.set_number_format(f"C{start_data_r}:M{sum_r}", "#,##0")
+            rep_sheet.set_number_format("A5", "#,##0")
+            rep_sheet.set_number_format("E5", "#,##0")
+            rep_sheet.set_number_format("I5", "#,##0")
+
+            rep_sheet.auto_fit_columns(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"])
+
+        # 6. ساخت پیام گزارش تفصیلی فارسی
+        method_title = {
+            "fifo": "روش فایفو (FIFO - اولین وارده اولین صادره)",
+            "lifo": "روش لایفو (LIFO - آخرین وارده اولین صادره)",
+            "average": "روش میانگین موزون (Weighted Average)",
+            "compare": "مقایسه جامع سه روش (فایفو، لایفو و میانگین موزون)"
+        }.get(action.method, "روش فایفو و مقایسه جامع")
+
+        low_items = [it for it in prod_evals if it["is_low"]]
+        alert_str = ""
+        if low_items:
+            alert_str = "\n⚠️ **اقلام نیازمند سفارش و شارژ مجدد (زیر ۵ عدد):**\n" + "\n".join(
+                f"• {it['name']}: خرید: **{it['purchased_qty']:.0f}** | فروش: **{it['sold_qty']:.0f}** | مانده: فقط **{it['remaining_qty']:.0f}** عدد"
+                for it in low_items[:10]
+            )
+
+        report_sheet_info = f"\n📑 شیت اختصاصی و مستقل **«{report_sheet_name}»** با کاردکس کامل و فرمول‌های اکسل ایجاد گردید." if action.create_report_sheet else ""
+
+        msg = (
+            f"📦 **گزارش تخصصی ارزش‌گذاری موجودی انبار ({method_title}):**\n\n"
+            f"• تعداد کل ردیف‌های کالا: **{len(prod_evals)}** قلم\n"
+            f"• کل پارت‌های خرید: **{total_all_purchased_qty:,.0f}** عدد به ارزش **{total_all_purchased_cost:,.0f}** تومان\n"
+            f"• کل اقلام فروخته‌شده: **{total_all_sold_qty:,.0f}** عدد\n"
+            f"• کل مانده موجودی فیزیکی انبار: **{total_all_remaining_qty:,.0f}** عدد\n\n"
+            f"📊 **نتایج ارزش‌گذاری موجودی انبار بر اساس روش‌های حسابداری:**\n"
+            f"۱. **روش فایفو (FIFO):**\n"
+            f"   - ارزش کل مانده موجودی: **`{total_fifo_val:,.0f}`** تومان\n"
+            f"   - بهای تمام شده کالای فروش‌رفته (COGS): **`{total_fifo_cogs:,.0f}`** تومان\n\n"
+            f"۲. **روش لایفو (LIFO):**\n"
+            f"   - ارزش کل مانده موجودی: **`{total_lifo_val:,.0f}`** تومان\n"
+            f"   - بهای تمام شده کالای فروش‌رفته (COGS): **`{total_lifo_cogs:,.0f}`** تومان\n\n"
+            f"۳. **روش میانگین موزون (Weighted Average):**\n"
+            f"   - ارزش کل مانده موجودی: **`{total_avg_val:,.0f}`** تومان\n"
+            f"   - بهای تمام شده کالای فروش‌رفته (COGS): **`{total_avg_cogs:,.0f}`** تومان\n\n"
+            f"💡 **تحلیل مالی مدیریتی:**\n"
+            f"در خریدهای بعدی با نرخ‌های متغیر یا افزایشی (تورمی)، روش **فایفو** ارزش بالاتری را برای دارایی انبار ثبت می‌کند و روش **لایفو** بهای تمام شده را افزایش می‌دهد؛ روش **میانگین موزون** تعادل دقیق بین پارت‌های خرید مختلف ایجاد می‌کند.{report_sheet_info}{alert_str}"
+        )
+
+        return ActionResult(
+            success=True,
+            message_persian=msg,
+            data={
+                "fifo_val": total_fifo_val,
+                "lifo_val": total_lifo_val,
+                "avg_val": total_avg_val,
+                "fifo_cogs": total_fifo_cogs,
+                "lifo_cogs": total_lifo_cogs,
+                "avg_cogs": total_avg_cogs,
+                "remaining_qty": total_all_remaining_qty,
+            }
         )
 
     @classmethod

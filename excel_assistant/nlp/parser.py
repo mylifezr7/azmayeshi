@@ -23,6 +23,7 @@ from excel_assistant.nlp.intent_models import (
     FormatCellsAction,
     ApplyFormulaAction,
     AnalyzeSheetAction,
+    AttendanceAction,
     UndoLastAction,
 )
 from excel_assistant.nlp.persian_rules import PersianRuleParser
@@ -49,6 +50,7 @@ ACTION_CLASS_MAP = {
     "format_cells": FormatCellsAction,
     "apply_formula": ApplyFormulaAction,
     "analyze_sheet": AnalyzeSheetAction,
+    "attendance_calculation": AttendanceAction,
     "undo_last_action": UndoLastAction,
 }
 

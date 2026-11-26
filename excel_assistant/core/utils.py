@@ -112,3 +112,28 @@ def hex_to_rgb(hex_code: str) -> Tuple[int, int, int]:
     """Convert hex string e.g. 'FFFF00' to RGB tuple (255, 255, 0)."""
     clean = normalize_hex_color(hex_code)
     return int(clean[0:2], 16), int(clean[2:4], 16), int(clean[4:6], 16)
+
+
+def to_float_safe(v: Union[str, int, float, None], default: float = 0.0) -> float:
+    """
+    Safely converts any value (including Persian/Arabic digits, currencies,
+    thousands separators, percentages) to float. Returns default on error.
+    """
+    if v is None:
+        return default
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    if not s:
+        return default
+    # Convert Persian/Arabic digits
+    persian_to_eng = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    s = s.translate(persian_to_eng)
+    # Remove currency, spaces, Persian separators
+    s = s.replace('تومان', '').replace('ریال', '').replace('،', '').replace('٬', '').replace(',', '')
+    s = s.replace('٫', '.').replace('\u200c', '').replace('\xa0', '').replace('%', '').replace('٪', '').strip()
+    try:
+        return float(s)
+    except ValueError:
+        return default
+

@@ -36,7 +36,7 @@ class HistoryPanel(QFrame):
 
         # Title
         title_lbl = QLabel("📜 تاریخچه دستورات")
-        title_lbl.setStyleSheet("font-weight: bold; color: #CBD5E1; font-size: 13px; margin-bottom: 2px;")
+        title_lbl.setStyleSheet("font-weight: bold; color: #FEF3C7; font-size: 13px; margin-bottom: 2px;")
         layout.addWidget(title_lbl)
 
         # History list
@@ -45,58 +45,58 @@ class HistoryPanel(QFrame):
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.list_widget)
 
-        # 0. Save button: Vibrant Teal / Cyan-Emerald
+        # 0. Save button: Executive Emerald / Forest
         self.btn_save = QPushButton("💾 ذخیره فایل (Save)  [Ctrl+S]")
         self.btn_save.setObjectName("saveButton")
         self.btn_save.setProperty("class", "sidebarActionBtn")
         self.btn_save.setToolTip("ذخیره تغییرات در فایل اکسل: Ctrl+S")
         self.btn_save.setStyleSheet(
             "QPushButton#saveButton {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0F766E, stop:1 #14B8A6);"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #064E3B, stop:1 #059669);"
             "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
-            "  border: 1px solid #2DD4BF; border-radius: 10px;"
+            "  border: 1.5px solid #10B981; border-radius: 10px;"
             "}"
             "QPushButton#saveButton:hover {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #115E59, stop:1 #2DD4BF);"
-            "  border: 1px solid #5EEAD4;"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);"
+            "  border: 1.5px solid #34D399;"
             "}"
-            "QPushButton#saveButton:pressed { background: #134E4A; }"
+            "QPushButton#saveButton:pressed { background: #064E3B; }"
         )
         self.btn_save.clicked.connect(self.save_requested.emit)
         layout.addWidget(self.btn_save)
 
-        # 1. Undo button: Warm Vibrant Orange / Amber
+        # 1. Undo button: Warm Executive Leather / Amber
         self.btn_undo = QPushButton("↩️ لغو آخرین تغییر (Undo)")
         self.btn_undo.setObjectName("undoButton")
         self.btn_undo.setProperty("class", "sidebarActionBtn")
         self.btn_undo.setStyleSheet(
             "QPushButton#undoButton {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #EA580C, stop:1 #FB923C);"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #9A3412, stop:1 #C2410C);"
             "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
-            "  border: 1px solid #F97316; border-radius: 10px;"
+            "  border: 1.5px solid #EA580C; border-radius: 10px;"
             "}"
             "QPushButton#undoButton:hover {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F97316, stop:1 #FDBA74);"
-            "  border: 1px solid #FDBA74;"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #C2410C, stop:1 #F97316);"
+            "  border: 1.5px solid #FDBA74;"
             "}"
-            "QPushButton#undoButton:pressed { background: #C2410C; }"
+            "QPushButton#undoButton:pressed { background: #7C2D12; }"
         )
         self.btn_undo.clicked.connect(self.undo_requested.emit)
         layout.addWidget(self.btn_undo)
 
-        # 2. Arithmetic operations button: Rich Vibrant Emerald Green
+        # 2. Arithmetic operations button: Classic Financial Emerald
         self.btn_arithmetic = QPushButton("🧮 ۴ عمل اصلی ستون‌ها...")
         self.btn_arithmetic.setObjectName("arithmeticButton")
         self.btn_arithmetic.setProperty("class", "sidebarActionBtn")
         self.btn_arithmetic.setStyleSheet(
             "QPushButton#arithmeticButton {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #065F46, stop:1 #047857);"
             "  color: #FFFFFF; font-weight: bold; font-size: 13px; padding: 10px 14px;"
-            "  border: 1px solid #10B981; border-radius: 10px;"
+            "  border: 1.5px solid #10B981; border-radius: 10px;"
             "}"
             "QPushButton#arithmeticButton:hover {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #34D399);"
-            "  border: 1px solid #34D399;"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #059669);"
+            "  border: 1.5px solid #34D399;"
             "}"
             "QPushButton#arithmeticButton:pressed { background: #064E3B; }"
         )

@@ -165,8 +165,27 @@ class ProfitWizardDialog(QDialog):
 
         main_layout.addWidget(p_box)
 
-        # Section 3: Period Selection
-        period_lbl = QLabel("⏱️ ۳. دوره زمانی تفکیک سود:")
+        # Section: Valuation Method
+        method_lbl = QLabel("🏷️ ۳. روش ارزیابی بهای تمام‌شده و انبار:")
+        method_lbl.setStyleSheet("font-weight: bold; color: #10B981; font-size: 12.5px;")
+        main_layout.addWidget(method_lbl)
+
+        self.method_group = QButtonGroup(self)
+        method_layout = QHBoxLayout()
+        self.rb_fifo = QRadioButton("فایفو (FIFO)")
+        self.rb_fifo.setChecked(True)
+        self.rb_lifo = QRadioButton("لایفو (LIFO)")
+        self.rb_avg = QRadioButton("میانگین موزون (Average)")
+
+        for rb in [self.rb_fifo, self.rb_lifo, self.rb_avg]:
+            rb.setStyleSheet("color: #CBD5E1; font-size: 11px;")
+            self.method_group.addButton(rb)
+            method_layout.addWidget(rb)
+            rb.toggled.connect(lambda: self._update_preview())
+        main_layout.addLayout(method_layout)
+
+        # Section 4: Period Selection
+        period_lbl = QLabel("⏱️ ۴. دوره زمانی تفکیک سود:")
         period_lbl.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 12.5px;")
         main_layout.addWidget(period_lbl)
 
@@ -222,22 +241,33 @@ class ProfitWizardDialog(QDialog):
 
         self.btn_cancel = QPushButton("انصراف")
         self.btn_cancel.setStyleSheet(
-            "background-color: #1E293B; color: #E2E8F0; padding: 9px 20px; border-radius: 8px; font-weight: bold; font-size: 12.5px;"
+            "background-color: #1E293B; color: #E2E8F0; padding: 9px 18px; border-radius: 8px; font-weight: bold; font-size: 12px;"
         )
         self.btn_cancel.clicked.connect(self.reject)
 
-        self.btn_submit = QPushButton("محاسبه سود 💵 (تایید)")
+        self.btn_auto = QPushButton("⚡ محاسبه کاملاً خودکار (تشخیص هوشمند)")
+        self.btn_auto.setToolTip("اجرای خودکار بدون نیاز به انتخاب دستی ستون‌ها (دقیقاً مشابه محاسبه حقوق و دستمزد)")
+        self.btn_auto.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #38BDF8); "
+            "color: white; padding: 9px 18px; border-radius: 8px; font-weight: bold; font-size: 12.5px; border: 1px solid #38BDF8;"
+        )
+        self.btn_auto.clicked.connect(self._on_auto_submit)
+
+        self.btn_submit = QPushButton("محاسبه با ستون‌های انتخابی 💵")
         self.btn_submit.setDefault(True)
         self.btn_submit.setAutoDefault(True)
         self.btn_submit.setStyleSheet(
             "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981); "
-            "color: white; padding: 9px 28px; border-radius: 8px; font-weight: bold; font-size: 13px; border: 1px solid #10B981;"
+            "color: white; padding: 9px 22px; border-radius: 8px; font-weight: bold; font-size: 12.5px; border: 1px solid #10B981;"
         )
         self.btn_submit.clicked.connect(self._on_submit)
 
         btn_box.addWidget(self.btn_cancel)
+        btn_box.addWidget(self.btn_auto)
         btn_box.addWidget(self.btn_submit)
         root_layout.addLayout(btn_box)
+
+        self._is_auto = False
 
     def _load_sheets_and_columns(self):
         if not self.manager or not self.manager.is_connected():
@@ -277,15 +307,22 @@ class ProfitWizardDialog(QDialog):
             min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
             best_date_idx = 0
-            best_sales_idx = min(1, max_c - min_c)
+            best_sales_idx = 0
 
-            date_kws = ["تاریخ", "date", "روز", "زمان", "time"]
-            sales_kws = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "فی"]
+            cust_kws = ["مشتری", "خریدار", "طرف حساب", "customer", "client", "فروشنده"]
+            inv_kws = ["شماره فاکتور", "شماره سند", "فاکتور", "invoice", "doc"]
+            disc_kws = ["تخفیف", "discount", "off"]
+            date_kws = ["تاریخ", "date", "زمان", "time"]
+            qty_kws = ["تعداد", "مقدار", "qty", "quantity"]
+            sales_kws = ["مبلغ کل", "مبلغ فروش", "قیمت فروش", "قیمت واحد", "بهای واحد", "فی فروش", "فروش", "درآمد", "قیمت", "مبلغ", "فی", "price", "amount"]
 
             self.combo_date.blockSignals(True)
             self.combo_sales.blockSignals(True)
             self.combo_date.clear()
             self.combo_sales.clear()
+
+            found_date = False
+            found_sales = False
 
             for idx, c in enumerate(range(min_c, max_c + 1)):
                 c_let = col_index_to_letter(c)
@@ -295,8 +332,12 @@ class ProfitWizardDialog(QDialog):
                 self.combo_sales.addItem(label, c_let)
 
                 hdr_l = hdr.lower()
-                if any(k in hdr_l for k in date_kws): best_date_idx = idx
-                if any(k in hdr_l for k in sales_kws): best_sales_idx = idx
+                if not found_date and any(k in hdr_l for k in date_kws) and not any(k in hdr_l for k in qty_kws + disc_kws + inv_kws):
+                    best_date_idx = idx
+                    found_date = True
+                if not found_sales and any(k in hdr_l for k in sales_kws) and not any(k in hdr_l for k in qty_kws + disc_kws + cust_kws + inv_kws):
+                    best_sales_idx = idx
+                    found_sales = True
 
             if self.combo_date.count() > 0:
                 self.combo_date.setCurrentIndex(best_date_idx)
@@ -314,12 +355,14 @@ class ProfitWizardDialog(QDialog):
             sheet = self.manager.get_sheet(sheet_name)
             min_r, min_c, max_r, max_c = sheet.get_used_range_bounds()
 
-            best_purchase_idx = min(2, max_c - min_c)
-            purchase_kws = ["خرید", "هزینه", "بهای تمام شده", "قیمت تمام شده", "cost", "purchase", "قیمت", "مبلغ", "فی"]
+            best_purchase_idx = 0
+            purchase_kws = ["بهای واحد خرید", "قیمت واحد خرید", "بهای خرید", "قیمت خرید", "مبلغ خرید", "فی خرید", "بهای تمام شده", "قیمت تمام شده", "خرید", "بها", "قیمت", "مبلغ", "فی", "cost", "purchase"]
+            qty_kws = ["تعداد", "مقدار", "qty", "quantity"]
 
             self.combo_purchase.blockSignals(True)
             self.combo_purchase.clear()
 
+            found_purch = False
             for idx, c in enumerate(range(min_c, max_c + 1)):
                 c_let = col_index_to_letter(c)
                 hdr = str(sheet.get_value(f"{c_let}1") or "").strip()
@@ -327,7 +370,9 @@ class ProfitWizardDialog(QDialog):
                 self.combo_purchase.addItem(label, c_let)
 
                 hdr_l = hdr.lower()
-                if any(k in hdr_l for k in purchase_kws): best_purchase_idx = idx
+                if not found_purch and any(k in hdr_l for k in purchase_kws) and not any(k in hdr_l for k in qty_kws):
+                    best_purchase_idx = idx
+                    found_purch = True
 
             if self.combo_purchase.count() > 0:
                 self.combo_purchase.setCurrentIndex(best_purchase_idx)
@@ -392,25 +437,32 @@ class ProfitWizardDialog(QDialog):
         elif self.rb_yearly.isChecked():
             period_desc = "📆 تفکیک سود سالانه"
 
+        method_str = "فایفو (FIFO)" if self.rb_fifo.isChecked() else ("لایفو (LIFO)" if self.rb_lifo.isChecked() else "میانگین موزون (Average)")
+
         preview = (
             f"🛒 **فروش ({s_sheet}):** ستون فروش `{s_col}` | ستون تاریخ: `{d_col}`\n"
             f"📦 **خرید ({p_sheet}):** ستون خرید/هزینه `{p_col}`\n"
-            f"💵 **فرمول سود خالص:** `= ({s_sheet}!{s_col}) - ({p_sheet}!{p_col})`\n"
+            f"🏷️ **روش محاسبه بهای تمام‌شده (COGS):** {method_str}\n"
+            f"💵 **فرمول سود ناخالص:** `= فروش خالص - بهای تمام‌شده کالای فروش‌رفته ({method_str})`\n"
             f"⏱️ **دوره تفکیک گزارش:** {period_desc}\n"
             f"📑 ایجاد شیت خروجی: {'بله (شیت اختصاصی «گزارش_سود» با داشبورد و فرمول‌ها)' if self.chk_create_sheet.isChecked() else 'در شیت فعلی'}"
         )
         self.preview_text.setText(preview)
 
+    def _on_auto_submit(self):
+        self._is_auto = True
+        self.accept()
+
     def _on_submit(self):
+        self._is_auto = False
         self.accept()
 
     def get_action(self) -> ProfitCalculationAction:
-        s_sheet = self.combo_s_sheet.currentText() or None
-        p_sheet = self.combo_p_sheet.currentText() or None
-
-        d_col = self.input_date.text().strip().upper() or self.combo_date.currentData() or "A"
-        s_col = self.input_sales.text().strip().upper() or self.combo_sales.currentData() or "B"
-        p_col = self.input_purchase.text().strip().upper() or self.combo_purchase.currentData() or "C"
+        val_method = "fifo"
+        if self.rb_lifo.isChecked():
+            val_method = "lifo"
+        elif self.rb_avg.isChecked():
+            val_method = "average"
 
         period = "all"
         if self.rb_total.isChecked():
@@ -430,13 +482,146 @@ class ProfitWizardDialog(QDialog):
             "total": "کل"
         }.get(period, "روزانه، ماهانه، سالانه و کل")
 
+        if getattr(self, "_is_auto", False):
+            return ProfitCalculationAction(
+                sales_sheet=None,
+                purchase_sheet=None,
+                date_col=None,
+                sales_col=None,
+                purchase_col=None,
+                valuation_method=val_method,
+                period=period,
+                create_report_sheet=self.chk_create_sheet.isChecked(),
+                description_persian=f"محاسبه هوشمند سود {period_fa} به روش {val_method} (تشخیص خودکار شیت‌ها و ستون‌ها)"
+            )
+
+        s_sheet = self.combo_s_sheet.currentText() or None
+        p_sheet = self.combo_p_sheet.currentText() or None
+
+        d_col = self.input_date.text().strip().upper() or self.combo_date.currentData() or "A"
+        s_col = self.input_sales.text().strip().upper() or self.combo_sales.currentData() or "B"
+        p_col = self.input_purchase.text().strip().upper() or self.combo_purchase.currentData() or "C"
+
         return ProfitCalculationAction(
             sales_sheet=s_sheet,
             purchase_sheet=p_sheet,
             date_col=d_col,
             sales_col=s_col,
             purchase_col=p_col,
+            valuation_method=val_method,
             period=period,
             create_report_sheet=self.chk_create_sheet.isChecked(),
-            description_persian=f"محاسبه سود {period_fa} (فروش {s_sheet} ستون {s_col} منهای خرید {p_sheet} ستون {p_col} بر اساس تاریخ {d_col})"
+            description_persian=f"محاسبه سود {period_fa} با روش {val_method} (فروش {s_sheet} ستون {s_col} منهای خرید {p_sheet} ستون {p_col} بر اساس تاریخ {d_col})"
         )
+
+
+class ProfitMethodSelectorDialog(QDialog):
+    """Fast, modern RTL dialog for selecting FIFO, LIFO, or Weighted Average valuation method with 1 click."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setWindowTitle("🏷️ انتخاب روش محاسبه بهای تمام‌شده و سود")
+        self.resize(520, 440)
+        self.setMinimumSize(460, 400)
+        self.setLayoutDirection(Qt.RightToLeft)
+        self.selected_method = "fifo"
+        self.open_advanced = False
+
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(12)
+
+        title = QLabel("🏷️ انتخاب روش محاسبه بهای تمام‌شده و سود")
+        title.setStyleSheet("font-size: 15px; font-weight: bold; color: #10B981;")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "سیستم به صورت خودکار ستون‌های فروش، خرید، تعداد، فی و تخفیفات را تشخیص می‌دهد.\n"
+            "لطفاً روش مورد نظر برای ارزش‌گذاری اقلام فروش‌رفته (COGS) و انبار را انتخاب کنید:"
+        )
+        desc.setStyleSheet("font-size: 12px; color: #CBD5E1; line-height: 1.5;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # 1. FIFO button
+        self.btn_fifo = QPushButton("🟢 ۱. روش فایفو (FIFO) - اولین وارده، اولین صادره\n   (استاندارد رسمی حسابداری - خریدهای قدیمی‌تر ابتدا فروخته می‌شوند)")
+        self.btn_fifo.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #064E3B, stop:1 #047857);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #10B981; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #059669; border-color: #34D399; }"
+        )
+        self.btn_fifo.clicked.connect(lambda: self._choose("fifo"))
+        layout.addWidget(self.btn_fifo)
+
+        # 2. LIFO button
+        self.btn_lifo = QPushButton("🔵 ۲. روش لایفو (LIFO) - آخرین وارده، اولین صادره\n   (مناسب شرایط تورمی - آخرین خریدهای گران‌تر ابتدا منظور می‌شوند)")
+        self.btn_lifo.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1D4ED8);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #3B82F6; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #2563EB; border-color: #60A5FA; }"
+        )
+        self.btn_lifo.clicked.connect(lambda: self._choose("lifo"))
+        layout.addWidget(self.btn_lifo)
+
+        # 3. Average button
+        self.btn_avg = QPushButton("🟣 ۳. روش میانگین موزون (Weighted Average)\n   (محاسبه میانگین موزون قیمت تمام خریدهای انبار)")
+        self.btn_avg.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #581C87, stop:1 #7E22CE);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #A855F7; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #9333EA; border-color: #C084FC; }"
+        )
+        self.btn_avg.clicked.connect(lambda: self._choose("average"))
+        layout.addWidget(self.btn_avg)
+
+        # 4. Compare button
+        self.btn_compare = QPushButton(
+            "⚖️ ۴. مقایسه تطبیقی هر سه روش (فایفو vs لایفو vs میانگین موزون)\n"
+            "   (تحلیل اثر تورم بر بهای تمام‌شده، سود ناخالص، صرفه‌جویی مالیاتی و موجودی انبار)"
+        )
+        self.btn_compare.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0F766E, stop:1 #0284C7);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #38BDF8; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #0369A1; border-color: #7DD3FC; }"
+        )
+        self.btn_compare.clicked.connect(lambda: self._choose("compare"))
+        layout.addWidget(self.btn_compare)
+
+        # Footer
+        footer_layout = QHBoxLayout()
+        self.btn_advanced = QPushButton("⚙️ تنظیمات دستی ستون‌ها...")
+        self.btn_advanced.setStyleSheet("background: transparent; color: #94A3B8; text-decoration: underline; border: none; font-size: 11.5px;")
+        self.btn_advanced.clicked.connect(self._on_advanced)
+
+        self.btn_cancel = QPushButton("انصراف")
+        self.btn_cancel.setStyleSheet("background: #1E293B; color: #E2E8F0; padding: 7px 16px; border-radius: 7px; font-size: 12px;")
+        self.btn_cancel.clicked.connect(self.reject)
+
+        footer_layout.addWidget(self.btn_advanced)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.btn_cancel)
+        layout.addLayout(footer_layout)
+
+    def _choose(self, method: str):
+        self.selected_method = method
+        self.open_advanced = False
+        self.accept()
+
+    def _on_advanced(self):
+        self.open_advanced = True
+        self.accept()
+

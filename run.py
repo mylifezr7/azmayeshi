@@ -28,8 +28,29 @@ def ensure_windows_excel_dependencies():
                 print("pip install xlwings\n")
 
 
+def ensure_windows_gui_dependencies():
+    """Ensures PySide6 is installed for desktop GUI."""
+    if "--gui" in sys.argv or len(sys.argv) == 1:
+        try:
+            import PySide6
+        except ImportError:
+            print("\n" + "=" * 60)
+            print("⏳ در حال نصب پکیج گرافیکی PySide6 برای باز شدن پنجره دسکتاپ...")
+            print("=" * 60)
+            try:
+                import subprocess
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "PySide6"])
+                print("✅ پکیج گرافیکی PySide6 نصب شد! در حال باز کردن پنجره...\n")
+            except Exception as e:
+                print(f"⚠️ نصب خودکار با خطا مواجه شد: {e}")
+
+
 if __name__ == "__main__":
-    ensure_windows_excel_dependencies()
+    if "--no-excel" not in sys.argv:
+        ensure_windows_excel_dependencies()
+
+    if "--web" not in sys.argv and "--cli" not in sys.argv:
+        ensure_windows_gui_dependencies()
 
     from excel_assistant.main import main
 

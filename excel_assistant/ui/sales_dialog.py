@@ -156,22 +156,33 @@ class SalesSummaryWizardDialog(QDialog):
 
         self.btn_cancel = QPushButton("انصراف")
         self.btn_cancel.setStyleSheet(
-            "background-color: #1E293B; color: #E2E8F0; padding: 9px 20px; border-radius: 8px; font-weight: bold; font-size: 12.5px;"
+            "background-color: #1E293B; color: #E2E8F0; padding: 9px 18px; border-radius: 8px; font-weight: bold; font-size: 12px;"
         )
         self.btn_cancel.clicked.connect(self.reject)
 
-        self.btn_submit = QPushButton("محاسبه و ایجاد گزارش 📈 (تایید)")
+        self.btn_auto = QPushButton("⚡ محاسبه کاملاً خودکار (تشخیص هوشمند)")
+        self.btn_auto.setToolTip("اجرای خودکار بدون نیاز به انتخاب دستی ستون‌ها (دقیقاً مشابه محاسبه حقوق و دستمزد)")
+        self.btn_auto.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #38BDF8); "
+            "color: white; padding: 9px 18px; border-radius: 8px; font-weight: bold; font-size: 12.5px; border: 1px solid #38BDF8;"
+        )
+        self.btn_auto.clicked.connect(self._on_auto_submit)
+
+        self.btn_submit = QPushButton("محاسبه با ستون انتخابی 📈")
         self.btn_submit.setDefault(True)
         self.btn_submit.setAutoDefault(True)
         self.btn_submit.setStyleSheet(
             "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981); "
-            "color: white; padding: 9px 28px; border-radius: 8px; font-weight: bold; font-size: 13px; border: 1px solid #10B981;"
+            "color: white; padding: 9px 22px; border-radius: 8px; font-weight: bold; font-size: 12.5px; border: 1px solid #10B981;"
         )
         self.btn_submit.clicked.connect(self._on_submit)
 
         btn_box.addWidget(self.btn_cancel)
+        btn_box.addWidget(self.btn_auto)
         btn_box.addWidget(self.btn_submit)
         root_layout.addLayout(btn_box)
+
+        self._is_auto = False
 
     def _load_sheet_columns(self):
         if not self.manager or not self.manager.is_connected():
@@ -184,7 +195,13 @@ class SalesSummaryWizardDialog(QDialog):
         best_amount_idx = min(1, max_c - min_c)
 
         date_keywords = ["تاریخ", "date", "روز", "زمان", "time", "day", "month"]
-        amount_keywords = ["فروش", "مبلغ", "درآمد", "قیمت", "sales", "amount", "price", "total", "جمع"]
+        total_keywords = ["مبلغ کل", "مبلغ فروش", "جمع کل", "مبلغ فاکتور", "مبلغ نهایی", "کل فروش", "total"]
+        general_amount_keywords = ["مبلغ", "فروش", "درآمد", "sales", "amount"]
+        unit_price_keywords = ["قیمت واحد", "بهای واحد", "فی", "نرخ", "unit price"]
+
+        found_total_idx = None
+        found_gen_idx = None
+        found_unit_idx = None
 
         items = []
         for idx, c in enumerate(range(min_c, max_c + 1)):
@@ -198,8 +215,19 @@ class SalesSummaryWizardDialog(QDialog):
             hdr_lower = header_val.lower()
             if any(k in hdr_lower for k in date_keywords):
                 best_date_idx = idx
-            if any(k in hdr_lower for k in amount_keywords):
-                best_amount_idx = idx
+            if found_total_idx is None and any(k in hdr_lower for k in total_keywords):
+                found_total_idx = idx
+            elif found_gen_idx is None and any(k in hdr_lower for k in general_amount_keywords) and not any(k in hdr_lower for k in unit_price_keywords):
+                found_gen_idx = idx
+            elif found_unit_idx is None and any(k in hdr_lower for k in unit_price_keywords):
+                found_unit_idx = idx
+
+        if found_total_idx is not None:
+            best_amount_idx = found_total_idx
+        elif found_gen_idx is not None:
+            best_amount_idx = found_gen_idx
+        elif found_unit_idx is not None:
+            best_amount_idx = found_unit_idx
 
         self.combo_date.blockSignals(True)
         self.combo_amount.blockSignals(True)
@@ -283,13 +311,19 @@ class SalesSummaryWizardDialog(QDialog):
         }.get(period, "گزارش فروش")
 
         preview = (
-            f"📌 ستون تاریخ: `{d_col}` | ستون مبلغ فروش: `{a_col}`\n"
+            f"📌 ستون تاریخ: `{d_col}` | ستون مبلغ/قیمت فروش: `{a_col}`\n"
+            f"💡 **نحوه محاسبه:** در صورت انتخاب ستون قیمت واحد، سیستم خودکار مبلغ واقعی فروش را از حاصل‌ضرب تعداد در قیمت با کسر تخفیفات محاسبه می‌کند.\n"
             f"📊 دوره گزارش: **{period_desc}**\n"
             f"📑 ایجاد شیت خروجی: {'بله (شیت «گزارش_فروش» با جداول تحلیلی)' if self.chk_create_sheet.isChecked() else 'در شیت فعلی'}"
         )
         self.preview_text.setText(preview)
 
+    def _on_auto_submit(self):
+        self._is_auto = True
+        self.accept()
+
     def _on_submit(self):
+        self._is_auto = False
         d_col, a_col = self._get_active_columns()
         if not d_col or not a_col:
             QMessageBox.warning(self, "خطا", "لطفاً ستون تاریخ و ستون مبلغ فروش را مشخص کنید.")
@@ -301,7 +335,6 @@ class SalesSummaryWizardDialog(QDialog):
         self.accept()
 
     def get_action(self) -> SalesSummaryAction:
-        d_col, a_col = self._get_active_columns()
         period = self._get_period()
         create_sheet = self.chk_create_sheet.isChecked()
 
@@ -312,6 +345,17 @@ class SalesSummaryWizardDialog(QDialog):
             "monthly": "ماهانه",
             "yearly": "سالانه"
         }.get(period, "جامع")
+
+        if getattr(self, "_is_auto", False):
+            return SalesSummaryAction(
+                date_col=None,
+                amount_col=None,
+                period=period,
+                create_report_sheet=create_sheet,
+                description_persian=f"محاسبه هوشمند و گزارش فروش {period_fa} (تشخیص خودکار ستون‌ها)"
+            )
+
+        d_col, a_col = self._get_active_columns()
 
         return SalesSummaryAction(
             date_col=d_col,

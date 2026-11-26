@@ -120,3 +120,31 @@ def test_sheet_not_found():
     with pytest.raises(SheetNotFoundError):
         manager.get_sheet("NonExistentSheetXYZ")
     manager.close()
+
+
+def test_to_float_safe_persian_and_formats():
+    from excel_assistant.core.utils import to_float_safe
+    assert to_float_safe(100) == 100.0
+    assert to_float_safe("۲۳,۰۰۰ تومان") == 23000.0
+    assert to_float_safe("۵۵٬۲۰۰") == 55200.0
+    assert to_float_safe("3,500,000 ریال") == 3500000.0
+    assert to_float_safe("۱۲٫۵") == 12.5
+    assert to_float_safe("۲۰٪") == 20.0
+    assert to_float_safe(None) == 0.0
+    assert to_float_safe("invalid", default=99.0) == 99.0
+
+
+def test_openpyxl_csv_support():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_file = os.path.join(tmpdir, "data.csv")
+        with open(csv_file, "w", encoding="utf-8") as f:
+            f.write("کالا,تعداد,قیمت\nسیب,10,2000\nپرتقال,5,3000\n")
+
+        driver = OpenpyxlDriver()
+        driver.connect(csv_file)
+        assert driver.is_connected()
+        sheet = driver.get_active_sheet()
+        assert sheet.get_value("A1") == "کالا"
+        assert sheet.get_value("B2") == "10"
+        driver.close()
+

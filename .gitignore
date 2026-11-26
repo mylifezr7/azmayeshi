@@ -3,6 +3,10 @@ __pycache__/
 *.pyo
 .pytest_cache/
 *.xlsx
+!sample_test_data.xlsx
+!Challenge_3_Accounting.xlsx
+!Challenge_4_Accounting.xlsx
+!Challenge_5_Accounting.xlsx
 *.egg-info/
 build/
 dist/

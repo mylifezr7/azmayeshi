@@ -20,27 +20,54 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel AI Assistant - MIYUM</title>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <title>Excel AI Assistant - MUYUM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&family=Sahel:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        @font-face {
+            font-family: 'Sahel';
+            src: url('/resources/Sahel.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Sahel';
+            src: url('/resources/Sahel-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('/resources/Vazirmatn-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('/resources/Vazirmatn-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+
         :root {
-            --bg-deep: #020617;
-            --bg-card: #081026;
-            --border-blue: #1D4ED8;
-            --border-subtle: #132247;
+            --bg-deep: #031412;
+            --bg-card: #051A18;
+            --border-blue: #0D9488;
+            --border-subtle: #0F3A34;
             --text-light: #F8FAFC;
             --text-muted: #94A3B8;
-            --user-bubble: rgba(14, 30, 68, 0.92);
-            --ai-bubble: rgba(8, 16, 38, 0.88);
-            --accent-cyan: #38BDF8;
-            --accent-blue: #2563EB;
+            --user-bubble: rgba(6, 36, 30, 0.95);
+            --ai-bubble: rgba(3, 20, 18, 0.92);
+            --accent-cyan: #2DD4BF;
+            --accent-blue: #0D9488;
+            --accent-gold: #F59E0B;
+            --accent-emerald: #10B981;
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Sahel', 'Vazirmatn', 'B Nazanin', 'IRANSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, serif;
         }
 
         body {
@@ -54,8 +81,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         /* Top Header */
         header {
-            background: linear-gradient(90deg, #09132B, #04091A);
-            border-bottom: 2px solid var(--border-blue);
+            background: linear-gradient(180deg, #062226 0%, #0B192C 50%, #030A16 100%);
+            border-bottom: 2px solid #D97706;
             padding: 10px 20px;
             display: flex;
             justify-content: space-between;
@@ -71,9 +98,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .user-badge {
-            background: linear-gradient(135deg, #08132B, #0E224F);
-            color: var(--accent-cyan);
-            border: 1.5px solid var(--accent-blue);
+            background: linear-gradient(135deg, #78350F, #B45309, #D97706);
+            color: #FEF3C7;
+            border: 1.5px solid #F59E0B;
             font-weight: 800;
             padding: 5px 16px;
             border-radius: 14px;
@@ -82,7 +109,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             gap: 6px;
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
         }
 
         .status-pill {
@@ -541,6 +568,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 0 14px rgba(251, 113, 133, 0.7);
         }
 
+        .modal-card-cogs {
+            border: 1.5px solid #059669;
+            box-shadow: 0 12px 45px rgba(5, 150, 105, 0.45);
+        }
+        .modal-title-cogs {
+            color: #34D399;
+        }
+        .radio-option-cogs {
+            padding: 9px 12px;
+            border-radius: 9px;
+            background: rgba(4, 9, 26, 0.75);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            transition: all 0.15s;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .radio-option-cogs:hover {
+            background: rgba(6, 78, 59, 0.35);
+            border-color: #10B981;
+            transform: translateX(-2px);
+        }
+        .btn-modal-submit-cogs {
+            background: linear-gradient(90deg, #059669, #10B981);
+            color: #FFFFFF;
+            border: 1px solid #10B981;
+            padding: 8px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 700;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        .btn-modal-submit-cogs:hover {
+            background: linear-gradient(90deg, #047857, #059669);
+            box-shadow: 0 0 14px rgba(52, 211, 153, 0.7);
+        }
+
         /* Center: Chat Area with Background Wallpaper */
         .chat-section {
             flex: 3;
@@ -581,14 +647,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .message-user {
             align-self: flex-start;
             background-color: var(--user-bubble);
-            border: 1.5px solid var(--accent-blue);
+            border: 1.5px solid #0D9488;
             border-top-right-radius: 2px;
         }
 
         .message-ai {
             align-self: flex-end;
             background-color: var(--ai-bubble);
-            border: 1.5px solid var(--border-blue);
+            border: 1.5px solid #D97706;
             border-top-left-radius: 2px;
         }
 
@@ -692,6 +758,130 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 4px 14px rgba(16, 185, 129, 0.5);
         }
 
+        /* Command Search Bar & Suggestion Dropdown */
+        .search-bar-wrapper {
+            position: relative;
+            padding: 8px 18px;
+            background: rgba(3, 16, 14, 0.95);
+            border-top: 1px solid rgba(16, 185, 129, 0.25);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+        }
+
+        .search-input-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .search-icon-symbol {
+            position: absolute;
+            right: 14px;
+            font-size: 15px;
+            color: #10B981;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .search-input-field {
+            width: 100%;
+            background-color: #031412;
+            border: 2px solid #0F766E;
+            color: #FFFFFF;
+            padding: 8px 40px 8px 40px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            outline: none;
+            font-family: inherit;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        }
+
+        .search-input-field:focus {
+            border-color: #10B981;
+            background-color: #04201C;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+        }
+
+        .clear-search-btn {
+            position: absolute;
+            left: 12px;
+            background: #1E293B;
+            border: 1px solid #334155;
+            color: #94A3B8;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            transition: all 0.2s;
+            z-index: 2;
+        }
+
+        .clear-search-btn:hover {
+            background: #EF4444;
+            color: #FFFFFF;
+            border-color: #F87171;
+        }
+
+        .search-results-popup {
+            position: absolute;
+            bottom: 100%;
+            right: 18px;
+            left: 18px;
+            margin-bottom: 6px;
+            background: #031412;
+            border: 2px solid #10B981;
+            border-radius: 12px;
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
+        }
+
+        .search-result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: #E2E8F0;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(15, 118, 110, 0.25);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover, .search-result-item.active {
+            background: #047857;
+            color: #FFFFFF;
+            transform: translateX(-2px);
+        }
+
+        .search-result-category {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(6, 78, 59, 0.6);
+            color: #6EE7B7;
+            border: 1px solid #059669;
+            font-weight: bold;
+        }
+
         .chip {
             background-color: rgba(10, 20, 42, 0.85);
             border: 1px solid var(--border-blue);
@@ -714,11 +904,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         /* Input Area */
         .input-bar {
+            position: relative;
             padding: 12px 18px;
             background: linear-gradient(180deg, #09132B, #04091A);
             display: flex;
             gap: 10px;
             border-top: 1px solid var(--border-subtle);
+            z-index: 950;
+        }
+
+        .chat-input-popup {
+            position: absolute;
+            bottom: 100%;
+            right: 18px;
+            left: 18px;
+            margin-bottom: 6px;
+            background: #031412;
+            border: 2px solid #10B981;
+            border-radius: 12px;
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
+            max-height: 260px;
+            overflow-y: auto;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
         }
 
         .input-bar input {
@@ -828,7 +1038,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Top Header -->
     <header>
         <div class="header-right">
-            <span class="user-badge">M MIYUM</span>
+            <span class="user-badge">M MUYUM</span>
             <div class="status-pill" id="statusPill"><span class="dot">🟢</span> Microsoft Excel 2024 (COM)</div>
             <button class="btn-open-file" onclick="promptOpenFile()">📂 باز کردن فایل اکسل...</button>
         </div>
@@ -849,12 +1059,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <button class="btn-shortcut btn-save" onclick="saveWorkbook()">💾 ذخیره فایل (Save)... <span class="hotkey-badge">Ctrl+S</span></button>
             <button class="btn-shortcut btn-undo" onclick="sendCommand('لغو آخرین عملیات')">↩️ لغو آخرین تغییر (Undo)</button>
+            <button class="btn-shortcut btn-profit" onclick="openCogsModal()">🏷️ بهای تمام شده (COGS)...</button>
+            <button class="btn-shortcut btn-profit" onclick="openProfitModal()">💵 محاسبه سود (فایفو/لایفو)... <span class="hotkey-badge">Ctrl+P</span></button>
             <button class="btn-shortcut btn-arithmetic" onclick="promptArithmetic('add')">🧮 ۴ عمل اصلی ستون‌ها...</button>
         </div>
 
         <!-- Chat Panel with Wallpaper Backdrop -->
         <div class="chat-section">
             <div class="chat-messages" id="chatFeed"></div>
+
+            <!-- Command Search Bar with Instant Suggestions (جستجوی هوشمند قابلیت‌ها) -->
+            <div class="search-bar-wrapper">
+                <div class="search-input-box">
+                    <span class="search-icon-symbol">🔍</span>
+                    <input type="text" id="cmdSearchInput" class="search-input-field"
+                           placeholder="جستجوی سریع قابلیت‌ها (مثلاً: سود، سود سالانه، کارکرد، فروش، فیلتر)..."
+                           oninput="onSearchQueryChanged(this.value)"
+                           onkeydown="onSearchKeyDown(event)"
+                           autocomplete="off" />
+                    <button id="clearSearchBtn" class="clear-search-btn" onclick="clearSearchInput()" style="display: none;">✕</button>
+                </div>
+                <!-- Dropdown Popup for Realtime Results -->
+                <div id="searchResultsPopup" class="search-results-popup" style="display: none;"></div>
+            </div>
 
             <!-- Quick Action Cascading Selector (5 Categories) -->
             <div class="chips-bar">
@@ -879,9 +1106,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Input Bar -->
             <div class="input-bar">
-                <input type="text" id="commandInput" placeholder="دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن و در C بنویس)" onkeydown="if(event.key==='Enter') sendInput();">
+                <input type="text" id="commandInput"
+                       placeholder="دستور خود را به زبان فارسی وارد کنید... (مثلاً: محاسبه بهای تمام شده، سود سالانه، کارکرد، فروش)"
+                       oninput="onChatInputChanged(this.value)"
+                       onkeydown="onChatInputKeyDown(event);"
+                       autocomplete="off">
                 <button class="btn-send" onclick="sendInput()">ارسال دستور ✈️</button>
                 <button class="btn-stop" onclick="cancelAction()">توقف ⏹</button>
+                <div id="chatInputPopup" class="chat-input-popup" style="display: none;"></div>
             </div>
         </div>
 
@@ -1020,6 +1252,68 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- In-App Interactive Modal: COGS Method Selector (انتخاب روش بهای تمام شده) -->
+    <div class="modal-overlay" id="cogsModalOverlay" style="display: none;" onclick="if(event.target===this) closeCogsModal()">
+        <div class="modal-card modal-card-cogs">
+            <div class="modal-header">
+                <span class="modal-title modal-title-cogs">🏷️ انتخاب روش محاسبه بهای تمام شده کالای فروش رفته (COGS)</span>
+                <button class="modal-close" onclick="closeCogsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 12.5px; color: #CBD5E1; line-height: 1.6;">
+                    سیستم به صورت خودکار مقادیر انبار، خریدها و فاکتورها را بررسی می‌کند.<br>
+                    لطفاً روش مورد نظر خود را برای محاسبه بهای تمام شده انتخاب کنید:
+                </p>
+
+                <div class="modal-radios">
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('fifo')">
+                        <input type="radio" name="cogsMethodRadio" value="fifo" checked>
+                        <div>
+                            <strong style="color: #34D399;">🟢 ۱. روش فایفو (FIFO) - اولین وارده، اولین صادره</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">خریدهای قدیمی‌تر ابتدا منظور می‌شوند (بهای تمام شده کمتر و سود دفتری بالاتر در شرایط تورم)</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('lifo')">
+                        <input type="radio" name="cogsMethodRadio" value="lifo">
+                        <div>
+                            <strong style="color: #60A5FA;">🔵 ۲. روش لایفو (LIFO) - آخرین وارده، اولین صادره</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">خریدهای جدیدتر و گران‌تر ابتدا منظور می‌شوند (صرفه‌جویی مالیاتی در زمان تورم)</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('average')">
+                        <input type="radio" name="cogsMethodRadio" value="average">
+                        <div>
+                            <strong style="color: #C084FC;">🟣 ۳. روش میانگین موزون (Weighted Average)</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">محاسبه میانگین موزون بهای خرید کالاها و تعدیل نوسانات قیمت</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('compare')">
+                        <input type="radio" name="cogsMethodRadio" value="compare">
+                        <div>
+                            <strong style="color: #38BDF8;">⚖️ ۴. مقایسه تطبیقی هر سه روش (فایفو vs لایفو vs میانگین)</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">تحلیل جامع و همزمان اثر روش‌ها روی سود ناخالص، بهای تمام شده و مالیات</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-option radio-option-cogs" onclick="selectCogsMethodRadio('periodic')">
+                        <input type="radio" name="cogsMethodRadio" value="periodic">
+                        <div>
+                            <strong style="color: #FBBF24;">🏢 ۵. صورت استاندارد ادواری حسابداری (فرمول جامع)</strong>
+                            <div style="font-size: 11px; color: #94A3B8;">موجودی اول دوره + خرید خالص منهای موجودی پایان دوره = بهای تمام شده</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" onclick="closeCogsModal()">انصراف</button>
+                <button class="btn-modal-submit-cogs" onclick="submitCogsModal()">محاسبه بهای تمام شده 🚀</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         async function fetchStatus() {
             try {
@@ -1073,6 +1367,107 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        const ACCOUNTING_KEYWORDS_MAP = {
+            'صورت سود و زیان جامع': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'صورت سود و زیان': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود و زیان': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود ناخالص': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود خالص': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'سود عملیاتی': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'پرسودترین': 'background: rgba(6, 78, 59, 0.35); color: #34D399; border: 1px solid #10B981;',
+            'سود': 'background: rgba(6, 78, 59, 0.4); color: #34D399; border: 1px solid #10B981;',
+            'زیان ناخالص': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
+            'زیان خالص': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
+            'زیان': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
+            'میانگین موزون': 'background: rgba(88, 28, 135, 0.45); color: #E9D5FF; border: 1px solid #A855F7;',
+            'میانگین': 'background: rgba(88, 28, 135, 0.4); color: #DDD6FE; border: 1px solid #A855F7;',
+            'فایفو': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #10B981;',
+            'لایفو': 'background: rgba(30, 58, 138, 0.45); color: #93C5FD; border: 1px solid #3B82F6;',
+            'FIFO': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #10B981;',
+            'LIFO': 'background: rgba(30, 58, 138, 0.45); color: #93C5FD; border: 1px solid #3B82F6;',
+            'ترازنامه': 'background: rgba(120, 53, 15, 0.45); color: #FDE68A; border: 1px solid #D97706;',
+            'صورت وضعیت مالی': 'background: rgba(120, 53, 15, 0.45); color: #FDE68A; border: 1px solid #D97706;',
+            'تراز آزمایشی': 'background: rgba(120, 53, 15, 0.4); color: #FDE68A; border: 1px solid #D97706;',
+            'تراز است': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'تراز': 'background: rgba(120, 53, 15, 0.35); color: #FDE68A; border: 1px solid #B45309;',
+            'فروش خالص': 'background: rgba(4, 120, 87, 0.4); color: #A7F3D0; border: 1px solid #059669;',
+            'برگشت از فروش': 'background: rgba(159, 18, 57, 0.4); color: #FECDD3; border: 1px solid #BE123C;',
+            'پرفروش‌ترین': 'background: rgba(4, 120, 87, 0.35); color: #6EE7B7; border: 1px solid #047857;',
+            'فروش': 'background: rgba(4, 120, 87, 0.4); color: #6EE7B7; border: 1px solid #059669;',
+            'بهای تمام شده': 'background: rgba(146, 64, 14, 0.45); color: #FDE047; border: 1px solid #D97706;',
+            'بهای تمام‌شده': 'background: rgba(146, 64, 14, 0.45); color: #FDE047; border: 1px solid #D97706;',
+            'COGS': 'background: rgba(146, 64, 14, 0.45); color: #FDE047; border: 1px solid #D97706;',
+            'برگشت از خرید': 'background: rgba(194, 65, 12, 0.4); color: #FED7AA; border: 1px solid #C2410C;',
+            'خرید': 'background: rgba(194, 65, 12, 0.4); color: #FED7AA; border: 1px solid #EA580C;',
+            'کاردکس انبار': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'موجودی انبار': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'انبارگردانی': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'کاردکس': 'background: rgba(91, 33, 182, 0.4); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'موجودی کالا': 'background: rgba(91, 33, 182, 0.35); color: #DDD6FE; border: 1px solid #7C3AED;',
+            'انبار': 'background: rgba(91, 33, 182, 0.35); color: #C4B5FD; border: 1px solid #6D28D9;',
+            'حقوق و دستمزد': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'فیش حقوقی': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'فیش حقوق': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'حقوق': 'background: rgba(3, 105, 161, 0.35); color: #BAE6FD; border: 1px solid #0284C7;',
+            'دستمزد': 'background: rgba(3, 105, 161, 0.35); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ورود و خروج': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'ورود خروج': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'حضور و غیاب': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'حضور غیاب': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'تایم شیت': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'تایمشیت': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'تایم‌شیت': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'ساعت کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعات کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعت کاری': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعات کاری': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعت کار': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'اضافه‌کاری': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'اضافه کاری': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'اضافه‌کار': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'اضافه کار': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'کسری کار': 'background: rgba(194, 65, 12, 0.45); color: #FED7AA; border: 1px solid #EA580C;',
+            'مرخصی': 'background: rgba(30, 64, 175, 0.4); color: #BFDBFE; border: 1px solid #2563EB;',
+            'تأخیرات': 'background: rgba(185, 28, 28, 0.4); color: #FECACA; border: 1px solid #DC2626;',
+            'تأخیر': 'background: rgba(185, 28, 28, 0.4); color: #FECACA; border: 1px solid #DC2626;',
+            'تاخیر': 'background: rgba(185, 28, 28, 0.4); color: #FECACA; border: 1px solid #DC2626;',
+            'استهلاک انباشته': 'background: rgba(161, 98, 7, 0.4); color: #FEF08A; border: 1px solid #CA8A04;',
+            'استهلاک': 'background: rgba(161, 98, 7, 0.4); color: #FEF08A; border: 1px solid #CA8A04;',
+            'دارایی ثابت': 'background: rgba(15, 118, 110, 0.4); color: #99F6E4; border: 1px solid #0D9488;',
+            'دارایی': 'background: rgba(15, 118, 110, 0.35); color: #99F6E4; border: 1px solid #0D9488;',
+            'بدهی': 'background: rgba(185, 28, 28, 0.35); color: #FECACA; border: 1px solid #DC2626;',
+            'سرمایه': 'background: rgba(180, 83, 9, 0.4); color: #FDE68A; border: 1px solid #D97706;',
+            'صورت مغایرت': 'background: rgba(2, 132, 199, 0.4); color: #7DD3FC; border: 1px solid #0284C7;',
+            'مغایرت بانکی': 'background: rgba(2, 132, 199, 0.4); color: #7DD3FC; border: 1px solid #0284C7;',
+            'بانک': 'background: rgba(2, 132, 199, 0.35); color: #7DD3FC; border: 1px solid #0284C7;',
+            'ارزش افزوده': 'background: rgba(30, 64, 175, 0.4); color: #BFDBFE; border: 1px solid #2563EB;',
+            'مالیات': 'background: rgba(30, 64, 175, 0.4); color: #BFDBFE; border: 1px solid #2563EB;',
+            'بیمه': 'background: rgba(6, 95, 70, 0.4); color: #A7F3D0; border: 1px solid #059669;'
+        };
+
+        function formatAccountingText(text) {
+            if (!text) return "";
+            let escaped = String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+            const sortedKeys = Object.keys(ACCOUNTING_KEYWORDS_MAP).sort((a, b) => b.length - a.length);
+            const delimPattern = '[^\\s\\(\\)\\[\\]{}،؛:\\.,!?«»\\-–—\\*\\`\\\'\\"\\u200c]';
+            const pat = new RegExp('(?<!' + delimPattern + ')(' + sortedKeys.map(k => k.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&')).join('|') + ')(?!' + delimPattern + ')', 'g');
+
+            escaped = escaped.replace(pat, (match) => {
+                const style = ACCOUNTING_KEYWORDS_MAP[match];
+                return `<span class="acc-pill" style="${style} padding: 1px 6px; border-radius: 4px; font-weight: bold; margin: 0 2px; display: inline-block;">${match}</span>`;
+            });
+
+            escaped = escaped.replace(/\\*\\*(.+?)\\*\\*/g, '<b>$1</b>');
+            escaped = escaped.replace(/`(.+?)`/g, '<code style="background: rgba(6, 78, 59, 0.5); color: #FCD34D; border: 1px solid #D97706; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace;">$1</code>');
+            escaped = escaped.replace(/\\n/g, '<br>');
+            return escaped;
+        }
+
         function appendMessage(sender, text, isConfirm = false) {
             const feed = document.getElementById('chatFeed');
             const bubble = document.createElement('div');
@@ -1080,11 +1475,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const tag = document.createElement('div');
             tag.className = 'sender-tag';
-            tag.innerText = sender === 'user' ? '👤 MIYUM' : '🤖 دستیار هوشمند Microsoft Excel';
+            tag.innerText = sender === 'user' ? '👤 MUYUM' : '🤖 دستیار هوشمند Microsoft Excel';
             bubble.appendChild(tag);
 
             const content = document.createElement('div');
-            content.innerText = text;
+            content.innerHTML = formatAccountingText(text);
             bubble.appendChild(content);
 
             if (isConfirm) {
@@ -1152,7 +1547,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptPreventDuplicates() {
-            const mode = confirm("مدیریت یکتاسازی ستون اکسل:\n\nبرای [اعمال قفل یکتایی] روی OK کلیک کنید.\nبرای [لغو قفل یکتایی] روی Cancel کلیک کنید.");
+            const mode = confirm(`مدیریت یکتاسازی ستون اکسل:\n\nبرای [اعمال قفل یکتایی] روی OK کلیک کنید.\nبرای [لغو قفل یکتایی] روی Cancel کلیک کنید.`);
             if (mode) {
                 const col = prompt("📌 ستون مورد نظر برای اعمال قفل یکتایی (مثلاً: L یا 12):", "L");
                 if (!col || !col.trim()) return;
@@ -1274,6 +1669,49 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             sendCommand(cmd);
         }
 
+        function openCogsModal() {
+            const overlay = document.getElementById('cogsModalOverlay');
+            if (overlay) overlay.style.display = 'flex';
+        }
+
+        function closeCogsModal() {
+            const overlay = document.getElementById('cogsModalOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function selectCogsMethodRadio(val) {
+            const radios = document.getElementsByName('cogsMethodRadio');
+            for (let r of radios) {
+                if (r.value === val) {
+                    r.checked = true;
+                    break;
+                }
+            }
+        }
+
+        function submitCogsModal() {
+            const radios = document.getElementsByName('cogsMethodRadio');
+            let method = 'fifo';
+            for (let r of radios) {
+                if (r.checked) {
+                    method = r.value;
+                    break;
+                }
+            }
+            closeCogsModal();
+            if (method === 'fifo') {
+                sendCommand('محاسبه بهای تمام شده به روش فایفو');
+            } else if (method === 'lifo') {
+                sendCommand('محاسبه بهای تمام شده به روش لایفو');
+            } else if (method === 'average') {
+                sendCommand('محاسبه بهای تمام شده با میانگین موزون');
+            } else if (method === 'compare') {
+                sendCommand('مقایسه بهای تمام شده فایفو و لایفو');
+            } else {
+                sendCommand('محاسبه بهای تمام شده کالای فروش رفته');
+            }
+        }
+
         // Global Keyboard Shortcuts (میانبرهای کیبورد)
         document.addEventListener('keydown', function(e) {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
@@ -1287,6 +1725,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (e.key === 'Escape') {
                 closeProfitModal();
                 closeSalesModal();
+                closeCogsModal();
             }
         });
 
@@ -1311,13 +1750,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    {label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"},
-                    {label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"},
+                    {label: "🏷️ ۱. انتخاب روش بهای تمام شده (فایفو / لایفو / میانگین)...", cmd: "روش بهای تمام شده"},
+                    {label: "💵 ۲. محاسبه و مقایسه سود (فایفو / لایفو / میانگین)...", cmd: "روش سود"},
+                    {label: "🏷️ بهای تمام شده به روش فایفو (FIFO)", cmd: "محاسبه بهای تمام شده به روش فایفو"},
+                    {label: "🏷️ بهای تمام شده به روش لایفو (LIFO)", cmd: "محاسبه بهای تمام شده به روش لایفو"},
+                    {label: "⚖️ مقایسه بهای تمام شده فایفو و لایفو", cmd: "مقایسه بهای تمام شده فایفو و لایفو"},
+                    {label: "⏱️ محاسبه ساعت کاری، ورود و خروج (تایم‌شیت)", cmd: "محاسبه ساعت کاری"},
+                    {label: "💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", cmd: "محاسبه فروش"},
+                    {label: "💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد"},
                     {label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"},
                     {label: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B"},
                     {label: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی"},
                     {label: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب"},
-                    {label: "💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد"},
                     {label: "📉 محاسبه جدول استهلاک دارایی‌ها", cmd: "محاسبه استهلاک"},
                     {label: "📈 تهیه صورت سود و زیان جامع دوره", cmd: "صورت سود و زیان جامع"},
                     {label: "🏛️ تهیه ترازنامه مالی (بیلان)", cmd: "ترازنامه"}
@@ -1330,6 +1774,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     {label: "🧾 صدور و ثبت فاکتور رسمی فروش", cmd: "ثبت فاکتور فروش"},
                     {label: "🛒 صدور و ثبت فاکتور رسمی خرید", cmd: "ثبت فاکتور خرید"},
                     {label: "📦 کنترل موجودی و هشدار کمبود انبار", cmd: "موجودی انبار و هشدار کمبود موجودی"},
+                    {label: "📊 ارزش‌گذاری انبار (فایفو، لایفو و میانگین)", cmd: "ارزش‌گذاری انبار به روش‌های فایفو، لایفو و میانگین موزون"},
                     {label: "💰 محاسبه ارزش ریالی کل موجودی انبار", cmd: "ارزش کل موجودی انبار"},
                     {label: "👥 محاسبه بدهی و طلب مشتریان", cmd: "محاسبه بدهی و طلب مشتریان"},
                     {label: "🏆 گزارش پرفروش‌ترین کالاها", cmd: "گزارش پرفروش‌ترین کالاها"},
@@ -1370,6 +1815,387 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         };
 
+        // ==========================================
+        // Command Search Registry & Realtime Search
+        // ==========================================
+        const COMMAND_SEARCH_REGISTRY = [
+            // ۲. قابلیت‌های حسابداری
+            { title: "💵 محاسبه سود سالانه", cmd: "محاسبه سود سالانه", category: "حسابداری", keywords: ["سود", "سود سالانه", "سالانه", "سال", "profit", "annual", "yearly", "محاسبه سود"] },
+            { title: "💵 محاسبه سود ماهانه", cmd: "محاسبه سود ماهانه", category: "حسابداری", keywords: ["سود", "سود ماهانه", "ماهانه", "profit", "monthly", "محاسبه سود"] },
+            { title: "💵 محاسبه سود روزانه", cmd: "محاسبه سود روزانه", category: "حسابداری", keywords: ["سود", "سود روزانه", "روزانه", "profit", "daily", "محاسبه سود"] },
+            { title: "💵 محاسبه سود کل دوره", cmd: "محاسبه سود کل", category: "حسابداری", keywords: ["سود", "سود کل", "کل سود", "profit", "total", "محاسبه سود"] },
+            { title: "💵 محاسبه سود به روش فایفو (FIFO)", cmd: "محاسبه سود به روش فایفو", category: "حسابداری", keywords: ["سود", "فایفو", "fifo", "اولین وارده", "بهای تمام شده", "cogs", "محاسبه سود"] },
+            { title: "💵 محاسبه سود به روش لایفو (LIFO)", cmd: "محاسبه سود به روش لایفو", category: "حسابداری", keywords: ["سود", "لایفو", "lifo", "آخرین وارده", "تورم", "محاسبه سود"] },
+            { title: "💵 محاسبه سود با میانگین موزون", cmd: "محاسبه سود با میانگین موزون", category: "حسابداری", keywords: ["سود", "میانگین", "موزون", "average", "محاسبه سود"] },
+            { title: "⚖️ مقایسه تطبیقی سود (فایفو vs لایفو)", cmd: "مقایسه سود به روش فایفو و لایفو", category: "حسابداری", keywords: ["سود", "مقایسه", "فایفو", "لایفو", "تطبیقی", "compare", "محاسبه سود"] },
+            { title: "🏷️ انتخاب روش محاسبه سود (فایفو/لایفو/میانگین)", cmd: "روش سود", category: "حسابداری", keywords: ["سود", "روش سود", "انتخاب سود", "ویزارد سود", "محاسبه سود"] },
+            { title: "⚙️ تنظیمات دستی ستون‌های محاسبه سود", cmd: "تنظیمات سود", category: "حسابداری", keywords: ["سود", "تنظیمات سود", "دستی ستون سود", "محاسبه سود"] },
+            { title: "🏷️ انتخاب روش محاسبه بهای تمام شده (فایفو/لایفو/میانگین)", cmd: "روش بهای تمام شده", category: "حسابداری", keywords: ["بهای تمام شده", "روش بهای تمام شده", "انتخاب بهای تمام شده", "ویزارد بهای تمام شده", "cogs", "فایفو", "لایفو"] },
+            { title: "🏷️ محاسبه بهای تمام شده کالای فروش رفته (COGS)", cmd: "محاسبه بهای تمام شده کالای فروش رفته", category: "حسابداری", keywords: ["بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs", "کالای فروش رفته", "صورت بهای تمام شده", "جدول بهای تمام شده", "تمام شده"] },
+            { title: "🏷️ بهای تمام شده به روش فایفو (FIFO)", cmd: "محاسبه بهای تمام شده به روش فایفو", category: "حسابداری", keywords: ["بهای تمام شده", "فایفو", "fifo", "cogs", "اولین وارده", "قیمت تمام شده"] },
+            { title: "🏷️ بهای تمام شده به روش لایفو (LIFO)", cmd: "محاسبه بهای تمام شده به روش لایفو", category: "حسابداری", keywords: ["بهای تمام شده", "لایفو", "lifo", "cogs", "آخرین وارده", "تورم", "قیمت تمام شده"] },
+            { title: "⚖️ مقایسه بهای تمام شده (فایفو vs لایفو vs میانگین)", cmd: "مقایسه بهای تمام شده فایفو و لایفو", category: "حسابداری", keywords: ["بهای تمام شده", "مقایسه بهای تمام شده", "فایفو", "لایفو", "میانگین", "cogs", "تطبیقی"] },
+            { title: "⏱️ محاسبه ساعت کاری، ورود و خروج کارمندان (تایم‌شیت)", cmd: "محاسبه ساعت کاری", category: "حسابداری", keywords: ["ساعت کاری", "ساعت کار", "ورود و خروج", "ورود خروج", "حضور و غیاب", "حضور غیاب", "تایم شیت", "تایمشیت", "اضافه کار", "کسری کار", "مرخصی", "تردد", "پرسنل", "کارمندان"] },
+            { title: "💼 لیست حقوق و دستمزد، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد", category: "حسابداری", keywords: ["حقوق", "دستمزد", "فیش حقوقی", "بیمه", "مالیات", "payroll", "salary"] },
+            { title: "💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", cmd: "محاسبه فروش", category: "حسابداری", keywords: ["فروش", "فروش کل", "فروش ماهانه", "فروش سالانه", "فروش روزانه", "sales", "گزارش فروش"] },
+            { title: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B", category: "حسابداری", keywords: ["مغایرت", "مغایرت گیری", "اختلاف", "تطبیق", "reconciliation"] },
+            { title: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی", category: "حسابداری", keywords: ["تراز", "تراز آزمایشی", "چهار ستونه", "trial balance"] },
+            { title: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب", category: "حسابداری", keywords: ["مانده", "مانده حساب", "بدهکار", "بستانکار", "تسویه"] },
+            { title: "📉 محاسبه جدول استهلاک دارایی‌ها", cmd: "محاسبه استهلاک", category: "حسابداری", keywords: ["استهلاک", "دارایی", "استهلاک انباشته", "depreciation"] },
+            { title: "📈 تهیه صورت سود و زیان جامع دوره", cmd: "صورت سود و زیان جامع", category: "حسابداری", keywords: ["صورت سود و زیان", "سود و زیان", "سود", "زیان", "income statement"] },
+            { title: "🏛️ تهیه ترازنامه مالی (بیلان)", cmd: "ترازنامه", category: "حسابداری", keywords: ["ترازنامه", "صورت وضعیت مالی", "بیلان", "balance sheet"] },
+            { title: "🏷️ محاسبه تخفیف کالاها", cmd: "محاسبه تخفیف", category: "حسابداری", keywords: ["تخفیف", "درصد تخفیف", "discount"] },
+
+            // ۳. قابلیت‌های فروش و انبارداری
+            { title: "🧾 صدور و ثبت فاکتور رسمی فروش", cmd: "ثبت فاکتور فروش", category: "فروش و انبارداری", keywords: ["فاکتور", "فاکتور فروش", "صدور فاکتور", "invoice"] },
+            { title: "🛒 صدور و ثبت فاکتور رسمی خرید", cmd: "ثبت فاکتور خرید", category: "فروش و انبارداری", keywords: ["خرید", "فاکتور خرید", "purchase"] },
+            { title: "📦 کنترل موجودی و هشدار کمبود انبار", cmd: "موجودی انبار و هشدار کمبود موجودی", category: "فروش و انبارداری", keywords: ["موجودی", "انبار", "کمبود انبار", "کسری موجودی", "هشدار انبار"] },
+            { title: "📊 ارزش‌گذاری موجودی انبار به روش فایفو (FIFO)", cmd: "ارزش‌گذاری انبار به روش فایفو", category: "فروش و انبارداری", keywords: ["انبار", "ارزش گذاری", "فایفو", "موجودی انبار"] },
+            { title: "📊 ارزش‌گذاری موجودی انبار به روش لایفو (LIFO)", cmd: "ارزش‌گذاری انبار به روش لایفو", category: "فروش و انبارداری", keywords: ["انبار", "ارزش گذاری", "لایفو"] },
+            { title: "📊 ارزش‌گذاری موجودی انبار با میانگین موزون", cmd: "ارزش‌گذاری انبار به روش میانگین موزون", category: "فروش و انبارداری", keywords: ["انبار", "ارزش گذاری", "میانگین موزون", "کاردکس"] },
+            { title: "💰 محاسبه ارزش ریالی کل موجودی انبار", cmd: "ارزش کل موجودی انبار", category: "فروش و انبارداری", keywords: ["ارزش انبار", "ارزش ریالی", "موجودی کل"] },
+            { title: "👥 محاسبه بدهی و طلب مشتریان", cmd: "محاسبه بدهی و طلب مشتریان", category: "فروش و انبارداری", keywords: ["مشتری", "بدهی", "طلب", "حساب مشتری"] },
+            { title: "🏆 گزارش پرفروش‌ترین کالاها", cmd: "گزارش پرفروش‌ترین کالاها", category: "فروش و انبارداری", keywords: ["پرفروش", "کالای پرفروش", "پرفروش ترین", "top selling"] },
+            { title: "🏷️ افزایش درصدی قیمت‌های کالا", cmd: "قیمت‌های ستون C را ۱۵ درصد افزایش بده", category: "فروش و انبارداری", keywords: ["افزایش قیمت", "درصد افزایش", "تغییر قیمت"] },
+
+            // ۱. قابلیت‌های ضروری
+            { title: "🔍 فیلتر هوشمند اطلاعات جدول", cmd: "فیلتر هوشمند جدول", category: "ضروری", keywords: ["فیلتر", "جستجو", "filter"] },
+            { title: "🔄 مرتب‌سازی صعودی داده‌ها", cmd: "مرتب‌سازی صعودی ستون A", category: "ضروری", keywords: ["مرتب سازی", "صعودی", "sort"] },
+            { title: "🔽 مرتب‌سازی نزولی داده‌ها", cmd: "مرتب‌سازی نزولی ستون A", category: "ضروری", keywords: ["مرتب سازی", "نزولی", "sort desc"] },
+            { title: "🗑️ حذف موارد تکراری", cmd: "حذف داده‌های تکراری", category: "ضروری", keywords: ["حذف تکراری", "تکراری", "duplicate"] },
+            { title: "🧹 حذف سطرهای خالی شیت", cmd: "ردیف‌های خالی را حذف کن", category: "ضروری", keywords: ["حذف خالی", "ردیف خالی", "سطر خالی"] },
+            { title: "➕ جمع خودکار (AutoSum)", cmd: "جمع خودکار ستون A", category: "ضروری", keywords: ["جمع", "مجموع", "جمع خودکار", "autosum", "sum"] },
+            { title: "📊 محاسبه میانگین داده‌ها", cmd: "میانگین ستون A", category: "ضروری", keywords: ["میانگین", "معدل", "average"] },
+            { title: "🔺 بیشترین و کمترین مقدار (MAX / MIN)", cmd: "بیشترین مقدار ستون A", category: "ضروری", keywords: ["بیشترین", "کمترین", "حداکثر", "حداقل", "max", "min"] },
+            { title: "🔢 شمارش اطلاعات و سلول‌های پر", cmd: "شمارش سلول‌های پر ستون A", category: "ضروری", keywords: ["شمارش", "تعداد", "count"] },
+            { title: "🔢 تبدیل متن به عدد (اصلاح داده‌ها)", cmd: "تبدیل متن به عدد در ستون A", category: "ضروری", keywords: ["تبدیل به عدد", "اصلاح متن", "text to number"] },
+            { title: "🧮 ۴ عمل اصلی ستون‌ها (جمع، تفریق، ضرب، تقسیم)", cmd: "۴ عمل اصلی", category: "ضروری", keywords: ["چهار عمل اصلی", "جمع ستون", "تفریق", "ضرب", "تقسیم"] },
+            { title: "📅 درج تاریخ روز در شیت", cmd: "درج تاریخ در شیت", category: "ضروری", keywords: ["تاریخ", "درج تاریخ", "تاریخ شمسی", "امروز", "date"] },
+
+            // ۴. قابلیت‌های هوشمند و کاربردی
+            { title: "🔒 قفل یکتاسازی ستون (جلوگیری از ثبت تکراری)", cmd: "قفل یکتایی ستون", category: "هوشمند", keywords: ["قفل یکتایی", "یکتا", "جلوگیری از تکراری", "unique"] },
+            { title: "🔓 لغو و برداشتن قفل یکتایی ستون", cmd: "قفل یکتایی ستون را بردار", category: "هوشمند", keywords: ["برداشتن قفل", "لغو یکتایی", "unlock"] },
+            { title: "📊 تحلیل هوشمند شیت و داده‌ها", cmd: "تحلیل ساختار فایل و شیت", category: "هوشمند", keywords: ["تحلیل", "آنالیز", "سلامت فایل", "analyze"] },
+            { title: "🩺 چکاپ عمیق سلامت و خطاهای فایل اکسل", cmd: "سلامت فایل و بررسی خطاهای اکسل", category: "هوشمند", keywords: ["سلامت فایل", "خطا", "چکاپ", "audit"] },
+            { title: "📈 رسم خودکار نمودار گرافیکی", cmd: "رسم نمودار ستونی", category: "هوشمند", keywords: ["نمودار", "چارت", "chart", "graph"] },
+            { title: "📋 تشخیص و ساخت جدول اکسل", cmd: "یک جدول بساز", category: "هوشمند", keywords: ["جدول", "ساخت جدول", "create table"] },
+            { title: "✂️ تفکیک نام و نام خانوادگی", cmd: "تفکیک نام و نام خانوادگی در ستون A", category: "هوشمند", keywords: ["تفکیک نام", "جداسازی نام", "split name"] },
+            { title: "🎨 رنگ‌آمیزی سلول‌های تکراری", cmd: "داده‌های متنی تکراری را رنگ کن", category: "هوشمند", keywords: ["رنگ تکراری", "هایلایت تکراری", "highlight duplicates"] },
+            { title: "💲 تغییر فرمت به واحد پول (تومان)", cmd: "فرمت ستون B را به تومان تغییر بده", category: "هوشمند", keywords: ["واحد پول", "فرمت پول", "تومان", "currency"] },
+            { title: "📈 تغییر فرمت به درصد (%)", cmd: "فرمت ستون C را درصدی کن", category: "هوشمند", keywords: ["درصد", "فرمت درصد", "percentage"] },
+
+            // ۵. امکانات عمومی و مدیریتی
+            { title: "💾 ذخیره تغییرات فایل اکسل (Ctrl+S)", cmd: "ذخیره فایل", category: "عمومی", keywords: ["ذخیره", "سیو", "save"] },
+            { title: "💾 ذخیره نسخه پشتیبان (Backup)", cmd: "ذخیره نسخه پشتیبان", category: "عمومی", keywords: ["پشتیبان", "بکاپ", "backup"] },
+            { title: "📄 تولید خروجی PDF استاندارد", cmd: "خروجی PDF از شیت", category: "عمومی", keywords: ["پی دی اف", "pdf", "خروجی pdf", "پرینت"] },
+            { title: "↩️ لغو آخرین عملیات (Undo چندمرحله‌ای)", cmd: "لغو آخرین عملیات", category: "عمومی", keywords: ["لغو", "آندو", "undo", "برگشت"] },
+            { title: "📐 تنظیم خودکار عرض ستون‌ها (AutoFit)", cmd: "عرض ستون‌ها را خودکار تنظیم کن", category: "عمومی", keywords: ["تنظیم عرض", "عرض ستون", "autofit"] }
+        ];
+
+        function normalizePersianText(str) {
+            if (!str) return "";
+            return str.toLowerCase()
+                .replace(/ي/g, "ی")
+                .replace(/ك/g, "ک")
+                .replace(/[آأإ]/g, "ا")
+                .replace(/\\u200c/g, " ")
+                .replace(/\\s+/g, " ")
+                .trim();
+        }
+
+        let activeSearchIndex = -1;
+        let currentSearchResults = [];
+
+        function onSearchQueryChanged(val) {
+            const popup = document.getElementById('searchResultsPopup');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            const qNorm = normalizePersianText(val);
+
+            if (!qNorm) {
+                popup.style.display = 'none';
+                popup.innerHTML = '';
+                clearBtn.style.display = 'none';
+                currentSearchResults = [];
+                activeSearchIndex = -1;
+                return;
+            }
+
+            clearBtn.style.display = 'flex';
+            const tokens = qNorm.split(' ').filter(t => t.length > 0);
+
+            const scored = [];
+            COMMAND_SEARCH_REGISTRY.forEach((item, idx) => {
+                let score = 0;
+                const cNorm = normalizePersianText(item.cmd);
+                const tNorm = normalizePersianText(item.title);
+
+                if (qNorm === cNorm || qNorm === tNorm) score += 150;
+                else if (cNorm.startsWith(qNorm) || tNorm.startsWith(qNorm)) score += 100;
+                else if (cNorm.includes(qNorm)) score += 70;
+                else if (tNorm.includes(qNorm)) score += 60;
+
+                if (item.cmd.startsWith("محاسبه ")) score += 15;
+
+                let bestKw = 0;
+                for (const kw of item.keywords) {
+                    const kwNorm = normalizePersianText(kw);
+                    if (qNorm === kwNorm) bestKw = Math.max(bestKw, 85);
+                    else if (qNorm.includes(kwNorm)) bestKw = Math.max(bestKw, 55);
+                    else if (kwNorm.includes(qNorm)) bestKw = Math.max(bestKw, 45);
+                }
+                score += bestKw;
+
+                let hits = 0;
+                for (const tok of tokens) {
+                    const cWords = cNorm.split(' ');
+                    const tWords = tNorm.split(' ');
+                    if (cWords.includes(tok)) { score += 50; hits++; }
+                    else if (tWords.includes(tok)) { score += 45; hits++; }
+                    else if (item.keywords.some(k => normalizePersianText(k) === tok)) { score += 40; hits++; }
+                    else if (cNorm.includes(tok)) { score += 20; hits++; }
+                    else if (tNorm.includes(tok)) { score += 15; hits++; }
+                    else if (item.keywords.some(k => normalizePersianText(k).includes(tok))) { score += 12; hits++; }
+                }
+                if (tokens.length > 1 && hits === tokens.length) score += 40;
+
+                if (score > 0) scored.push({ score, index: idx, item });
+            });
+
+            scored.sort((a, b) => b.score - a.score || a.index - b.index);
+            currentSearchResults = scored.slice(0, 10).map(s => s.item);
+            activeSearchIndex = -1;
+
+            if (currentSearchResults.length === 0) {
+                popup.innerHTML = '<div style="padding: 10px 14px; color: var(--text-muted); font-size: 13px; text-align: center;">عملیاتی متناسب با جستجوی شما یافت نشد.</div>';
+                popup.style.display = 'flex';
+                return;
+            }
+
+            let html = '';
+            currentSearchResults.forEach((res, idx) => {
+                html += `<div class="search-result-item" id="search-item-${idx}" onclick="selectSearchResult(${idx})">
+                    <span>${res.title}</span>
+                    <span class="search-result-category">${res.category}</span>
+                </div>`;
+            });
+            popup.innerHTML = html;
+            popup.style.display = 'flex';
+        }
+
+        function selectSearchResult(idx) {
+            if (idx < 0 || idx >= currentSearchResults.length) return;
+            const selected = currentSearchResults[idx];
+            document.getElementById('commandInput').value = selected.cmd;
+            clearSearchInput();
+            executeCommandDirectly(selected.cmd);
+        }
+
+        function executeCommandDirectly(cmd) {
+            if (cmd === 'قفل یکتایی ستون') {
+                promptPreventDuplicates();
+            } else if (cmd.includes('قفل یکتایی') && (cmd.includes('بردار') || cmd.includes('لغو') || cmd.includes('حذف'))) {
+                promptRemoveUniqueValidation();
+            } else if (cmd === 'محاسبه سود' || cmd === 'روش سود') {
+                openProfitModal();
+            } else if (cmd === 'روش بهای تمام شده' || cmd === 'محاسبه بهای تمام شده' || cmd === 'بهای تمام شده' || cmd === 'انتخاب روش بهای تمام شده') {
+                openCogsModal();
+            } else if (cmd === 'محاسبه فروش') {
+                openSalesModal();
+            } else if (cmd.includes('تخفیف')) {
+                promptDiscount();
+            } else if (cmd.includes('۴ عمل') || cmd.includes('4 عمل')) {
+                promptArithmetic('add');
+            } else if (cmd === 'درج تاریخ در شیت') {
+                promptInsertDate();
+            } else {
+                sendCommand(cmd);
+            }
+        }
+
+        function clearSearchInput() {
+            const input = document.getElementById('cmdSearchInput');
+            input.value = '';
+            const popup = document.getElementById('searchResultsPopup');
+            popup.style.display = 'none';
+            popup.innerHTML = '';
+            document.getElementById('clearSearchBtn').style.display = 'none';
+            currentSearchResults = [];
+            activeSearchIndex = -1;
+        }
+
+        function onSearchKeyDown(e) {
+            const popup = document.getElementById('searchResultsPopup');
+            if (popup.style.display === 'none' || currentSearchResults.length === 0) {
+                if (e.key === 'Enter') {
+                    const val = document.getElementById('cmdSearchInput').value.trim();
+                    if (val) {
+                        document.getElementById('commandInput').value = val;
+                        clearSearchInput();
+                        sendInput();
+                    }
+                }
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeSearchIndex = (activeSearchIndex + 1) % currentSearchResults.length;
+                updateSearchHighlight();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeSearchIndex = (activeSearchIndex - 1 + currentSearchResults.length) % currentSearchResults.length;
+                updateSearchHighlight();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeSearchIndex >= 0 && activeSearchIndex < currentSearchResults.length) {
+                    selectSearchResult(activeSearchIndex);
+                } else if (currentSearchResults.length > 0) {
+                    selectSearchResult(0);
+                }
+            } else if (e.key === 'Escape') {
+                clearSearchInput();
+            }
+        }
+
+        function updateSearchHighlight() {
+            document.querySelectorAll('.search-result-item').forEach((el, idx) => {
+                if (idx === activeSearchIndex) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ block: 'nearest' });
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        // Close search popup on clicking outside
+        document.addEventListener('click', (e) => {
+            const wrapper = document.querySelector('.search-bar-wrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                const popup = document.getElementById('searchResultsPopup');
+                if (popup) popup.style.display = 'none';
+            }
+            const inputBar = document.querySelector('.input-bar');
+            if (inputBar && !inputBar.contains(e.target)) {
+                const chatPopup = document.getElementById('chatInputPopup');
+                if (chatPopup) chatPopup.style.display = 'none';
+            }
+        });
+
+        // ==========================================
+        // Chat Input Suggestions & Autocomplete
+        // ==========================================
+        let activeChatSuggestIndex = -1;
+        let currentChatSuggestResults = [];
+
+        function onChatInputChanged(val) {
+            const popup = document.getElementById('chatInputPopup');
+            if (!popup) return;
+            const qNorm = normalizePersianText(val);
+            if (!qNorm || qNorm.length < 1) {
+                popup.style.display = 'none';
+                popup.innerHTML = '';
+                currentChatSuggestResults = [];
+                activeChatSuggestIndex = -1;
+                return;
+            }
+
+            const scored = [];
+            COMMAND_SEARCH_REGISTRY.forEach((item, idx) => {
+                let score = 0;
+                const cNorm = normalizePersianText(item.cmd);
+                const tNorm = normalizePersianText(item.title);
+
+                if (qNorm === cNorm || qNorm === tNorm) score += 150;
+                else if (cNorm.startsWith(qNorm) || tNorm.startsWith(qNorm)) score += 100;
+                else if (cNorm.includes(qNorm)) score += 70;
+                else if (tNorm.includes(qNorm)) score += 60;
+
+                for (const kw of item.keywords) {
+                    const kwNorm = normalizePersianText(kw);
+                    if (qNorm === kwNorm) score += 85;
+                    else if (qNorm.includes(kwNorm)) score += 55;
+                    else if (kwNorm.includes(qNorm)) score += 45;
+                }
+
+                if (score > 0) scored.push({ score, index: idx, item });
+            });
+
+            scored.sort((a, b) => b.score - a.score || a.index - b.index);
+            currentChatSuggestResults = scored.slice(0, 8).map(s => s.item);
+            activeChatSuggestIndex = -1;
+
+            if (currentChatSuggestResults.length === 0) {
+                popup.style.display = 'none';
+                return;
+            }
+
+            let html = '';
+            currentChatSuggestResults.forEach((res, idx) => {
+                html += `<div class="search-result-item" id="chat-suggest-${idx}" onclick="selectChatSuggestResult(${idx})">
+                    <span>${res.title}</span>
+                    <span class="search-result-category">${res.category}</span>
+                </div>`;
+            });
+            popup.innerHTML = html;
+            popup.style.display = 'flex';
+        }
+
+        function selectChatSuggestResult(idx) {
+            if (idx < 0 || idx >= currentChatSuggestResults.length) return;
+            const selected = currentChatSuggestResults[idx];
+            document.getElementById('commandInput').value = selected.cmd;
+            const popup = document.getElementById('chatInputPopup');
+            if (popup) {
+                popup.style.display = 'none';
+                popup.innerHTML = '';
+            }
+            executeCommandDirectly(selected.cmd);
+        }
+
+        function onChatInputKeyDown(e) {
+            const popup = document.getElementById('chatInputPopup');
+            if (popup && popup.style.display !== 'none' && currentChatSuggestResults.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    activeChatSuggestIndex = (activeChatSuggestIndex + 1) % currentChatSuggestResults.length;
+                    updateChatSuggestHighlight();
+                    return;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    activeChatSuggestIndex = (activeChatSuggestIndex - 1 + currentChatSuggestResults.length) % currentChatSuggestResults.length;
+                    updateChatSuggestHighlight();
+                    return;
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (activeChatSuggestIndex >= 0 && activeChatSuggestIndex < currentChatSuggestResults.length) {
+                        selectChatSuggestResult(activeChatSuggestIndex);
+                    } else {
+                        selectChatSuggestResult(0);
+                    }
+                    return;
+                } else if (e.key === 'Escape') {
+                    popup.style.display = 'none';
+                    return;
+                }
+            }
+
+            if (e.key === 'Enter') {
+                sendInput();
+            }
+        }
+
+        function updateChatSuggestHighlight() {
+            document.querySelectorAll('#chatInputPopup .search-result-item').forEach((el, idx) => {
+                if (idx === activeChatSuggestIndex) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ block: 'nearest' });
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
         function onCategoryChanged(catKey) {
             const actSelect = document.getElementById('actSelect');
             if (catKey && FIVE_CATEGORIES[catKey]) {
@@ -1396,7 +2222,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function onActionSelected(cmd) {
             if (cmd) {
                 document.getElementById('commandInput').value = cmd;
-                document.getElementById('commandInput').focus();
+                runSelectedAction();
             }
         }
 
@@ -1411,8 +2237,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 promptPreventDuplicates();
             } else if (cmd.includes('قفل یکتایی') && (cmd.includes('بردار') || cmd.includes('لغو') || cmd.includes('حذف'))) {
                 promptRemoveUniqueValidation();
-            } else if (cmd === 'محاسبه سود') {
+            } else if (cmd === 'محاسبه سود' || cmd === 'روش سود') {
                 openProfitModal();
+            } else if (cmd === 'روش بهای تمام شده' || cmd === 'محاسبه بهای تمام شده' || cmd === 'بهای تمام شده' || cmd === 'انتخاب روش بهای تمام شده') {
+                openCogsModal();
             } else if (cmd === 'محاسبه فروش') {
                 openSalesModal();
             } else if (cmd.includes('تخفیف')) {
@@ -1541,6 +2369,22 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
+        if path.startswith("/resources/") and path.endswith(".ttf"):
+            font_filename = os.path.basename(path)
+            font_file_path = os.path.join(os.path.dirname(__file__), "resources", font_filename)
+            if os.path.exists(font_file_path):
+                self.send_response(200)
+                self.send_header("Content-Type", "font/ttf")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                with open(font_file_path, "rb") as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_response(404)
+                self.end_headers()
+                return
+
         if path == "/api/status":
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1568,6 +2412,17 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
                 resp = {"matrix": [], "error": str(e)}
 
             self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path == "/api/search_commands":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            q = query_params.get("q", [""])[0]
+            from excel_assistant.ui.command_search import search_commands
+            results = search_commands(q, limit=12)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"results": results}, ensure_ascii=False).encode("utf-8"))
             return
 
         self.send_response(404)
@@ -1653,14 +2508,23 @@ class WebAssistantHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Optional[str] = None, controller: Optional[AssistantUIController] = None):
+def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Optional[str] = None, controller: Optional[AssistantUIController] = None, preferred_driver: Optional[str] = None):
     """Starts the standalone Persian Web UI Server."""
-    ctrl = controller or AssistantUIController()
+    if not controller and preferred_driver:
+        ctrl = AssistantUIController(manager=ExcelConnectionManager(preferred_driver=preferred_driver))
+    else:
+        ctrl = controller or AssistantUIController()
     ctrl.connect(workbook_path)
 
     # Initialize sample data if fresh workbook
     sheet = ctrl.manager.get_active_sheet()
     if sheet.get_value("A1") is None:
+        try:
+            if hasattr(sheet, '_ws') and hasattr(sheet._ws, 'title'):
+                sheet._ws.title = "فروش"
+        except Exception:
+            pass
+
         # Sheet 1: Sales with dates
         sheet.set_value("A1", "تاریخ")
         sheet.set_value("B1", "کالا")
@@ -1695,37 +2559,58 @@ def start_web_server(host: str = "0.0.0.0", port: int = 8080, workbook_path: Opt
 
         # Create Sheet 2 for Purchases if not present
         if len(ctrl.manager.active_driver.get_sheet_names()) < 2:
-            sheet2 = ctrl.manager.active_driver.create_sheet("Sheet2")
+            sheet2 = ctrl.manager.active_driver.create_sheet("خرید")
             sheet2.set_value("A1", "کالا")
             sheet2.set_value("B1", "تعداد خرید")
             sheet2.set_value("C1", "قیمت خرید")
             sheet2.set_value("D1", "خرید کل")
 
             sheet2.set_value("A2", "لپ‌تاپ")
-            sheet2.set_value("B2", 5)
+            sheet2.set_value("B2", 10)
             sheet2.set_value("C2", 950)
 
             sheet2.set_value("A3", "موبایل")
-            sheet2.set_value("B3", 20)
+            sheet2.set_value("B3", 25)
             sheet2.set_value("C3", 620)
 
             sheet2.set_value("A4", "تبلت")
-            sheet2.set_value("B4", 7)
+            sheet2.set_value("B4", 10)
             sheet2.set_value("C4", 350)
 
             sheet2.set_value("A5", "مانیتور")
-            sheet2.set_value("B5", 3)
+            sheet2.set_value("B5", 5)
             sheet2.set_value("C5", 220)
 
     WebAssistantHandler.controller = ctrl
-    server_address = (host, port)
 
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
-    with ReusableTCPServer(server_address, WebAssistantHandler) as httpd:
-        print(f"🚀 سرور وب دستیار هوشمند اکسل با تم تیره و مدرن فعال شد:")
-        print(f"👉 http://127.0.0.1:{port}")
+    httpd = None
+    actual_port = port
+    for p in range(port, port + 10):
+        try:
+            server_address = (host, p)
+            httpd = ReusableTCPServer(server_address, WebAssistantHandler)
+            actual_port = p
+            break
+        except OSError:
+            continue
+
+    if httpd is None:
+        server_address = (host, port)
+        httpd = ReusableTCPServer(server_address, WebAssistantHandler)
+        actual_port = port
+
+    print(f"🚀 سرور وب دستیار هوشمند اکسل با تم تیره و مدرن فعال شد:")
+    print(f"👉 http://127.0.0.1:{actual_port}")
+    try:
+        import webbrowser
+        webbrowser.open(f"http://localhost:{actual_port}")
+    except Exception:
+        pass
+
+    with httpd:
         httpd.serve_forever()
 
 

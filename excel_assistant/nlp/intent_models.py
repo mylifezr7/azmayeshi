@@ -161,6 +161,7 @@ class ProfitCalculationAction(BaseActionModel):
     profit_col: Optional[str] = None
     sales_col: Optional[str] = None
     purchase_col: Optional[str] = None
+    valuation_method: Literal["fifo", "lifo", "average", "compare"] = "fifo"
     period: Literal["all", "daily", "monthly", "yearly", "total", "by_item"] = "all"
     create_report_sheet: bool = True
     description_persian: str = "محاسبه سود (روزانه، ماهانه، سالانه و کل)"
@@ -245,8 +246,25 @@ class InventoryAlertAction(BaseActionModel):
     stock_col: Optional[str] = None
     min_threshold: float = 5.0
     purchase_price_col: Optional[str] = None
+    sales_sheet: Optional[str] = None
+    purchase_sheet: Optional[str] = None
+    valuation_method: Literal["fifo", "lifo", "average", "latest", "compare"] = "fifo"
     highlight_low_stock: bool = True
     description_persian: str = "کنترل موجودی انبار و هشدار کمبود موجودی"
+
+
+class InventoryValuationAction(BaseActionModel):
+    action_type: Literal["inventory_valuation"] = "inventory_valuation"
+    method: Literal["fifo", "lifo", "average", "compare"] = "compare"
+    product_col: Optional[str] = None
+    stock_col: Optional[str] = None
+    purchase_price_col: Optional[str] = None
+    sales_sheet: Optional[str] = None
+    purchase_sheet: Optional[str] = None
+    min_threshold: float = 5.0
+    create_report_sheet: bool = True
+    highlight_low_stock: bool = True
+    description_persian: str = "ارزش‌گذاری موجودی انبار به روش‌های فایفو، لایفو و میانگین موزون"
 
 
 class TopSellingAction(BaseActionModel):
@@ -293,6 +311,20 @@ class PayrollAction(BaseActionModel):
     tax_exempt_ceiling: float = 12000000.0 # سقف معافیت
     create_payslip_sheet: bool = True
     description_persian: str = "محاسبه حقوق و دستمزد، اضافه‌کاری، بیمه و مالیات"
+
+
+class AttendanceAction(BaseActionModel):
+    action_type: Literal["attendance_calculation"] = "attendance_calculation"
+    employee_name: Optional[str] = None
+    month_name: Optional[str] = "آبان ۱۴۰۵"
+    standard_daily_hours: float = 8.0
+    date_col: Optional[str] = None
+    day_col: Optional[str] = None
+    entry_col: Optional[str] = None
+    exit_col: Optional[str] = None
+    status_col: Optional[str] = None
+    create_summary_sheet: bool = True
+    description_persian: str = "محاسبه ورود و خروج، کارکرد، اضافه‌کار، کسری کار و حضور و غیاب"
 
 
 class DepreciationAction(BaseActionModel):
@@ -344,6 +376,22 @@ class PdfExportAction(BaseActionModel):
     description_persian: str = "تولید خروجی PDF از فایل اکسل"
 
 
+class CostOfGoodsSoldAction(BaseActionModel):
+    action_type: Literal["cogs_calculation"] = "cogs_calculation"
+    method: Literal["periodic", "fifo", "lifo", "average", "compare"] = "periodic"
+    beginning_inventory: Optional[float] = None
+    purchases: Optional[float] = None
+    freight_in: Optional[float] = None
+    purchase_returns: Optional[float] = None
+    ending_inventory: Optional[float] = None
+    sales_amount: Optional[float] = None
+    sales_sheet: Optional[str] = None
+    purchase_sheet: Optional[str] = None
+    create_report_sheet: bool = True
+    allow_demo: bool = False
+    description_persian: str = "محاسبه بهای تمام شده کالای فروش رفته (COGS)"
+
+
 class UndoLastAction(BaseActionModel):
     action_type: Literal["undo_last_action"] = "undo_last_action"
 
@@ -368,6 +416,7 @@ ExcelAction = Union[
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    CostOfGoodsSoldAction,
     FilterDataAction,
     ConvertTextToNumberAction,
     SplitTextAction,
@@ -377,11 +426,13 @@ ExcelAction = Union[
     ReconciliationAction,
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     TrialBalanceAction,
     AccountBalanceAction,
     PayrollAction,
+    AttendanceAction,
     DepreciationAction,
     FinancialStatementAction,
     DeepFileAuditAction,

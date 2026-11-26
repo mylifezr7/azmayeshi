@@ -26,6 +26,7 @@ from excel_assistant.nlp.intent_models import (
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    CostOfGoodsSoldAction,
     FilterDataAction,
     ConvertTextToNumberAction,
     SplitTextAction,
@@ -35,11 +36,13 @@ from excel_assistant.nlp.intent_models import (
     ReconciliationAction,
     InvoiceAction,
     InventoryAlertAction,
+    InventoryValuationAction,
     TopSellingAction,
     CustomerLedgerAction,
     TrialBalanceAction,
     AccountBalanceAction,
     PayrollAction,
+    AttendanceAction,
     DepreciationAction,
     FinancialStatementAction,
     DeepFileAuditAction,
@@ -147,19 +150,145 @@ class PersianRuleParser:
                 description_persian=f"ثبت و صدور {inv_title} رسمی با محاسبات ارزش افزوده و تخفیف"
             )
 
-        # 1.10 Payroll, Overtime, Insurance & Salary Tax / حقوق و دستمزد
+        # 1.10 Attendance & Timesheet / ورود و خروج، کارکرد، اضافه‌کار و کسری کار پرسنل
+        if any(w in text_lower for w in [
+            "ورود و خروج", "حضور و غیاب", "حضور وغیاب", "حضور غیاب", "ورود خروج",
+            "ساعت کار", "ساعت کاری", "ساعات کار", "ساعات کاری", "محاسبه ساعت",
+            "ساعت کارکرد", "ساعات کارکرد", "کارکرد ماهانه", "کارکرد کارمندان", "کارکرد پرسنل",
+            "تایم شیت", "تایمشیت", "تایم‌شیت", "timesheet",
+            "کسری کار", "تاخیر و اضافه کار", "تأخیر و اضافه کار", "ثبت ماهانه",
+            "خلاصه کارمندان", "محاسبه کارکرد", "تردد پرسنل", "ساعت تردد"
+        ]) or (
+            ("کارکرد" in text_lower or "ساعت کار" in text_lower or "ساعت کاری" in text_lower)
+            and not any(w in text_lower for w in ["فروش", "سود", "مشتری", "انبار"])
+        ):
+            emp_name = None
+            for cand_name in ["علی رضایی", "مریم احمدی", "حسین کریمی", "سارا محمدی", "رضا نوری", "نرگس حیدری", "امیر صادقی", "زهرا موسوی"]:
+                if cand_name in text:
+                    emp_name = cand_name
+                    break
+            return AttendanceAction(
+                employee_name=emp_name,
+                description_persian="محاسبه دقیق ورود و خروج، کارکرد، اضافه‌کار، کسری کار و حضور و غیاب پرسنل"
+            )
+
+        # 1.11 Payroll, Overtime, Insurance & Salary Tax / حقوق و دستمزد
         if any(w in text_lower for w in [
             "حقوق و دستمزد", "حقوق", "دستمزد", "اضافه کاری", "اضافه‌کاری",
             "بیمه کارگر", "بیمه تامین اجتماعی", "مالیات حقوق", "فیش حقوق"
         ]):
             return PayrollAction(description_persian="محاسبه لیست حقوق، اضافه‌کاری، بیمه و مالیات")
 
+        # 1.109 Inventory Valuation (FIFO, LIFO, Weighted Average) / ارزش‌گذاری انبار به روش‌های فایفو، لایفو و میانگین
+        if (any(w in text_lower for w in [
+            "ارزش‌گذاری انبار", "ارزش گذاری انبار", "ارزش‌گذاری موجودی", "ارزش گذاری موجودی",
+            "کاردکس", "کاردکس کالا"
+        ]) or (
+            any(w in text_lower for w in ["فایفو", "fifo", "لایفو", "lifo", "میانگین موزون"])
+            and not any(w in text_lower for w in ["سود", "زیان", "سودآوری", "حاشیه سود", "بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs"])
+        )) and not any(w in text_lower for w in ["بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs"]):
+            v_method = "fifo"
+            if any(w in text_lower for w in ["مقایسه", "هر سه", "هر ۳", "کاردکس"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
+                v_method = "compare"
+            elif any(w in text_lower for w in ["لایفو", "lifo", "آخرین وارده"]):
+                v_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین موزون", "میانگین متحرک", "میانگین", "average", "موزون"]):
+                v_method = "average"
+            elif any(w in text_lower for w in ["فایفو", "fifo", "اولین وارده"]):
+                v_method = "fifo"
+            elif "ارزش‌گذاری" in text_lower or "ارزش گذاری" in text_lower:
+                v_method = "compare"
+
+            thresh = 5.0
+            th_m = re.search(r'(?:زیر|کمتر از|آستانه|حداقل)\s*([0-9]+)', text)
+            if th_m:
+                try:
+                    thresh = float(th_m.group(1))
+                except ValueError:
+                    thresh = 5.0
+
+            sales_s = None
+            purchase_s = None
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_\u0600-\u06FF]+)', text, flags=re.IGNORECASE)
+            if len(sheets_found) >= 2:
+                if "فروش" in text and "خرید" in text:
+                    f_pos = text.find("فروش")
+                    k_pos = text.find("خرید")
+                    if f_pos < k_pos:
+                        sales_s = sheets_found[0]
+                        purchase_s = sheets_found[1]
+                    else:
+                        purchase_s = sheets_found[0]
+                        sales_s = sheets_found[1]
+                else:
+                    sales_s = sheets_found[0]
+                    purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                if "فروش" in text:
+                    sales_s = sheets_found[0]
+                elif "خرید" in text or "انبار" in text:
+                    purchase_s = sheets_found[0]
+
+            method_fa = {"fifo": "فایفو (FIFO)", "lifo": "لایفو (LIFO)", "average": "میانگین موزون", "compare": "فایفو، لایفو و میانگین موزون"}.get(v_method, "فایفو")
+            return InventoryValuationAction(
+                method=v_method,
+                min_threshold=thresh,
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                description_persian=f"ارزش‌گذاری موجودی انبار به روش {method_fa}"
+            )
+
         # 1.11 Inventory Alert & Valuation / موجودی انبار و هشدار کمبود موجودی
         if any(w in text_lower for w in [
             "کمبود موجودی", "هشدار موجودی", "کسری موجودی", "موجودی انبار",
-            "کنترل انبار", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی"
+            "کنترل انبار", "کنترل موجودی", "ارزش موجودی", "ارزش کل موجودی", "انبارگردانی",
+            "مانده موجودی", "موجودی باقی مانده", "موجودی باقیمانده", "مانده انبار", "موجودی کالا", "موجودی"
         ]):
-            return InventoryAlertAction(description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی")
+            thresh = 5.0
+            th_m = re.search(r'(?:زیر|کمتر از|آستانه|حداقل)\s*([0-9]+)', text)
+            if th_m:
+                try:
+                    thresh = float(th_m.group(1))
+                except ValueError:
+                    thresh = 5.0
+
+            v_method = "fifo"
+            if any(w in text_lower for w in ["لایفو", "lifo"]):
+                v_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین موزون", "میانگین", "average"]):
+                v_method = "average"
+            elif any(w in text_lower for w in ["فایفو", "fifo"]):
+                v_method = "fifo"
+
+            sales_s = None
+            purchase_s = None
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_\u0600-\u06FF]+)', text, flags=re.IGNORECASE)
+            if len(sheets_found) >= 2:
+                if "فروش" in text and "خرید" in text:
+                    f_pos = text.find("فروش")
+                    k_pos = text.find("خرید")
+                    if f_pos < k_pos:
+                        sales_s = sheets_found[0]
+                        purchase_s = sheets_found[1]
+                    else:
+                        purchase_s = sheets_found[0]
+                        sales_s = sheets_found[1]
+                else:
+                    sales_s = sheets_found[0]
+                    purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                if "فروش" in text:
+                    sales_s = sheets_found[0]
+                elif "خرید" in text or "انبار" in text:
+                    purchase_s = sheets_found[0]
+
+            return InventoryAlertAction(
+                min_threshold=thresh,
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                valuation_method=v_method,
+                description_persian="مدیریت موجودی انبار و هشدار کمبود موجودی"
+            )
 
         # 1.12 Top Selling Products / پرفروش‌ترین کالاها
         if any(w in text_lower for w in [
@@ -368,8 +497,46 @@ class PersianRuleParser:
                 description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
             )
 
+        # 7.54 Cost of Goods Sold (COGS) / محاسبه بهای تمام شده کالای فروش رفته
+        if any(w in text_lower for w in ["بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs"]) or \
+           ("بهای" in text_lower and any(k in text_lower for k in ["فروش رفته", "فروش‌رفته", "کالای فروش"])):
+            v_method = "periodic"
+            if any(w in text_lower for w in ["مقایسه", "تطبیقی", "همزمان", "compare"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
+                v_method = "compare"
+            elif any(w in text_lower for w in ["فایفو", "fifo"]):
+                v_method = "fifo"
+            elif any(w in text_lower for w in ["لایفو", "lifo"]):
+                v_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین", "موزون", "average"]):
+                v_method = "average"
+
+            method_fa = {
+                "periodic": "صورت استاندارد ادواری (فرمول جامع)",
+                "fifo": "فایفو (FIFO)",
+                "lifo": "لایفو (LIFO)",
+                "average": "میانگین موزون",
+                "compare": "مقایسه جامع فایفو، لایفو و میانگین"
+            }.get(v_method, "صورت استاندارد ادواری")
+
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_]+)', text, flags=re.IGNORECASE)
+            sales_s = None
+            purchase_s = None
+            if len(sheets_found) >= 2:
+                sales_s = sheets_found[0]
+                purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                sales_s = sheets_found[0]
+
+            return CostOfGoodsSoldAction(
+                method=v_method,
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                create_report_sheet=True,
+                description_persian=f"محاسبه بهای تمام شده کالای فروش رفته (COGS) به روش {method_fa}"
+            )
+
         # 7.55 Profit Calculation: محاسبه سود (روزانه، ماهانه، سالانه، کل / فروش منهای خرید)
-        if "سود" in text or ("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])):
+        if "سود" in text or (("فروش" in text and "خرید" in text and any(w in text for w in ["منهای", "منها", "تفریق", "-", "اختلاف", "به دست"])) and not any(inv_kw in text for inv_kw in ["موجودی", "انبار"])):
             period = "all"
             if "روزانه" in text and not any(w in text for w in ["ماهانه", "سالانه", "کل"]):
                 period = "daily"
@@ -433,6 +600,23 @@ class PersianRuleParser:
                 if not profit_col and not date_col:
                     profit_col = found_cols[0]
 
+            val_method = "fifo"
+            if any(w in text_lower for w in ["مقایسه", "همزمان", "تطبیقی", "compare"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
+                val_method = "compare"
+            elif any(w in text_lower for w in ["لایفو", "lifo"]):
+                val_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین", "موزون", "میانگین موزون", "average"]):
+                val_method = "average"
+            elif any(w in text_lower for w in ["فایفو", "fifo"]):
+                val_method = "fifo"
+
+            method_fa = {
+                "fifo": "فایفو (FIFO)",
+                "lifo": "لایفو (LIFO)",
+                "average": "میانگین موزون (Weighted Average)",
+                "compare": "مقایسه تطبیقی فایفو و لایفو و میانگین"
+            }[val_method]
+
             period_fa = {
                 "all": "روزانه، ماهانه، سالانه و کل",
                 "daily": "روزانه",
@@ -449,9 +633,10 @@ class PersianRuleParser:
                 profit_col=profit_col,
                 sales_col=sales_col,
                 purchase_col=purchase_col,
+                valuation_method=val_method,
                 period=period,
                 create_report_sheet=True,
-                description_persian=f"محاسبه سود {period_fa}"
+                description_persian=f"محاسبه سود {period_fa} به روش {method_fa}"
             )
 
         # 7.6 Sales Summary: محاسبه فروش روزانه، ماهانه، سالانه و کل
