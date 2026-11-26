@@ -354,3 +354,30 @@ def test_cogs_challenge_4_comprehensive():
     assert cogs_sh.get_value("D14") == 2_598_410_000.0  # فروش خالص
 
 
+def test_cogs_challenge_5_comprehensive():
+    """Verify Challenge 5 (Aban 1405) with multi-item invoices, physical counts, consignments, and per-invoice freight."""
+    import os
+    if not os.path.exists("Challenge_5_Accounting.xlsx"):
+        pytest.skip("Challenge_5_Accounting.xlsx not found")
+
+    mgr = ExcelConnectionManager()
+    mgr.connect("Challenge_5_Accounting.xlsx")
+    sheet = mgr.get_active_sheet()
+    ctx = ActionContext(sheet=sheet, manager=mgr)
+
+    action = CostOfGoodsSoldAction(method="fifo")
+    res = AccountingActionHandler.execute_cogs(action, ctx)
+
+    assert res.success is True
+    assert "تطبیق‌های حسابرسی و انبارگردانی اعمال‌شده در چالش ۵" in res.message_persian
+
+    cogs_sh = mgr.get_sheet("صورت بهای تمام شده (COGS)")
+    assert cogs_sh.get_value("D5") == 1_297_750_000.0   # موجودی اول دوره
+    assert cogs_sh.get_value("C6") == 2_042_740_000.0   # خرید ناخالص
+    assert cogs_sh.get_value("C7") == 42_500_000.0      # کرایه حمل ورودی
+    assert cogs_sh.get_value("C8") == 67_136_792.0      # برگشت و تخفیفات خرید
+    assert cogs_sh.get_value("D11") == 1_599_190_572.0  # موجودی پایان دوره (فایفو)
+    assert cogs_sh.get_value("D14") == 2_185_250_000.0  # فروش خالص
+
+
+
