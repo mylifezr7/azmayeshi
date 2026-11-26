@@ -349,8 +349,9 @@ class MainWindow(QMainWindow):
             from excel_assistant.core.xlwings_driver import check_xlwings, XLWINGS_AVAILABLE
             check_xlwings()
 
+            target_path = self.manager.file_path if (self.manager and self.manager.file_path) else None
             if not self.manager.is_connected() or (sys.platform == 'win32' and self.manager.driver_type != 'xlwings'):
-                info = self.manager.connect()
+                info = self.manager.connect(target_path)
             else:
                 info = self.manager.get_workbook_info()
 

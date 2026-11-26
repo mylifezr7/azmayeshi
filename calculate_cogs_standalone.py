@@ -104,11 +104,14 @@ def get_target_file():
         cleaned = args.file.strip('\"\' ')
         if os.path.exists(cleaned):
             return cleaned, args.unit, args.output
-        else:
-            print(f"⚠️ فایل ورودی مشخص‌شده «{cleaned}» یافت نشد.")
-            print("   🔍 در حال جستجوی سایر فایل‌های اکسل در پوشه جاری...")
+        # جستجوی فایل بدون در نظر گرفتن بزرگی/کوچکی حروف
+        for f in glob.glob("*.xlsx"):
+            if f.lower() == cleaned.lower():
+                return f, args.unit, args.output
+        print(f"⚠️ فایل ورودی مشخص‌شده «{cleaned}» در پوشه جاری یافت نشد.")
+        print("   🔍 در حال جستجوی سایر فایل‌های اکسل موجود در پوشه...")
 
-    # ۲. جستجوی فایل‌های اکسل در پوشه
+    # ۲. جستجوی فایل‌های اکسل در پوشه با اولویت‌بندی هوشمند
     all_files = [f for f in glob.glob("*.xlsx") if not f.startswith("~$") and "backup" not in f.lower() and "sample" not in f.lower()]
     target_candidates = []
     for f in all_files:
@@ -121,15 +124,29 @@ def get_target_file():
 
     candidates = target_candidates if target_candidates else all_files
 
+    priority_order = ["challenge_5", "challenge_4", "challenge_3", "چالش_5", "چالش_4", "چالش_3"]
+    def sort_key(fn):
+        fl = fn.lower()
+        for idx, p in enumerate(priority_order):
+            if p in fl:
+                return idx
+        return 999
+    candidates.sort(key=sort_key)
+
     if len(candidates) == 1:
         print(f"💡 فایل اکسل موجود «{candidates[0]}» به عنوان فایل هدف انتخاب شد.")
         return candidates[0], args.unit, args.output
     elif len(candidates) > 1:
+        # اگر کاربر هیچ آرگومانی نداده و فایل چالش ۵ وجود دارد، اولویت اول چالش ۵ است
+        if not args.file and candidates[0].lower().startswith("challenge_5"):
+            print(f"💡 فایل استاندارد چالش ۵ «{candidates[0]}» شناسایی و انتخاب شد.")
+            return candidates[0], args.unit, args.output
+
         print("📁 چند فایل اکسل در پوشه پیدا شد:")
         for i, f in enumerate(candidates, 1):
             print(f"   {i}. {f}")
         try:
-            choice = input(f"شماره فایل مدنظر را انتخاب کنید (1 تا {len(candidates)}): ").strip()
+            choice = input(f"شماره فایل مدنظر را انتخاب کنید (پیش‌فرض 1 [{candidates[0]}]): ").strip()
             if choice.isdigit() and 1 <= int(choice) <= len(candidates):
                 return candidates[int(choice) - 1], args.unit, args.output
         except Exception:

@@ -19,6 +19,13 @@ def main():
 
     args = parser.parse_args()
     target_file = args.file or args.file_arg
+
+    if not target_file:
+        for candidate in ["Challenge_5_Accounting.xlsx", "Challenge_4_Accounting.xlsx", "Challenge_3_Accounting.xlsx"]:
+            if os.path.exists(candidate):
+                target_file = candidate
+                break
+
     pref_driver = "openpyxl" if args.no_excel else None
 
     has_display = bool(os.getenv("DISPLAY")) or sys.platform == "win32"
