@@ -240,3 +240,83 @@ def test_execute_cogs_with_transactional_multi_sheets():
         val = str(cogs_sh.get_value(f"E{r}") or "")
         assert not val.startswith("="), f"Row {r} note begins with '=': {val}"
 
+
+def test_cogs_nine_sheets_comprehensive_case_study():
+    """تست اعتبارسنجی صورت بهای تمام شده و اسکن همزمان ۹ شیت سناریوی پیچیده."""
+    mgr = ExcelConnectionManager()
+    mgr.connect()
+
+    # 1. شیت موجودی اول دوره
+    sh_beg = mgr.create_sheet("موجودی اول دوره")
+    sh_beg.set_value("A1", "کد")
+    sh_beg.set_value("B1", "شرح")
+    sh_beg.set_value("C1", "تعداد")
+    sh_beg.set_value("D1", "بهای واحد")
+    sh_beg.set_value("A2", "A101"); sh_beg.set_value("C2", 35); sh_beg.set_value("D2", 29_228_571.43)
+    sh_beg.set_value("A3", "B205"); sh_beg.set_value("C3", 50); sh_beg.set_value("D3", 18_780_000.0)
+    sh_beg.set_value("A4", "C330"); sh_beg.set_value("C4", 12); sh_beg.set_value("D4", 68_500_000.0)
+    sh_beg.set_value("A5", "D410"); sh_beg.set_value("C5", 25); sh_beg.set_value("D5", 12_700_000.0)
+
+    # 2. شیت فاکتورهای خرید
+    sh_p = mgr.create_sheet("فاکتورهای خرید")
+    sh_p.set_value("A1", "فاکتور")
+    sh_p.set_value("C1", "کد کالا")
+    sh_p.set_value("E1", "تعداد")
+    sh_p.set_value("F1", "قیمت واحد ناخالص")
+    sh_p.set_value("G1", "تخفیف تجاری%")
+    sh_p.set_value("A2", "PU001"); sh_p.set_value("C2", "A101"); sh_p.set_value("E2", 30); sh_p.set_value("F2", 31_000_000); sh_p.set_value("G2", 4)
+    sh_p.set_value("A3", "PU002"); sh_p.set_value("C3", "B205"); sh_p.set_value("E3", 40); sh_p.set_value("F3", 19_800_000); sh_p.set_value("G3", 0)
+
+    # 3. شیت برگشت از خرید
+    sh_pr = mgr.create_sheet("برگشت از خرید")
+    sh_pr.set_value("A1", "سند")
+    sh_pr.set_value("D1", "کد کالا")
+    sh_pr.set_value("E1", "تعداد برگشتی")
+    sh_pr.set_value("F1", "بهای واحد پس از تخفیف")
+    sh_pr.set_value("A2", "PR001"); sh_pr.set_value("D2", "B205"); sh_pr.set_value("E2", 5); sh_pr.set_value("F2", 19_800_000)
+
+    # 4. شیت هزینه های حمل ورودی
+    sh_fr = mgr.create_sheet("هزینه های حمل")
+    sh_fr.set_value("A1", "سند")
+    sh_fr.set_value("E1", "مبلغ")
+    sh_fr.set_value("F1", "نوع هزینه")
+    sh_fr.set_value("A2", "FR001"); sh_fr.set_value("E2", 18_000_000); sh_fr.set_value("F2", "حمل ورودی")
+    sh_fr.set_value("A3", "FR010"); sh_fr.set_value("E3", 22_000_000); sh_fr.set_value("F3", "حمل فروش؛ هزینه دوره")
+
+    # 5. شیت فاکتورهای فروش
+    sh_s = mgr.create_sheet("فاکتورهای فروش")
+    sh_s.set_value("A1", "فاکتور")
+    sh_s.set_value("D1", "کد کالا")
+    sh_s.set_value("E1", "تعداد")
+    sh_s.set_value("F1", "قیمت واحد فروش")
+    sh_s.set_value("G1", "تخفیف فروش%")
+    sh_s.set_value("A2", "SA001"); sh_s.set_value("D2", "A101"); sh_s.set_value("E2", 18); sh_s.set_value("F2", 39_500_000); sh_s.set_value("G2", 5)
+
+    # 6. شیت برگشت از فروش
+    sh_sr = mgr.create_sheet("برگشت از فروش")
+    sh_sr.set_value("A1", "سند")
+    sh_sr.set_value("C1", "کد کالا")
+    sh_sr.set_value("D1", "فاکتور مرجع")
+    sh_sr.set_value("E1", "تعداد")
+    sh_sr.set_value("F1", "وضعیت کالا")
+    sh_sr.set_value("A2", "SR001"); sh_sr.set_value("C2", "A101"); sh_sr.set_value("D2", "SA001"); sh_sr.set_value("E2", 2); sh_sr.set_value("F2", "سالم")
+
+    ctx = ActionContext(sheet=sh_beg, manager=mgr)
+    action = CostOfGoodsSoldAction(method="fifo")
+    res = AccountingActionHandler.execute_cogs(action, ctx)
+
+    assert res.success is True
+    cogs_sh = mgr.get_sheet("صورت بهای تمام شده (COGS)")
+
+    # 1. موجودی اول دوره باید بزرگتر از صفر و دقیق باشد
+    assert round(cogs_sh.get_value("D5"), 0) == 3_101_500_000.0
+    # 2. خرید ناخالص (30*31M + 40*19.8M = 930M + 792M = 1,722M)
+    assert cogs_sh.get_value("C6") == 1_722_000_000.0
+    # 3. هزینه حمل فقط ورودی لحاظ شود (FR001 = 18M) و FR010 (22M فروش) حذف شود
+    assert cogs_sh.get_value("C7") == 18_000_000.0
+    # 4. تخفیفات تجاری خرید (37.2M) + برگشت از خرید (99M) = 136.2M
+    assert cogs_sh.get_value("C8") == 136_200_000.0
+    # 5. درآمد فروش خالص پس از کسر تخفیف فروش و برگشت از فروش SA001
+    # 18 * 39.5M = 711M; Disc 5% = 35.55M -> Net unit = 37.525M. Return 2 units = 75.05M -> Net = 600.4M
+    assert cogs_sh.get_value("D14") == 600_400_000.0
+

@@ -69,73 +69,192 @@ def process_cogs(file_path: str, output_path: str = None):
     print(f"📂 در حال باز کردن فایل اکسل: {file_path}")
     wb = openpyxl.load_workbook(file_path)
 
-    p_sheet, s_sheet, m_sheet = None, None, None
+    p_sheet = None
+    pr_sheet = None
+    s_sheet = None
+    sr_sheet = None
+    beg_sheet = None
+    fr_sheet = None
+    m_sheet = None
+    cn_sheet = None
 
-    # شناسایی خودکار شیت‌ها
+    # ۱. تطبیق نام شیت‌ها
     for name in wb.sheetnames:
         nl = name.lower()
-        if any(k in nl for k in ["فروش", "sales"]) and not s_sheet:
+        if (any(k in nl for k in ["برگشت از فروش", "برگشت فروش"]) or ("برگشت" in nl and "فروش" in nl)) and not sr_sheet:
+            sr_sheet = wb[name]
+        elif (any(k in nl for k in ["برگشت از خرید", "برگشت خرید"]) or ("برگشت" in nl and "خرید" in nl)) and not pr_sheet:
+            pr_sheet = wb[name]
+        elif any(k in nl for k in ["حمل", "کرایه", "باربری", "ترابری", "هزینه حمل", "هزینه های حمل", "freight"]) and not fr_sheet:
+            fr_sheet = wb[name]
+        elif any(k in nl for k in ["اول دوره", "موجودی اول", "موجودی اولیه", "ابتدای دوره", "لایه"]) and not beg_sheet:
+            beg_sheet = wb[name]
+        elif any(k in nl for k in ["امانی", "کالای امانی", "consign"]) and not cn_sheet:
+            cn_sheet = wb[name]
+        elif any(k in nl for k in ["فروش", "sales", "صورتحساب فروش"]) and "برگشت" not in nl and not s_sheet:
             s_sheet = wb[name]
-        elif any(k in nl for k in ["خرید", "purchase", "purchases"]) and not p_sheet:
+        elif any(k in nl for k in ["خرید", "purchase", "purchases"]) and "برگشت" not in nl and not p_sheet:
             p_sheet = wb[name]
-        elif any(k in nl for k in ["حرکت", "انبار", "موجودی", "کاردکس", "گردش", "stock", "inventory"]) and not m_sheet:
+        elif any(k in nl for k in ["حرکت", "انبارگردانی", "انبار", "موجودی", "کاردکس", "گردش", "stock", "inventory"]) and "اول" not in nl and not m_sheet:
             m_sheet = wb[name]
 
     # در صورت عدم شناسایی با نام، اسکن هدرها
     for name in wb.sheetnames:
         ws = wb[name]
-        if ws in [p_sheet, s_sheet, m_sheet]:
+        if ws in [p_sheet, pr_sheet, s_sheet, sr_sheet, beg_sheet, fr_sheet, m_sheet, cn_sheet]:
             continue
         hdr_txt = " ".join(str(ws.cell(r, c).value or "") for r in range(1, min(6, ws.max_row + 1)) for c in range(1, min(15, ws.max_column + 1))).lower()
-        if not s_sheet and ("مشتری" in hdr_txt or "فروش" in hdr_txt):
+        if not beg_sheet and ("لایه" in hdr_txt or ("اول دوره" in hdr_txt and any(k in hdr_txt for k in ["بهای واحد", "فی"]))):
+            beg_sheet = ws
+        elif not pr_sheet and ("برگشتی" in hdr_txt or ("برگشت" in hdr_txt and "خرید" in hdr_txt)):
+            pr_sheet = ws
+        elif not fr_sheet and ("نوع هزینه" in hdr_txt or ("حمل" in hdr_txt and "مبلغ" in hdr_txt)):
+            fr_sheet = ws
+        elif not sr_sheet and ("وضعیت کالا" in hdr_txt or ("برگشت" in hdr_txt and "فروش" in hdr_txt)):
+            sr_sheet = ws
+        elif not s_sheet and ("مشتری" in hdr_txt or "فروش" in hdr_txt):
             s_sheet = ws
         elif not p_sheet and ("تامین" in hdr_txt or "خرید" in hdr_txt):
             p_sheet = ws
-        elif not m_sheet and any(k in hdr_txt for k in ["نوع حرکت", "اول دوره"]):
+        elif not m_sheet and any(k in hdr_txt for k in ["نوع حرکت", "شرح حرکت", "تعداد شمارش", "اول دوره"]):
             m_sheet = ws
 
     print(f"🔍 شیت‌های شناسایی‌شده:")
+    print(f"   • موجودی اول دوره: {beg_sheet.title if beg_sheet else 'یافت نشد'}")
     print(f"   • فاکتورهای خرید: {p_sheet.title if p_sheet else 'یافت نشد'}")
+    print(f"   • برگشت از خرید: {pr_sheet.title if pr_sheet else 'یافت نشد'}")
+    print(f"   • هزینه‌های حمل ورودی: {fr_sheet.title if fr_sheet else 'یافت نشد'}")
     print(f"   • فاکتورهای فروش: {s_sheet.title if s_sheet else 'یافت نشد'}")
-    print(f"   • گردش و حرکت انبار: {m_sheet.title if m_sheet else 'یافت نشد'}")
+    print(f"   • برگشت از فروش: {sr_sheet.title if sr_sheet else 'یافت نشد'}")
+    print(f"   • گردش و انبارگردانی: {m_sheet.title if m_sheet else 'یافت نشد'}")
 
-    # 1. استخراج فاکتورهای خرید و برگشتی‌ها
     p_gross = 0.0
+    p_trade_discounts = 0.0
     p_returns = 0.0
+    inward_freight = 0.0
     batches_by_item: Dict[str, List[Tuple[float, float]]] = {}
     earliest_price_by_item: Dict[str, float] = {}
+    sales_ref_prices: Dict[str, float] = {}
 
+    # ۱. استخراج موجودی اول دوره
+    beg_inv_val = 0.0
+    if beg_sheet:
+        b_cols = {}
+        for c in range(1, beg_sheet.max_column + 1):
+            h = str(beg_sheet.cell(1, c).value or "").strip().lower()
+            if "کد" in h: b_cols["item"] = c
+            elif "شرح" in h or "نام" in h: b_cols["name"] = c
+            elif "تعداد" in h or "مقدار" in h: b_cols["qty"] = c
+            elif any(k in h for k in ["بهای واحد", "قیمت", "فی"]): b_cols["price"] = c
+
+        b_item_c = b_cols.get("item", 1)
+        b_qty_c = b_cols.get("qty", 3)
+        b_price_c = b_cols.get("price", 4)
+
+        for r in range(2, beg_sheet.max_row + 1):
+            item = str(beg_sheet.cell(r, b_item_c).value or "").strip()
+            if not item: continue
+            qty = to_float(beg_sheet.cell(r, b_qty_c).value)
+            price = to_float(beg_sheet.cell(r, b_price_c).value)
+            if qty > 0 and price > 0:
+                beg_inv_val += (qty * price)
+                batches_by_item.setdefault(item, []).append((qty, price))
+                if item not in earliest_price_by_item:
+                    earliest_price_by_item[item] = price
+
+    # ۲. استخراج فاکتورهای خرید
     if p_sheet:
         p_cols = {}
         for c in range(1, p_sheet.max_column + 1):
             h = str(p_sheet.cell(1, c).value or "").strip().lower()
             if "سند" in h or "فاکتور" in h: p_cols["doc"] = c
-            elif "کد کالا" in h or "کالا" in h: p_cols["item"] = c
+            elif "کد کالا" in h or ("کالا" in h and "کد" in h) or (not p_cols.get("item") and "کالا" in h): p_cols["item"] = c
+            elif "شرح" in h or "نام" in h: p_cols["name"] = c
             elif "تعداد" in h or "مقدار" in h: p_cols["qty"] = c
+            elif "تخفیف" in h: p_cols["disc"] = c
             elif ("قیمت" in h or "فی" in h) and "تخفیف" not in h: p_cols["price"] = c
+
+        p_item_c = p_cols.get("item", 3)
+        p_qty_c = p_cols.get("qty", 5)
+        p_price_c = p_cols.get("price", 6)
+        p_disc_c = p_cols.get("disc")
 
         for r in range(2, p_sheet.max_row + 1):
             doc = str(p_sheet.cell(r, p_cols.get("doc", 1)).value or "").strip()
-            item = str(p_sheet.cell(r, p_cols.get("item", 5)).value or "").strip()
+            item = str(p_sheet.cell(r, p_item_c).value or "").strip()
             if not item: continue
-            qty = to_float(p_sheet.cell(r, p_cols.get("qty", 7)).value)
-            price = to_float(p_sheet.cell(r, p_cols.get("price", 8)).value)
+            qty = to_float(p_sheet.cell(r, p_qty_c).value)
+            price = to_float(p_sheet.cell(r, p_price_c).value)
             if qty == 0 or price == 0: continue
+            disc_raw = to_float(p_sheet.cell(r, p_disc_c).value) if p_disc_c else 0.0
+
+            row_g = abs(qty) * price
+            row_d = (row_g * disc_raw / 100.0) if (0 < disc_raw <= 100) else disc_raw
+            row_net = row_g - row_d
 
             if item not in earliest_price_by_item and price > 0:
-                earliest_price_by_item[item] = price
+                earliest_price_by_item[item] = (row_net / qty) if qty > 0 else price
 
             is_ret = "pr" in doc.lower() or "برگشت" in doc or qty < 0
             if is_ret:
-                p_returns += abs(qty) * price
+                p_returns += row_net
                 if item in batches_by_item and batches_by_item[item]:
                     l_q, l_p = batches_by_item[item][-1]
                     batches_by_item[item][-1] = (max(0.0, l_q - abs(qty)), l_p)
             else:
-                p_gross += qty * price
-                batches_by_item.setdefault(item, []).append((qty, price))
+                p_gross += row_g
+                p_trade_discounts += row_d
+                batches_by_item.setdefault(item, []).append((qty, (row_net / qty) if qty > 0 else price))
 
-    # 2. استخراج فاکتورهای فروش، تخفیفات و برگشتی‌ها
+    # ۳. استخراج برگشت از خرید
+    if pr_sheet:
+        pr_cols = {}
+        for c in range(1, pr_sheet.max_column + 1):
+            h = str(pr_sheet.cell(1, c).value or "").strip().lower()
+            if "کد" in h: pr_cols["item"] = c
+            elif "تعداد" in h or "برگشتی" in h: pr_cols["qty"] = c
+            elif any(k in h for k in ["بهای واحد", "قیمت", "فی"]): pr_cols["price"] = c
+
+        pr_item_c = pr_cols.get("item", 4)
+        pr_qty_c = pr_cols.get("qty", 5)
+        pr_price_c = pr_cols.get("price", 6)
+
+        for r in range(2, pr_sheet.max_row + 1):
+            item = str(pr_sheet.cell(r, pr_item_c).value or "").strip()
+            if not item: continue
+            qty = to_float(pr_sheet.cell(r, pr_qty_c).value)
+            price = to_float(pr_sheet.cell(r, pr_price_c).value)
+            if qty > 0 and price > 0:
+                p_returns += (qty * price)
+                if item in batches_by_item:
+                    rem = qty
+                    for b_idx in range(len(batches_by_item[item]) - 1, -1, -1):
+                        b_q, b_p = batches_by_item[item][b_idx]
+                        take = min(rem, b_q)
+                        batches_by_item[item][b_idx] = (b_q - take, b_p)
+                        rem -= take
+                        if rem <= 0: break
+
+    # ۴. استخراج هزینه‌های حمل ورودی
+    if fr_sheet:
+        fr_cols = {}
+        for c in range(1, fr_sheet.max_column + 1):
+            h = str(fr_sheet.cell(1, c).value or "").strip().lower()
+            if "نوع" in h or "شرح" in h: fr_cols["type"] = c
+            elif "مبلغ" in h or ("هزینه" in h and "نوع" not in h and "شرح" not in h): fr_cols["amount"] = c
+
+        fr_amt_c = fr_cols.get("amount", 5)
+        fr_type_c = fr_cols.get("type", 6)
+
+        for r in range(2, fr_sheet.max_row + 1):
+            amt = to_float(fr_sheet.cell(r, fr_amt_c).value)
+            type_val = str(fr_sheet.cell(r, fr_type_c).value or "").strip().lower()
+            if amt > 0:
+                if "فروش" in type_val:
+                    continue  # حمل فروش هزینه دوره و توزیع است
+                inward_freight += amt
+
+    # ۵. استخراج فاکتورهای فروش
     s_gross = 0.0
     s_disc = 0.0
     s_returns = 0.0
@@ -146,25 +265,36 @@ def process_cogs(file_path: str, output_path: str = None):
         for c in range(1, s_sheet.max_column + 1):
             h = str(s_sheet.cell(1, c).value or "").strip().lower()
             if "سند" in h or "فاکتور" in h: s_cols["doc"] = c
-            elif "کد کالا" in h or "کالا" in h: s_cols["item"] = c
+            elif "کد کالا" in h or ("کالا" in h and "کد" in h) or (not s_cols.get("item") and "کالا" in h): s_cols["item"] = c
+            elif "شرح" in h or "نام" in h: s_cols["name"] = c
             elif "تعداد" in h or "مقدار" in h: s_cols["qty"] = c
             elif "تخفیف" in h: s_cols["disc"] = c
             elif ("قیمت" in h or "فی" in h) and "تخفیف" not in h: s_cols["price"] = c
-            elif "تسویه" in h or "توضیح" in h: s_cols["note"] = c
+            elif "تسویه" in h or "توضیح" in h or "ملاحظات" in h: s_cols["note"] = c
+
+        s_doc_c = s_cols.get("doc", 1)
+        s_item_c = s_cols.get("item", 4)
+        s_qty_c = s_cols.get("qty", 5)
+        s_price_c = s_cols.get("price", 6)
+        s_disc_c = s_cols.get("disc")
+        s_note_c = s_cols.get("note")
 
         for r in range(2, s_sheet.max_row + 1):
-            doc = str(s_sheet.cell(r, s_cols.get("doc", 1)).value or "").strip()
-            item = str(s_sheet.cell(r, s_cols.get("item", 5)).value or "").strip()
+            doc = str(s_sheet.cell(r, s_doc_c).value or "").strip()
+            item = str(s_sheet.cell(r, s_item_c).value or "").strip()
             if not item: continue
-            qty = to_float(s_sheet.cell(r, s_cols.get("qty", 7)).value)
-            price = to_float(s_sheet.cell(r, s_cols.get("price", 8)).value)
-            disc_raw = to_float(s_sheet.cell(r, s_cols.get("disc", 9)).value) if "disc" in s_cols else 0.0
-            note = str(s_sheet.cell(r, s_cols.get("note", 11)).value or "").strip() if "note" in s_cols else ""
+            qty = to_float(s_sheet.cell(r, s_qty_c).value)
+            price = to_float(s_sheet.cell(r, s_price_c).value)
+            disc_raw = to_float(s_sheet.cell(r, s_disc_c).value) if s_disc_c else 0.0
+            note = str(s_sheet.cell(r, s_note_c).value or "").strip() if s_note_c else ""
 
             if qty == 0 or price == 0: continue
             row_g = abs(qty) * price
-            row_d = row_g * (disc_raw / 100.0) if (0 < disc_raw <= 100) else disc_raw
+            row_d = (row_g * disc_raw / 100.0) if (0 < disc_raw <= 100) else disc_raw
             row_net = row_g - row_d
+
+            if doc:
+                sales_ref_prices[doc.upper()] = (row_net / qty) if qty > 0 else price
 
             is_ret = "sr" in doc.lower() or "برگشت" in doc or "برگشت" in note or qty < 0
             if is_ret:
@@ -175,11 +305,35 @@ def process_cogs(file_path: str, output_path: str = None):
                 s_disc += row_d
                 sold_by_item[item] = sold_by_item.get(item, 0.0) + abs(qty)
 
-    s_net = s_gross - s_disc - s_returns
+    # ۶. استخراج برگشت از فروش
+    if sr_sheet:
+        sr_cols = {}
+        for c in range(1, sr_sheet.max_column + 1):
+            h = str(sr_sheet.cell(1, c).value or "").strip().lower()
+            if "مرجع" in h or "فاکتور" in h: sr_cols["ref"] = c
+            elif "کد" in h: sr_cols["item"] = c
+            elif "تعداد" in h: sr_cols["qty"] = c
+            elif "وضعیت" in h: sr_cols["status"] = c
 
-    # 3. موجودی اول دوره از گردش انبار
-    beg_inv_val = 0.0
-    if m_sheet:
+        sr_ref_c = sr_cols.get("ref", 4)
+        sr_item_c = sr_cols.get("item", 3)
+        sr_qty_c = sr_cols.get("qty", 5)
+        sr_stat_c = sr_cols.get("status", 6)
+
+        for r in range(2, sr_sheet.max_row + 1):
+            ref_doc = str(sr_sheet.cell(r, sr_ref_c).value or "").strip()
+            item = str(sr_sheet.cell(r, sr_item_c).value or "").strip()
+            qty = to_float(sr_sheet.cell(r, sr_qty_c).value)
+            stat = str(sr_sheet.cell(r, sr_stat_c).value or "").strip().lower()
+
+            if qty > 0 and item:
+                ref_p = sales_ref_prices.get(ref_doc.upper(), earliest_price_by_item.get(item, 0.0))
+                s_returns += (qty * ref_p)
+                if "سالم" in stat:
+                    sold_by_item[item] = max(0.0, sold_by_item.get(item, 0.0) - qty)
+
+    # ۷. استخراج اول دوره از گردش انبار در صورت عدم وجود شیت مجزا
+    if not beg_sheet and m_sheet:
         m_cols = {}
         for c in range(1, m_sheet.max_column + 1):
             h = str(m_sheet.cell(1, c).value or "").strip().lower()
@@ -205,7 +359,9 @@ def process_cogs(file_path: str, output_path: str = None):
     lifo_cogs = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "lifo")["cogs"] for k, b in batches_by_item.items())
     avg_cogs = sum(calculate_valuation(b, sold_by_item.get(k, 0.0), "average")["cogs"] for k, b in batches_by_item.items())
 
-    net_purch = p_gross - p_returns
+    total_p_reductions = p_trade_discounts + p_returns
+    net_purch = p_gross + inward_freight - total_p_reductions
+    s_net = s_gross - s_disc - s_returns
 
     # ایجاد شیت صورت مالی
     target_name = "صورت بهای تمام شده (COGS)"
@@ -237,8 +393,8 @@ def process_cogs(file_path: str, output_path: str = None):
     rows = [
         ("1", "موجودی کالای اول دوره (Beginning Inventory)", None, beg_inv_val, "موجودی انبار در ابتدای دوره مالی جاری"),
         ("2", "خرید ناخالص طی دوره (Gross Purchases)", p_gross, None, "فاکتورهای رسمی و اسناد خرید دوره"),
-        ("3", "به اضافه: هزینه حمل کالای خریداری شده (حمل به داخل)", 0, None, "کرایه حمل و باربری کالاهای خریداری‌شده"),
-        ("4", "کسر می‌شود: برگشت از خرید و تخفیفات", p_returns, None, "مرجوعی کالا و تخفیفات نقدی اخذشده"),
+        ("3", "به اضافه: هزینه حمل کالای خریداری شده (حمل به داخل)", inward_freight, None, "کرایه حمل و باربری کالاهای خریداری‌شده"),
+        ("4", "کسر می‌شود: برگشت از خرید و تخفیفات", total_p_reductions, None, "مرجوعی کالا و تخفیفات تجاری اخذشده"),
         ("5", "بهای تمام شده کالای خریداری شده (خرید خالص)", None, "=C6+C7-C8", "خرید ناخالص + هزینه حمل - برگشت و تخفیفات"),
         ("6", "بهای تمام شده کالای آماده برای فروش", None, "=D5+D9", "موجودی اول دوره + بهای خرید خالص دوره"),
         ("7", "کسر می‌شود: موجودی کالای پایان دوره (Ending Inventory)", None, fifo_end, "موجودی انبارگردانی و عینی پایان دوره"),
@@ -257,45 +413,51 @@ def process_cogs(file_path: str, output_path: str = None):
         if part is not None:
             ws.cell(i, 3, part).number_format = "#,##0"
         if total is not None:
-            d_cell = ws.cell(i, 4, total)
-            d_cell.number_format = "#,##0"
+            if str(total).startswith("="):
+                ws.cell(i, 4, total)
+            else:
+                ws.cell(i, 4, total).number_format = "#,##0"
+        ws.cell(i, 5, note)
 
-        # حذف علامت = برای جلوگیری قطعی از ارور #NAME? در اکسل
-        clean_note = str(note or "").lstrip("=")
-        ws.cell(i, 5, clean_note)
-
-        fill_color = None
-        if i in [9, 10]: fill_color = "F0FDF4"
-        elif i == 12: fill_color = "DCFCE7"
-        elif i in [14, 15]: fill_color = "EFF6FF"
-        elif i in [16, 17]: fill_color = "FEF3C7"
-
-        if fill_color:
+        if i in [9, 10]:
             for c in range(1, 6):
-                ws.cell(i, c).fill = PatternFill(fill_type="solid", fgColor=fill_color)
-                ws.cell(i, c).font = Font(name="Tahoma", bold=True)
+                ws.cell(i, c).fill = PatternFill(fill_type="solid", fgColor="F0FDF4")
+                ws.cell(i, c).font = Font(name="Tahoma", bold=True, color="166534")
+        elif i == 12:
+            for c in range(1, 6):
+                ws.cell(i, c).fill = PatternFill(fill_type="solid", fgColor="DCFCE7")
+                ws.cell(i, c).font = Font(name="Tahoma", size=11, bold=True, color="14532D")
+        elif i in [14, 15]:
+            for c in range(1, 6):
+                ws.cell(i, c).fill = PatternFill(fill_type="solid", fgColor="EFF6FF")
+                ws.cell(i, c).font = Font(name="Tahoma", bold=True, color="1E40AF")
+        elif i in [16, 17]:
+            for c in range(1, 6):
+                ws.cell(i, c).fill = PatternFill(fill_type="solid", fgColor="FEF3C7")
+                ws.cell(i, c).font = Font(name="Tahoma", bold=True, color="92400E")
 
-    # جدول مقایسه تحلیلی سه‌گانه
-    ws["A19"] = "📊 مقایسه تحلیلی بهای تمام شده در روش‌های فایفو، لایفو و میانگین موزون"
-    ws.merge_cells("A19:E19")
-    ws["A19"].font = Font(name="Tahoma", size=11, bold=True, color="FFFFFF")
-    ws["A19"].fill = PatternFill(fill_type="solid", fgColor="1E3A8A")
-    ws["A19"].alignment = Alignment(horizontal="center")
+    cmp_start_r = 19
+    ws.cell(cmp_start_r, 1, "📊 مقایسه تحلیلی بهای تمام شده در روش‌های فایفو، لایفو و میانگین موزون")
+    ws.merge_cells(f"A{cmp_start_r}:E{cmp_start_r}")
+    ws.cell(cmp_start_r, 1).font = Font(name="Tahoma", size=11, bold=True, color="FFFFFF")
+    ws.cell(cmp_start_r, 1).fill = PatternFill(fill_type="solid", fgColor="1E3A8A")
+    ws.cell(cmp_start_r, 1).alignment = Alignment(horizontal="center", vertical="center")
 
+    cmp_hdr_r = cmp_start_r + 1
     cmp_headers = ["ردیف", "روش ارزشیابی بهای تمام شده", "بهای تمام شده (COGS)", "سود ناخالص برآوردی", "تاثیر اقتصادی، تورمی و مالیاتی"]
     for c_idx, h in enumerate(cmp_headers, start=1):
-        cell = ws.cell(20, c_idx, h)
+        cell = ws.cell(cmp_hdr_r, c_idx, h)
         cell.font = Font(name="Tahoma", bold=True, color="FFFFFF")
         cell.fill = PatternFill(fill_type="solid", fgColor="2563EB")
-        cell.alignment = Alignment(horizontal="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
 
     cmp_rows = [
-        ("۱", "فایفو - اولین صادره (FIFO)", round(fifo_cogs, 0), "=D14-C21", "کاهش بهای تمام شده در تورم، افزایش سود دفتری و ارزش بالاتر موجودی پایان دوره", "ECFDF5"),
-        ("۲", "لایفو - آخرین صادره (LIFO)", round(lifo_cogs, 0), "=D14-C22", "تطبیق درآمد جاری با هزینه روز، کاهش سود دفتری و صرفه‌جویی مالیاتی در تورم", "FFF1F2"),
-        ("۳", "میانگین موزون (Weighted Average)", round(avg_cogs, 0), "=D14-C23", "تعدیل نوسانات شدید قیمت خرید و ایجاد تعادل دقیق بین دوره‌ها", "EFF6FF"),
+        ("۱", "فایفو - اولین صادره (FIFO)", round(fifo_cogs, 0), f"=D14-C{cmp_hdr_r+1}", "کاهش بهای تمام شده در تورم، افزایش سود دفتری و ارزش بالاتر موجودی پایان دوره", "ECFDF5"),
+        ("۲", "لایفو - آخرین صادره (LIFO)", round(lifo_cogs, 0), f"=D14-C{cmp_hdr_r+2}", "تطبیق درآمد جاری با هزینه روز، کاهش سود دفتری و صرفه‌جویی مالیاتی در تورم", "FFF1F2"),
+        ("۳", "میانگین موزون (Weighted Average)", round(avg_cogs, 0), f"=D14-C{cmp_hdr_r+3}", "تعدیل نوسانات شدید قیمت خرید و ایجاد تعادل دقیق بین دوره‌ها", "F8FAFC"),
     ]
 
-    for idx, (rn, m_title, c_val, gp_form, note, f_col) in enumerate(cmp_rows, start=21):
+    for idx, (rn, m_title, c_val, gp_form, note, f_col) in enumerate(cmp_rows, start=cmp_hdr_r+1):
         ws.cell(idx, 1, rn).alignment = Alignment(horizontal="center")
         ws.cell(idx, 2, m_title)
         ws.cell(idx, 3, c_val).number_format = "#,##0"
@@ -315,9 +477,16 @@ def process_cogs(file_path: str, output_path: str = None):
     print(f"   💾 {out_file}")
     print(f"\n📊 خلاصه نهایی:")
     print(f"   • موجودی اول دوره: {beg_inv_val:,.0f} تومان")
+    print(f"   • خرید ناخالص: {p_gross:,.0f} تومان")
+    print(f"   • هزینه حمل ورودی: {inward_freight:,.0f} تومان")
+    print(f"   • برگشت از خرید و تخفیفات: {total_p_reductions:,.0f} تومان")
     print(f"   • خرید خالص دوره: {net_purch:,.0f} تومان")
+    print(f"   • کالای آماده برای فروش: {beg_inv_val + net_purch:,.0f} تومان")
+    print(f"   • فروش ناخالص دوره: {s_gross:,.0f} تومان")
+    print(f"   • تخفیفات و برگشت از فروش: {s_disc + s_returns:,.0f} تومان")
     print(f"   • فروش خالص دوره: {s_net:,.0f} تومان")
     print(f"   • بهای تمام شده فایفو (FIFO COGS): {fifo_cogs:,.0f} تومان")
+    print(f"   • موجودی پایان دوره فایفو: {fifo_end:,.0f} تومان")
     print(f"   • سود ناخالص فایفو (FIFO GP): {s_net - fifo_cogs:,.0f} تومان")
     print(f"   • بهای تمام شده لایفو (LIFO COGS): {lifo_cogs:,.0f} تومان")
     print(f"   • بهای تمام شده میانگین موزون: {avg_cogs:,.0f} تومان")

@@ -1872,22 +1872,37 @@ class AccountingActionHandler:
             sheets = [ctx.sheet]
 
         p_sheet = None
+        pr_sheet = None
         s_sheet = None
+        sr_sheet = None
+        beg_sheet = None
+        fr_sheet = None
         m_sheet = None
+        cn_sheet = None
 
         # 1. تطبیق نام شیت
         for sh in sheets:
             sh_name_l = sh.name.lower()
-            if any(k in sh_name_l for k in ["فروش", "sales", "صورتحساب فروش"]) and not s_sheet:
+            if (any(k in sh_name_l for k in ["برگشت از فروش", "برگشت فروش"]) or ("برگشت" in sh_name_l and "فروش" in sh_name_l)) and not sr_sheet:
+                sr_sheet = sh
+            elif (any(k in sh_name_l for k in ["برگشت از خرید", "برگشت خرید"]) or ("برگشت" in sh_name_l and "خرید" in sh_name_l)) and not pr_sheet:
+                pr_sheet = sh
+            elif any(k in sh_name_l for k in ["حمل", "کرایه", "باربری", "ترابری", "هزینه حمل", "هزینه های حمل", "freight"]) and not fr_sheet:
+                fr_sheet = sh
+            elif any(k in sh_name_l for k in ["اول دوره", "موجودی اول", "موجودی اولیه", "ابتدای دوره", "لایه"]) and not beg_sheet:
+                beg_sheet = sh
+            elif any(k in sh_name_l for k in ["امانی", "کالای امانی", "consign"]) and not cn_sheet:
+                cn_sheet = sh
+            elif any(k in sh_name_l for k in ["فروش", "sales", "صورتحساب فروش"]) and "برگشت" not in sh_name_l and not s_sheet:
                 s_sheet = sh
-            elif any(k in sh_name_l for k in ["خرید", "purchase", "purchases"]) and not p_sheet:
+            elif any(k in sh_name_l for k in ["خرید", "purchase", "purchases"]) and "برگشت" not in sh_name_l and not p_sheet:
                 p_sheet = sh
-            elif any(k in sh_name_l for k in ["حرکت", "انبار", "موجودی", "کاردکس", "گردش", "stock", "inventory"]) and not m_sheet:
+            elif any(k in sh_name_l for k in ["حرکت", "انبارگردانی", "انبار", "موجودی", "کاردکس", "گردش", "stock", "inventory"]) and "اول" not in sh_name_l and not m_sheet:
                 m_sheet = sh
 
         # 2. در صورت عدم تطبیق نام، تطبیق بر اساس هدرهای ستون‌ها
         for sh in sheets:
-            if sh in [p_sheet, s_sheet, m_sheet]:
+            if sh in [p_sheet, pr_sheet, s_sheet, sr_sheet, beg_sheet, fr_sheet, m_sheet, cn_sheet]:
                 continue
             min_r, min_c, max_r, max_c = sh.get_used_range_bounds()
             if max_r < min_r or max_c < min_c:
@@ -1896,24 +1911,75 @@ class AccountingActionHandler:
             for r in range(min_r, min(min_r + 5, max_r + 1)):
                 hdr_txt += " ".join(str(sh.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1)).lower() + " "
 
-            if not s_sheet and ("مشتری" in hdr_txt or ("فروش" in hdr_txt and any(k in hdr_txt for k in ["تعداد", "فی", "قیمت"]))):
+            if not beg_sheet and ("لایه" in hdr_txt or ("اول دوره" in hdr_txt and any(k in hdr_txt for k in ["بهای واحد", "فی"]))):
+                beg_sheet = sh
+            elif not pr_sheet and ("برگشتی" in hdr_txt or ("برگشت" in hdr_txt and "خرید" in hdr_txt)):
+                pr_sheet = sh
+            elif not fr_sheet and ("نوع هزینه" in hdr_txt or ("حمل" in hdr_txt and "مبلغ" in hdr_txt)):
+                fr_sheet = sh
+            elif not sr_sheet and ("وضعیت کالا" in hdr_txt or ("برگشت" in hdr_txt and "فروش" in hdr_txt)):
+                sr_sheet = sh
+            elif not s_sheet and ("مشتری" in hdr_txt or ("فروش" in hdr_txt and any(k in hdr_txt for k in ["تعداد", "فی", "قیمت"]))):
                 s_sheet = sh
             elif not p_sheet and ("تامین" in hdr_txt or ("خرید" in hdr_txt and any(k in hdr_txt for k in ["تعداد", "فی", "قیمت"]))):
                 p_sheet = sh
-            elif not m_sheet and any(k in hdr_txt for k in ["نوع حرکت", "شرح حرکت", "اول دوره"]):
+            elif not m_sheet and any(k in hdr_txt for k in ["نوع حرکت", "شرح حرکت", "تعداد شمارش", "اول دوره"]):
                 m_sheet = sh
 
-        if not p_sheet and not s_sheet and not m_sheet:
+        if not p_sheet and not s_sheet and not m_sheet and not beg_sheet:
             return None
 
         from excel_assistant.actions.business_actions import InventoryValuationCalculator
 
         p_gross = 0.0
+        p_trade_discounts = 0.0
         p_returns = 0.0
+        inward_freight = 0.0
         batches_by_item: Dict[str, List[Tuple[float, float]]] = {}
         earliest_price_by_item: Dict[str, float] = {}
+        sales_ref_prices: Dict[str, float] = {}
 
-        # استخراج داده‌های خرید
+        # ۱. پردازش شیت اختصاصی موجودی اول دوره
+        beg_inv_val = 0.0
+        if beg_sheet:
+            b_min_r, b_min_c, b_max_r, b_max_c = beg_sheet.get_used_range_bounds()
+            b_hdr_r = b_min_r
+            b_cols = {}
+            for r in range(b_min_r, min(b_min_r + 5, b_max_r + 1)):
+                row_cols = {}
+                for c in range(b_min_c, b_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(beg_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "کد" in h:
+                        row_cols["item"] = c_let
+                    elif "شرح" in h or "نام" in h:
+                        row_cols["name"] = c_let
+                    elif "تعداد" in h or "مقدار" in h:
+                        row_cols["qty"] = c_let
+                    elif any(k in h for k in ["بهای واحد", "قیمت", "فی"]):
+                        row_cols["price"] = c_let
+                if "qty" in row_cols and "price" in row_cols:
+                    b_hdr_r = r
+                    b_cols = row_cols
+                    break
+
+            b_item_c = b_cols.get("item") or b_cols.get("name") or col_index_to_letter(b_min_c)
+            b_qty_c = b_cols.get("qty", "C")
+            b_price_c = b_cols.get("price", "D")
+
+            for r in range(b_hdr_r + 1, b_max_r + 1):
+                item_raw = str(beg_sheet.get_value(f"{b_item_c}{r}") or "").strip()
+                if not item_raw:
+                    continue
+                qty = to_float_safe(beg_sheet.get_value(f"{b_qty_c}{r}")) or 0.0
+                price = to_float_safe(beg_sheet.get_value(f"{b_price_c}{r}")) or 0.0
+                if qty > 0 and price > 0:
+                    beg_inv_val += (qty * price)
+                    batches_by_item.setdefault(item_raw, []).append((qty, price))
+                    if item_raw not in earliest_price_by_item:
+                        earliest_price_by_item[item_raw] = price
+
+        # ۲. استخراج داده‌های خرید
         if p_sheet:
             p_min_r, p_min_c, p_max_r, p_max_c = p_sheet.get_used_range_bounds()
             p_hdr_r = p_min_r
@@ -1931,6 +1997,8 @@ class AccountingActionHandler:
                         row_cols["name"] = c_let
                     elif "تعداد" in h or "مقدار" in h:
                         row_cols["qty"] = c_let
+                    elif "تخفیف" in h:
+                        row_cols["disc"] = c_let
                     elif ("قیمت" in h or "فی" in h) and "تخفیف" not in h:
                         row_cols["price"] = c_let
                 if "qty" in row_cols or "price" in row_cols:
@@ -1940,8 +2008,9 @@ class AccountingActionHandler:
 
             doc_c = p_col_map.get("doc", "A")
             item_c = p_col_map.get("item") or p_col_map.get("name") or col_index_to_letter(p_min_c)
-            qty_c = p_col_map.get("qty", "G")
-            price_c = p_col_map.get("price", "H")
+            qty_c = p_col_map.get("qty", "E")
+            price_c = p_col_map.get("price", "F")
+            disc_c = p_col_map.get("disc")
 
             for r in range(p_hdr_r + 1, p_max_r + 1):
                 doc_val = str(p_sheet.get_value(f"{doc_c}{r}") or "").strip()
@@ -1952,21 +2021,102 @@ class AccountingActionHandler:
                 price = to_float_safe(p_sheet.get_value(f"{price_c}{r}")) or 0.0
                 if abs(qty) == 0 or price == 0:
                     continue
+                disc_raw = to_float_safe(p_sheet.get_value(f"{disc_c}{r}")) if disc_c else 0.0
+                disc_val = disc_raw or 0.0
+
+                row_g = abs(qty) * price
+                row_d = (row_g * disc_val / 100.0) if (0 < disc_val <= 100) else disc_val
+                row_net = row_g - row_d
 
                 if item_raw not in earliest_price_by_item and price > 0:
-                    earliest_price_by_item[item_raw] = price
+                    earliest_price_by_item[item_raw] = (row_net / qty) if qty > 0 else price
 
                 is_return = "pr" in doc_val.lower() or "برگشت" in doc_val or qty < 0
                 if is_return:
-                    p_returns += abs(qty) * price
+                    p_returns += row_net
                     if item_raw in batches_by_item and batches_by_item[item_raw]:
                         last_q, last_p = batches_by_item[item_raw][-1]
                         batches_by_item[item_raw][-1] = (max(0.0, last_q - abs(qty)), last_p)
                 else:
-                    p_gross += qty * price
-                    batches_by_item.setdefault(item_raw, []).append((qty, price))
+                    p_gross += row_g
+                    p_trade_discounts += row_d
+                    batches_by_item.setdefault(item_raw, []).append((qty, (row_net / qty) if qty > 0 else price))
 
-        # استخراج داده‌های فروش
+        # ۳. پردازش شیت مجزای برگشت از خرید (در صورت وجود)
+        if pr_sheet:
+            pr_min_r, pr_min_c, pr_max_r, pr_max_c = pr_sheet.get_used_range_bounds()
+            pr_hdr_r = pr_min_r
+            pr_cols = {}
+            for r in range(pr_min_r, min(pr_min_r + 5, pr_max_r + 1)):
+                row_cols = {}
+                for c in range(pr_min_c, pr_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(pr_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "کد" in h:
+                        row_cols["item"] = c_let
+                    elif "تعداد" in h or "برگشتی" in h:
+                        row_cols["qty"] = c_let
+                    elif any(k in h for k in ["بهای واحد", "قیمت", "فی"]):
+                        row_cols["price"] = c_let
+                if "qty" in row_cols and "price" in row_cols:
+                    pr_hdr_r = r
+                    pr_cols = row_cols
+                    break
+
+            pr_item_c = pr_cols.get("item", "D")
+            pr_qty_c = pr_cols.get("qty", "E")
+            pr_price_c = pr_cols.get("price", "F")
+
+            for r in range(pr_hdr_r + 1, pr_max_r + 1):
+                item_raw = str(pr_sheet.get_value(f"{pr_item_c}{r}") or "").strip()
+                if not item_raw:
+                    continue
+                qty = to_float_safe(pr_sheet.get_value(f"{pr_qty_c}{r}")) or 0.0
+                price = to_float_safe(pr_sheet.get_value(f"{pr_price_c}{r}")) or 0.0
+                if qty > 0 and price > 0:
+                    ret_amount = qty * price
+                    p_returns += ret_amount
+                    if item_raw in batches_by_item:
+                        rem = qty
+                        for b_idx in range(len(batches_by_item[item_raw]) - 1, -1, -1):
+                            b_q, b_p = batches_by_item[item_raw][b_idx]
+                            take = min(rem, b_q)
+                            batches_by_item[item_raw][b_idx] = (b_q - take, b_p)
+                            rem -= take
+                            if rem <= 0:
+                                break
+
+        # ۴. پردازش شیت هزینه‌های حمل ورودی (در صورت وجود)
+        if fr_sheet:
+            fr_min_r, fr_min_c, fr_max_r, fr_max_c = fr_sheet.get_used_range_bounds()
+            fr_hdr_r = fr_min_r
+            fr_cols = {}
+            for r in range(fr_min_r, min(fr_min_r + 5, fr_max_r + 1)):
+                row_cols = {}
+                for c in range(fr_min_c, fr_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(fr_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "نوع" in h or "شرح" in h:
+                        row_cols["type"] = c_let
+                    elif "مبلغ" in h or ("هزینه" in h and "نوع" not in h and "شرح" not in h):
+                        row_cols["amount"] = c_let
+                if "amount" in row_cols:
+                    fr_hdr_r = r
+                    fr_cols = row_cols
+                    break
+
+            fr_amt_c = fr_cols.get("amount", "E")
+            fr_type_c = fr_cols.get("type", "F")
+
+            for r in range(fr_hdr_r + 1, fr_max_r + 1):
+                amt = to_float_safe(fr_sheet.get_value(f"{fr_amt_c}{r}")) or 0.0
+                type_val = str(fr_sheet.get_value(f"{fr_type_c}{r}") or "").strip().lower()
+                if amt > 0:
+                    if "فروش" in type_val:
+                        continue  # حمل فروش هزینه دوره و توزیع است، نه بهای تمام شده خرید
+                    inward_freight += amt
+
+        # ۵. استخراج داده‌های فروش
         s_gross = 0.0
         s_discounts = 0.0
         s_returns = 0.0
@@ -2002,8 +2152,8 @@ class AccountingActionHandler:
 
             doc_c = s_col_map.get("doc", "A")
             item_c = s_col_map.get("item") or s_col_map.get("name") or col_index_to_letter(s_min_c)
-            qty_c = s_col_map.get("qty", "G")
-            price_c = s_col_map.get("price", "H")
+            qty_c = s_col_map.get("qty", "E")
+            price_c = s_col_map.get("price", "F")
             disc_c = s_col_map.get("disc")
             note_c = s_col_map.get("note")
 
@@ -2021,8 +2171,11 @@ class AccountingActionHandler:
                 note_val = str(s_sheet.get_value(f"{note_c}{r}") or "").strip() if note_c else ""
 
                 row_g = abs(qty) * price
-                row_d = row_g * (disc_val / 100.0) if (0 < disc_val <= 100) else disc_val
+                row_d = (row_g * disc_val / 100.0) if (0 < disc_val <= 100) else disc_val
                 row_net = row_g - row_d
+
+                if doc_val:
+                    sales_ref_prices[doc_val] = (row_net / qty) if qty > 0 else price
 
                 is_return = "sr" in doc_val.lower() or "برگشت" in doc_val or "برگشت" in note_val or qty < 0
                 if is_return:
@@ -2033,11 +2186,48 @@ class AccountingActionHandler:
                     s_discounts += row_d
                     sold_qty_by_item[item_raw] = sold_qty_by_item.get(item_raw, 0.0) + abs(qty)
 
-        s_net = s_gross - s_discounts - s_returns
+        # ۶. پردازش شیت مجزای برگشت از فروش (در صورت وجود)
+        if sr_sheet:
+            sr_min_r, sr_min_c, sr_max_r, sr_max_c = sr_sheet.get_used_range_bounds()
+            sr_hdr_r = sr_min_r
+            sr_cols = {}
+            for r in range(sr_min_r, min(sr_min_r + 5, sr_max_r + 1)):
+                row_cols = {}
+                for c in range(sr_min_c, sr_max_c + 1):
+                    c_let = col_index_to_letter(c)
+                    h = str(sr_sheet.get_value(f"{c_let}{r}") or "").strip().lower()
+                    if "مرجع" in h or "فاکتور" in h:
+                        row_cols["ref"] = c_let
+                    elif "کد" in h:
+                        row_cols["item"] = c_let
+                    elif "تعداد" in h:
+                        row_cols["qty"] = c_let
+                    elif "وضعیت" in h:
+                        row_cols["status"] = c_let
+                if "qty" in row_cols:
+                    sr_hdr_r = r
+                    sr_cols = row_cols
+                    break
 
-        # استخراج موجودی اول دوره و گردش انبار
-        beg_inv_val = 0.0
-        if m_sheet:
+            sr_ref_c = sr_cols.get("ref", "D")
+            sr_item_c = sr_cols.get("item", "C")
+            sr_qty_c = sr_cols.get("qty", "E")
+            sr_stat_c = sr_cols.get("status", "F")
+
+            for r in range(sr_hdr_r + 1, sr_max_r + 1):
+                ref_doc = str(sr_sheet.get_value(f"{sr_ref_c}{r}") or "").strip()
+                item_raw = str(sr_sheet.get_value(f"{sr_item_c}{r}") or "").strip()
+                qty = to_float_safe(sr_sheet.get_value(f"{sr_qty_c}{r}")) or 0.0
+                stat = str(sr_sheet.get_value(f"{sr_stat_c}{r}") or "").strip().lower()
+
+                if qty > 0 and item_raw:
+                    ref_unit_p = sales_ref_prices.get(ref_doc, earliest_price_by_item.get(item_raw, 0.0))
+                    s_returns += qty * ref_unit_p
+                    if "سالم" in stat:
+                        sold_qty_by_item[item_raw] = max(0.0, sold_qty_by_item.get(item_raw, 0.0) - qty)
+
+        # ۷. استخراج موجودی اول دوره از شیت حرکت انبار (در صورت نبود شیت اختصاصی موجودی اول دوره)
+        if not beg_sheet and m_sheet:
             m_min_r, m_min_c, m_max_r, m_max_c = m_sheet.get_used_range_bounds()
             m_hdr_r = m_min_r
             m_col_map = {}
@@ -2075,6 +2265,10 @@ class AccountingActionHandler:
                     beg_inv_val += qty * unit_p
                     batches_by_item.setdefault(item_raw, []).insert(0, (qty, unit_p))
 
+        s_net = s_gross - s_discounts - s_returns
+        total_p_reductions = p_trade_discounts + p_returns
+        net_p = p_gross + inward_freight - total_p_reductions
+
         # محاسبه بهای تمام شده و مانده پایان دوره به تفکیک روش‌ها
         fifo_cogs = 0.0
         lifo_cogs = 0.0
@@ -2097,17 +2291,26 @@ class AccountingActionHandler:
             avg_end_inv += a_res["remaining_value"]
 
         src_parts = []
+        if beg_sheet:
+            src_parts.append(f"موجودی اول دوره: {beg_sheet.name}")
         if p_sheet:
             src_parts.append(f"خرید: {p_sheet.name}")
+        if pr_sheet:
+            src_parts.append(f"برگشت خرید: {pr_sheet.name}")
+        if fr_sheet:
+            src_parts.append(f"حمل: {fr_sheet.name}")
         if s_sheet:
             src_parts.append(f"فروش: {s_sheet.name}")
+        if sr_sheet:
+            src_parts.append(f"برگشت فروش: {sr_sheet.name}")
         if m_sheet:
             src_parts.append(f"انبار: {m_sheet.name}")
 
         return {
             "p_gross": p_gross,
-            "p_returns": p_returns,
-            "net_purchases": p_gross - p_returns,
+            "p_returns": total_p_reductions,
+            "inward_freight": inward_freight,
+            "net_purchases": net_p,
             "s_gross": s_gross,
             "s_discounts": s_discounts,
             "s_returns": s_returns,
@@ -2187,7 +2390,7 @@ class AccountingActionHandler:
                 if detected_sales is None and trans_data["net_sales"] > 0:
                     detected_sales = trans_data["net_sales"]
                 if detected_freight is None:
-                    detected_freight = 0.0
+                    detected_freight = trans_data.get("inward_freight", 0.0)
 
                 if detected_end_inv is None:
                     avail_calc = (detected_beg_inv or 0.0) + (detected_purch or 0.0) + (detected_freight or 0.0) - (detected_returns or 0.0)
@@ -2200,10 +2403,10 @@ class AccountingActionHandler:
                     detected_end_inv = max(0.0, avail_calc - target_cogs)
 
         # پیش‌فرض‌های استاندارد بنچ‌مارک در صورت عدم وجود در شیت
-        beg_inv = detected_beg_inv if detected_beg_inv is not None else 120_000_000.0
-        purchases = detected_purch if detected_purch is not None else 450_000_000.0
+        beg_inv = detected_beg_inv if detected_beg_inv is not None else (0.0 if trans_data else 120_000_000.0)
+        purchases = detected_purch if detected_purch is not None else (0.0 if trans_data else 450_000_000.0)
         freight_in = detected_freight if detected_freight is not None else (0.0 if trans_data else 15_000_000.0)
-        p_returns = detected_returns if detected_returns is not None else 25_000_000.0
+        p_returns = detected_returns if detected_returns is not None else (0.0 if trans_data else 25_000_000.0)
         end_inv = detected_end_inv if detected_end_inv is not None else 140_000_000.0
         sales_val = detected_sales if detected_sales is not None else 750_000_000.0
 
