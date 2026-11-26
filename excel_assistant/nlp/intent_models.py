@@ -388,6 +388,7 @@ class CostOfGoodsSoldAction(BaseActionModel):
     sales_sheet: Optional[str] = None
     purchase_sheet: Optional[str] = None
     create_report_sheet: bool = True
+    allow_demo: bool = False
     description_persian: str = "محاسبه بهای تمام شده کالای فروش رفته (COGS)"
 
 

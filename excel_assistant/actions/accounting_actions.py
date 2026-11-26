@@ -2411,7 +2411,22 @@ class AccountingActionHandler:
                 elif detected_sales is None and any(k in row_str for k in ["فروش کالا", "درآمد فروش", "فروش"]) and not any(k in row_str for k in ["برگشت", "تخفیف"]):
                     detected_sales = best_num
 
-        # پیش‌فرض‌های استاندارد بنچ‌مارک در صورت عدم وجود در شیت
+        # بررسی وجود هرگونه داده واقعی در ورک‌بوک
+        has_any_data = (
+            (trans_data and (trans_data["p_gross"] > 0 or trans_data["net_sales"] > 0 or trans_data["beg_inv"] > 0)) or
+            detected_purch is not None or detected_sales is not None or detected_beg_inv is not None or detected_end_inv is not None or
+            action.purchases is not None or action.sales_amount is not None or action.beginning_inventory is not None
+        )
+
+        if not has_any_data and not getattr(action, "allow_demo", False):
+            return ActionResult(
+                success=False,
+                message_persian="❌ **اطلاعات کافی نیست!**\n"
+                                "فایل اکسل جاری کاملاً خالی است و هیچ داده، سرفصل یا فاکتوری برای خرید، فروش، یا موجودی انبار در آن یافت نشد.\n"
+                                "💡 لطفاً ابتدا فاکتورهای خرید، فروش یا کاردکس انبار خود را در اکسل وارد کنید."
+            )
+
+        # پیش‌فرض‌های استاندارد بنچ‌مارک صرفاً در صورت درخواست نمونه آزمایشی
         beg_inv = detected_beg_inv if detected_beg_inv is not None else (0.0 if trans_data else 120_000_000.0)
         purchases = detected_purch if detected_purch is not None else (0.0 if trans_data else 450_000_000.0)
         freight_in = detected_freight if detected_freight is not None else (0.0 if trans_data else 15_000_000.0)

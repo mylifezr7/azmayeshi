@@ -56,7 +56,14 @@ def test_execute_cogs_periodic_standard():
     sheet = mgr.get_active_sheet()
     ctx = ActionContext(sheet=sheet, manager=mgr)
 
-    action = CostOfGoodsSoldAction(method="periodic", create_report_sheet=True)
+    # 1. On empty workbook without demo flag, must reject and warn user
+    action_empty = CostOfGoodsSoldAction(method="periodic", create_report_sheet=True)
+    res_empty = AccountingActionHandler.execute_cogs(action_empty, ctx)
+    assert res_empty.success is False
+    assert "اطلاعات کافی نیست" in res_empty.message_persian
+
+    # 2. When allow_demo=True, verify benchmark demonstration report is generated
+    action = CostOfGoodsSoldAction(method="periodic", create_report_sheet=True, allow_demo=True)
     res = AccountingActionHandler.execute_cogs(action, ctx)
 
     assert res.success is True
@@ -91,7 +98,7 @@ def test_execute_cogs_comparison_methods():
     sheet = mgr.get_active_sheet()
     ctx = ActionContext(sheet=sheet, manager=mgr)
 
-    action = CostOfGoodsSoldAction(method="compare", create_report_sheet=True)
+    action = CostOfGoodsSoldAction(method="compare", create_report_sheet=True, allow_demo=True)
     res = AccountingActionHandler.execute_cogs(action, ctx)
 
     assert res.success is True

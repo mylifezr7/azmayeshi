@@ -464,6 +464,14 @@ def process_cogs(file_path: str, output_path: str = None, unit_pref: str = "auto
 
     all_items = sorted(list(set(list(batches_by_item.keys()) + list(sold_by_item.keys()))))
 
+    if not all_items and beg_inv_val == 0 and p_gross == 0 and s_gross == 0:
+        print("\n" + "=" * 80)
+        print("❌ خطا: اطلاعات کافی نیست!")
+        print("   فایل اکسل ارائه‌شده کاملاً خالی است و هیچ داده یا فاکتوری برای خرید، فروش یا موجودی انبار ندارد.")
+        print("   💡 لطفاً ابتدا اطلاعات فاکتورها، کاردکس انبار یا خرید و فروش را در فایل اکسل وارد کنید.")
+        print("=" * 80 + "\n")
+        return False
+
     for code in all_items:
         batches = batches_by_item.get(code, [])
         avail_q = sum(q for q, _ in batches)
