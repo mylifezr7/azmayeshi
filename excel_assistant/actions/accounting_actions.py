@@ -2186,19 +2186,23 @@ class AccountingActionHandler:
                     detected_returns = trans_data["p_returns"]
                 if detected_sales is None and trans_data["net_sales"] > 0:
                     detected_sales = trans_data["net_sales"]
+                if detected_freight is None:
+                    detected_freight = 0.0
 
                 if detected_end_inv is None:
+                    avail_calc = (detected_beg_inv or 0.0) + (detected_purch or 0.0) + (detected_freight or 0.0) - (detected_returns or 0.0)
                     if method == "lifo":
-                        detected_end_inv = trans_data["lifo_end_inv"]
+                        target_cogs = trans_data["lifo_cogs"]
                     elif method == "average":
-                        detected_end_inv = trans_data["avg_end_inv"]
+                        target_cogs = trans_data["avg_cogs"]
                     else:
-                        detected_end_inv = trans_data["fifo_end_inv"]
+                        target_cogs = trans_data["fifo_cogs"]
+                    detected_end_inv = max(0.0, avail_calc - target_cogs)
 
         # پیش‌فرض‌های استاندارد بنچ‌مارک در صورت عدم وجود در شیت
         beg_inv = detected_beg_inv if detected_beg_inv is not None else 120_000_000.0
         purchases = detected_purch if detected_purch is not None else 450_000_000.0
-        freight_in = detected_freight if detected_freight is not None else 15_000_000.0
+        freight_in = detected_freight if detected_freight is not None else (0.0 if trans_data else 15_000_000.0)
         p_returns = detected_returns if detected_returns is not None else 25_000_000.0
         end_inv = detected_end_inv if detected_end_inv is not None else 140_000_000.0
         sales_val = detected_sales if detected_sales is not None else 750_000_000.0
