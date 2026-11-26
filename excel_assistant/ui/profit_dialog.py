@@ -521,8 +521,8 @@ class ProfitMethodSelectorDialog(QDialog):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setWindowTitle("🏷️ انتخاب روش محاسبه بهای تمام‌شده و سود")
-        self.resize(500, 360)
-        self.setMinimumSize(440, 320)
+        self.resize(520, 440)
+        self.setMinimumSize(460, 400)
         self.setLayoutDirection(Qt.RightToLeft)
         self.selected_method = "fifo"
         self.open_advanced = False
@@ -584,6 +584,22 @@ class ProfitMethodSelectorDialog(QDialog):
         )
         self.btn_avg.clicked.connect(lambda: self._choose("average"))
         layout.addWidget(self.btn_avg)
+
+        # 4. Compare button
+        self.btn_compare = QPushButton(
+            "⚖️ ۴. مقایسه تطبیقی هر سه روش (فایفو vs لایفو vs میانگین موزون)\n"
+            "   (تحلیل اثر تورم بر بهای تمام‌شده، سود ناخالص، صرفه‌جویی مالیاتی و موجودی انبار)"
+        )
+        self.btn_compare.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0F766E, stop:1 #0284C7);"
+            "  color: #FFFFFF; font-weight: bold; font-size: 12.5px; padding: 12px 16px; border-radius: 9px;"
+            "  border: 1px solid #38BDF8; text-align: right;"
+            "}"
+            "QPushButton:hover { background: #0369A1; border-color: #7DD3FC; }"
+        )
+        self.btn_compare.clicked.connect(lambda: self._choose("compare"))
+        layout.addWidget(self.btn_compare)
 
         # Footer
         footer_layout = QHBoxLayout()

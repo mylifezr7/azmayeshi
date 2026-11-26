@@ -1109,7 +1109,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             'سود عملیاتی': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
             'پرسودترین': 'background: rgba(6, 78, 59, 0.35); color: #34D399; border: 1px solid #10B981;',
             'سود': 'background: rgba(6, 78, 59, 0.4); color: #34D399; border: 1px solid #10B981;',
+            'زیان ناخالص': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
+            'زیان خالص': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
             'زیان': 'background: rgba(159, 18, 57, 0.4); color: #FDA4AF; border: 1px solid #E11D48;',
+            'میانگین موزون': 'background: rgba(88, 28, 135, 0.45); color: #E9D5FF; border: 1px solid #A855F7;',
+            'میانگین': 'background: rgba(88, 28, 135, 0.4); color: #DDD6FE; border: 1px solid #A855F7;',
+            'فایفو': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #10B981;',
+            'لایفو': 'background: rgba(30, 58, 138, 0.45); color: #93C5FD; border: 1px solid #3B82F6;',
+            'FIFO': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #10B981;',
+            'LIFO': 'background: rgba(30, 58, 138, 0.45); color: #93C5FD; border: 1px solid #3B82F6;',
             'ترازنامه': 'background: rgba(120, 53, 15, 0.45); color: #FDE68A; border: 1px solid #D97706;',
             'صورت وضعیت مالی': 'background: rgba(120, 53, 15, 0.45); color: #FDE68A; border: 1px solid #D97706;',
             'تراز آزمایشی': 'background: rgba(120, 53, 15, 0.4); color: #FDE68A; border: 1px solid #D97706;',
@@ -1132,17 +1140,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             'انبار': 'background: rgba(91, 33, 182, 0.35); color: #C4B5FD; border: 1px solid #6D28D9;',
             'حقوق و دستمزد': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
             'فیش حقوقی': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'فیش حقوق': 'background: rgba(3, 105, 161, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
             'حقوق': 'background: rgba(3, 105, 161, 0.35); color: #BAE6FD; border: 1px solid #0284C7;',
             'دستمزد': 'background: rgba(3, 105, 161, 0.35); color: #BAE6FD; border: 1px solid #0284C7;',
             'ورود و خروج': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'ورود خروج': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
             'حضور و غیاب': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'حضور غیاب': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'تایم شیت': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'تایمشیت': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'تایم‌شیت': 'background: rgba(13, 148, 136, 0.45); color: #5EEAD4; border: 1px solid #0D9488;',
+            'ساعت کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعات کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعت کاری': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعات کاری': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'ساعت کار': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
+            'اضافه‌کاری': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
+            'اضافه کاری': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
             'اضافه‌کار': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
             'اضافه کار': 'background: rgba(6, 78, 59, 0.45); color: #6EE7B7; border: 1px solid #059669;',
             'کسری کار': 'background: rgba(194, 65, 12, 0.45); color: #FED7AA; border: 1px solid #EA580C;',
-            'ساعت کار': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
-            'کارکرد': 'background: rgba(14, 165, 233, 0.4); color: #BAE6FD; border: 1px solid #0284C7;',
             'مرخصی': 'background: rgba(30, 64, 175, 0.4); color: #BFDBFE; border: 1px solid #2563EB;',
+            'تأخیرات': 'background: rgba(185, 28, 28, 0.4); color: #FECACA; border: 1px solid #DC2626;',
             'تأخیر': 'background: rgba(185, 28, 28, 0.4); color: #FECACA; border: 1px solid #DC2626;',
+            'تاخیر': 'background: rgba(185, 28, 28, 0.4); color: #FECACA; border: 1px solid #DC2626;',
             'استهلاک انباشته': 'background: rgba(161, 98, 7, 0.4); color: #FEF08A; border: 1px solid #CA8A04;',
             'استهلاک': 'background: rgba(161, 98, 7, 0.4); color: #FEF08A; border: 1px solid #CA8A04;',
             'دارایی ثابت': 'background: rgba(15, 118, 110, 0.4); color: #99F6E4; border: 1px solid #0D9488;',
@@ -1165,7 +1187,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 .replace(/>/g, "&gt;");
 
             const sortedKeys = Object.keys(ACCOUNTING_KEYWORDS_MAP).sort((a, b) => b.length - a.length);
-            const pat = new RegExp('(?<![<\\\\w/])(' + sortedKeys.map(k => k.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&')).join('|') + ')(?![>\\\\w])', 'g');
+            const delimPattern = '[^\\s\\(\\)\\[\\]{}،؛:\\.,!?«»\\-–—\\*\\`\\\'\\"\\u200c]';
+            const pat = new RegExp('(?<!' + delimPattern + ')(' + sortedKeys.map(k => k.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&')).join('|') + ')(?!' + delimPattern + ')', 'g');
 
             escaped = escaped.replace(pat, (match) => {
                 const style = ACCOUNTING_KEYWORDS_MAP[match];
@@ -1416,14 +1439,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    {label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"},
-                    {label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"},
-                    {label: "⏱️ محاسبه ورود و خروج و کارکرد پرسنل (تایم‌شیت)", cmd: "محاسبه ورود و خروج کارمندان"},
+                    {label: "💵 محاسبه و مقایسه سود (فایفو / لایفو / میانگین)...", cmd: "روش سود"},
+                    {label: "⏱️ محاسبه ساعت کاری، ورود و خروج (تایم‌شیت)", cmd: "محاسبه ساعت کاری"},
+                    {label: "💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", cmd: "محاسبه فروش"},
+                    {label: "💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد"},
                     {label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"},
                     {label: "⚖️ مغایرت‌گیری دو ستون (Reconciliation)", cmd: "مغایرت‌گیری ستون A و B"},
                     {label: "📊 تهیه تراز آزمایشی چهار ستونه", cmd: "تهیه تراز آزمایشی"},
                     {label: "💳 محاسبه مانده حساب جاری (بدهکار/بستانکار)", cmd: "محاسبه مانده حساب"},
-                    {label: "💼 لیست حقوق، اضافه‌کاری، بیمه و مالیات", cmd: "محاسبه حقوق و دستمزد"},
                     {label: "📉 محاسبه جدول استهلاک دارایی‌ها", cmd: "محاسبه استهلاک"},
                     {label: "📈 تهیه صورت سود و زیان جامع دوره", cmd: "صورت سود و زیان جامع"},
                     {label: "🏛️ تهیه ترازنامه مالی (بیلان)", cmd: "ترازنامه"}
@@ -1503,7 +1526,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function onActionSelected(cmd) {
             if (cmd) {
                 document.getElementById('commandInput').value = cmd;
-                document.getElementById('commandInput').focus();
+                runSelectedAction();
             }
         }
 
@@ -1518,7 +1541,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 promptPreventDuplicates();
             } else if (cmd.includes('قفل یکتایی') && (cmd.includes('بردار') || cmd.includes('لغو') || cmd.includes('حذف'))) {
                 promptRemoveUniqueValidation();
-            } else if (cmd === 'محاسبه سود') {
+            } else if (cmd === 'محاسبه سود' || cmd === 'روش سود') {
                 openProfitModal();
             } else if (cmd === 'محاسبه فروش') {
                 openSalesModal();

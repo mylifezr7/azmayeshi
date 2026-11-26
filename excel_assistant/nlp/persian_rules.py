@@ -151,12 +151,15 @@ class PersianRuleParser:
 
         # 1.10 Attendance & Timesheet / ورود و خروج، کارکرد، اضافه‌کار و کسری کار پرسنل
         if any(w in text_lower for w in [
-            "ورود و خروج", "حضور و غیاب", "حضور وغیاب", "ورود خروج",
-            "ساعت کارکرد", "کارکرد ماهانه", "تایم شیت", "تایمشیت", "timesheet",
+            "ورود و خروج", "حضور و غیاب", "حضور وغیاب", "حضور غیاب", "ورود خروج",
+            "ساعت کار", "ساعت کاری", "ساعات کار", "ساعات کاری", "محاسبه ساعت",
+            "ساعت کارکرد", "ساعات کارکرد", "کارکرد ماهانه", "کارکرد کارمندان", "کارکرد پرسنل",
+            "تایم شیت", "تایمشیت", "تایم‌شیت", "timesheet",
             "کسری کار", "تاخیر و اضافه کار", "تأخیر و اضافه کار", "ثبت ماهانه",
-            "خلاصه کارمندان"
+            "خلاصه کارمندان", "محاسبه کارکرد", "تردد پرسنل", "ساعت تردد"
         ]) or (
-            ("کارکرد" in text_lower or "ساعت کار" in text_lower) and any(w in text_lower for w in ["کارمند", "پرسنل", "ورود", "خروج", "ماهانه", "روزانه"])
+            ("کارکرد" in text_lower or "ساعت کار" in text_lower or "ساعت کاری" in text_lower)
+            and not any(w in text_lower for w in ["فروش", "سود", "مشتری", "انبار"])
         ):
             emp_name = None
             for cand_name in ["علی رضایی", "مریم احمدی", "حسین کریمی", "سارا محمدی", "رضا نوری", "نرگس حیدری", "امیر صادقی", "زهرا موسوی"]:
@@ -559,7 +562,9 @@ class PersianRuleParser:
                     profit_col = found_cols[0]
 
             val_method = "fifo"
-            if any(w in text_lower for w in ["لایفو", "lifo"]):
+            if any(w in text_lower for w in ["مقایسه", "همزمان", "تطبیقی", "compare"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
+                val_method = "compare"
+            elif any(w in text_lower for w in ["لایفو", "lifo"]):
                 val_method = "lifo"
             elif any(w in text_lower for w in ["میانگین", "موزون", "میانگین موزون", "average"]):
                 val_method = "average"
@@ -569,7 +574,8 @@ class PersianRuleParser:
             method_fa = {
                 "fifo": "فایفو (FIFO)",
                 "lifo": "لایفو (LIFO)",
-                "average": "میانگین موزون (Weighted Average)"
+                "average": "میانگین موزون (Weighted Average)",
+                "compare": "مقایسه تطبیقی فایفو و لایفو و میانگین"
             }[val_method]
 
             period_fa = {

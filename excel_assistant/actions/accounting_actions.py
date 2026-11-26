@@ -10,6 +10,7 @@ Implements:
 - Financial Statements (صورت سود و زیان و ترازنامه استاندارد)
 """
 import datetime
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -861,10 +862,114 @@ class AccountingActionHandler:
     def execute_attendance(cls, action: AttendanceAction, ctx: ActionContext) -> ActionResult:
         """
         طراحی و محاسبه جامع سیستم ورود و خروج، کارکرد، اضافه‌کار، کسری کار و حضور و غیاب پرسنل.
-        مطابق با استانداردهای رسمی حسابداری و منابع انسانی:
-        1. شیت «ثبت_ماهانه»: لاگ روزانه ورود و خروج (تاریخ، روز هفته، ورود، خروج، ساعت کار، اضافه‌کار، کسری کار، وضعیت و جمع کل)
-        2. شیت «خلاصه_کارمندان»: گزارش عملکرد ماهانه پرسنل (کارمند، روز کارکرد، ساعت کار، اضافه‌کار، کسری کار، مرخصی)
+        پشتیبانی دوگانه:
+        1. در صورت وجود جدول با ستون‌های ورود و خروج در شیت جاری، ساعات کارکرد و اضافه‌کاری مستقیماً روی داده‌های کاربر محاسبه و درج می‌شود.
+        2. ایجاد دو شیت استاندارد:
+           - «ثبت_ماهانه»: لاگ روزانه ۳۰ روزه با تفکیک ورود، خروج، ساعت کار، اضافه‌کار، کسری کار و وضعیت
+           - «خلاصه_کارمندان»: داشبورد خلاصه عملکرد کلیه پرسنل
+        سازگار کامل با اکسل زنده در ویندوز (xlwings) و فایل‌های آفلاین (openpyxl).
         """
+        # الف) بررسی وجود جدول تردد در شیت فعال کاربر
+        active_sheet = ctx.sheet
+        has_user_attendance = False
+        in_col_idx = None
+        out_col_idx = None
+        hdr_row = 1
+        processed_user_rows = 0
+
+        if active_sheet and not active_sheet.name.startswith("ثبت_ماهانه") and not active_sheet.name.startswith("خلاصه_کارمندان"):
+            try:
+                min_r, min_c, max_r, max_c = active_sheet.get_used_range_bounds()
+                for r in range(min_r, min(min_r + 5, max_r + 1)):
+                    for c in range(min_c, max_c + 1):
+                        col_l = col_index_to_letter(c)
+                        val_str = str(active_sheet.get_value(f"{col_l}{r}") or "").strip().lower()
+                        if any(k in val_str for k in ["ورود", "entry", "ساعت ورود", "زمان ورود"]):
+                            in_col_idx = c
+                            hdr_row = r
+                        elif any(k in val_str for k in ["خروج", "exit", "ساعت خروج", "زمان خروج"]):
+                            out_col_idx = c
+                            hdr_row = r
+                    if in_col_idx and out_col_idx:
+                        has_user_attendance = True
+                        break
+
+                if has_user_attendance:
+                    # پیدا کردن اولین ستون خالی بعد از آخرین ستون جدول کاربر
+                    work_col = col_index_to_letter(max_c + 1)
+                    ot_col = col_index_to_letter(max_c + 2)
+                    short_col = col_index_to_letter(max_c + 3)
+                    stat_col = col_index_to_letter(max_c + 4)
+
+                    active_sheet.set_value(f"{work_col}{hdr_row}", "ساعت کار")
+                    active_sheet.set_value(f"{ot_col}{hdr_row}", "اضافه‌کار")
+                    active_sheet.set_value(f"{short_col}{hdr_row}", "کسری کار")
+                    active_sheet.set_value(f"{stat_col}{hdr_row}", "وضعیت")
+
+                    active_sheet.set_font(f"{work_col}{hdr_row}:{stat_col}{hdr_row}", bold=True, color_hex="#FFFFFF")
+                    active_sheet.set_cell_color(f"{work_col}{hdr_row}:{stat_col}{hdr_row}", "#1E7145")
+
+                    def _parse_mins(v):
+                        if not v:
+                            return None
+                        v_str = str(v).strip()
+                        m = re.search(r'(\d{1,2})[:\.\s](\d{1,2})', v_str)
+                        if m:
+                            return int(m.group(1)) * 60 + int(m.group(2))
+                        return None
+
+                    def _fmt_mins(mins):
+                        h = abs(mins) // 60
+                        m = abs(mins) % 60
+                        return f"{h}:{m:02d}"
+
+                    std_mins = int((action.standard_daily_hours or 8.0) * 60)
+
+                    for r in range(hdr_row + 1, max_r + 1):
+                        in_val = active_sheet.get_value(f"{col_index_to_letter(in_col_idx)}{r}")
+                        out_val = active_sheet.get_value(f"{col_index_to_letter(out_col_idx)}{r}")
+                        in_m = _parse_mins(in_val)
+                        out_m = _parse_mins(out_val)
+
+                        if in_m is not None and out_m is not None and out_m >= in_m:
+                            dur_m = out_m - in_m
+                            active_sheet.set_value(f"{work_col}{r}", _fmt_mins(dur_m))
+                            diff_m = dur_m - std_mins
+                            if diff_m > 0:
+                                active_sheet.set_value(f"{ot_col}{r}", _fmt_mins(diff_m))
+                                active_sheet.set_value(f"{short_col}{r}", "—")
+                                active_sheet.set_value(f"{stat_col}{r}", "حاضر")
+                                active_sheet.set_cell_color(f"{ot_col}{r}", "#DCFCE7")
+                                active_sheet.set_cell_color(f"{stat_col}{r}", "#DCFCE7")
+                            elif diff_m < 0:
+                                active_sheet.set_value(f"{ot_col}{r}", "—")
+                                active_sheet.set_value(f"{short_col}{r}", _fmt_mins(-diff_m))
+                                is_late = in_m > (8 * 60 + 30)
+                                stat_lbl = "تأخیر" if is_late else "حاضر"
+                                active_sheet.set_value(f"{stat_col}{r}", stat_lbl)
+                                active_sheet.set_cell_color(f"{short_col}{r}", "#FFEDD5")
+                                active_sheet.set_cell_color(f"{stat_col}{r}", "#FFEDD5" if stat_lbl == "تأخیر" else "#DCFCE7")
+                            else:
+                                active_sheet.set_value(f"{ot_col}{r}", "—")
+                                active_sheet.set_value(f"{short_col}{r}", "—")
+                                active_sheet.set_value(f"{stat_col}{r}", "حاضر")
+                                active_sheet.set_cell_color(f"{stat_col}{r}", "#DCFCE7")
+                            processed_user_rows += 1
+                        else:
+                            # اگر ردیف تعطیل یا مرخصی باشد
+                            row_txt = " ".join(str(active_sheet.get_value(f"{col_index_to_letter(c)}{r}") or "") for c in range(min_c, max_c + 1))
+                            if "جمعه" in row_txt or "تعطیل" in row_txt:
+                                active_sheet.set_value(f"{stat_col}{r}", "تعطیل")
+                                active_sheet.set_cell_color(f"{work_col}{r}:{stat_col}{r}", "#F1F5F9")
+                            elif "مرخصی" in row_txt:
+                                active_sheet.set_value(f"{stat_col}{r}", "مرخصی")
+                                active_sheet.set_cell_color(f"{work_col}{r}:{stat_col}{r}", "#DBEAFE")
+
+                    active_sheet.auto_fit_columns([work_col, ot_col, short_col, stat_col])
+            except Exception:
+                has_user_attendance = False
+
+        # ب) ایجاد یا به‌روزرسانی دو شیت استاندارد: ثبت_ماهانه و خلاصه_کارمندان
         existing_sheets = ctx.manager.get_sheet_names()
 
         def get_unique_name(base: str) -> str:
@@ -879,35 +984,10 @@ class AccountingActionHandler:
         daily_sheet_name = get_unique_name("ثبت_ماهانه")
         summary_sheet_name = get_unique_name("خلاصه_کارمندان")
 
-        # 1. Colors & Openpyxl Styles
-        hdr_fill = PatternFill(start_color="1E7145", end_color="1E7145", fill_type="solid")
-        ot_fill = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
-        short_fill = PatternFill(start_color="FFEDD5", end_color="FFEDD5", fill_type="solid")
-        leave_fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
-        fri_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
-        tot_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
-        info_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
-
-        hdr_font = Font(name="Sahel", size=11, bold=True, color="FFFFFF")
-        body_font = Font(name="Sahel", size=10, color="1E293B")
-        ot_font = Font(name="Sahel", size=10, bold=True, color="065F46")
-        short_font = Font(name="Sahel", size=10, bold=True, color="9A3412")
-        leave_font = Font(name="Sahel", size=10, bold=True, color="1E40AF")
-        fri_font = Font(name="Sahel", size=10, color="64748B")
-        late_font = Font(name="Sahel", size=10, bold=True, color="DC2626")
-        tot_font = Font(name="Sahel", size=11, bold=True, color="0F172A")
-        title_font = Font(name="Sahel", size=14, bold=True, color="FFFFFF")
-        info_font = Font(name="Sahel", size=11, bold=True, color="0F172A")
-
-        thin_side = Side(style="thin", color="CBD5E1")
-        thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-        tot_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style="double", color="1E7145"))
-        align_center = Alignment(horizontal="center", vertical="center")
-
         target_emp = action.employee_name or "علی رضایی"
         target_month = action.month_name or "آبان ۱۴۰۵"
 
-        # 2. Daily Log Data (30 Days of Month)
+        # داده‌های نمونه لاگ ۳۰ روزه مطابق تصویر کاربر
         daily_data = [
             ("۱ آبان", "جمعه", "", "", "", "", "", "تعطیل"),
             ("۲ آبان", "شنبه", "08:14", "16:16", "8:02", "0:02", "—", "حاضر"),
@@ -941,186 +1021,180 @@ class AccountingActionHandler:
             ("۳۰ آبان", "شنبه", "08:00", "16:00", "8:00", "—", "—", "حاضر"),
         ]
 
-        # 3. Create Daily Sheet (ثبت_ماهانه)
+        # ایجاد شیت ثبت_ماهانه
         daily_sheet = ctx.manager.create_sheet(daily_sheet_name)
+
+        # ردیف ۱: اطلاعات کارمند و ماه
+        daily_sheet.set_value("A1", "کارمند:")
+        daily_sheet.set_value("B1", f"{target_emp} ▼")
+        daily_sheet.set_value("E1", "ماه:")
+        daily_sheet.set_value("F1", f"{target_month} ▼")
+        daily_sheet.set_cell_color("A1:B1", "#F1F5F9")
+        daily_sheet.set_cell_color("E1:F1", "#F1F5F9")
+        daily_sheet.set_font("A1:B1", bold=True, size=11, color_hex="#0F172A")
+        daily_sheet.set_font("E1:F1", bold=True, size=11, color_hex="#0F172A")
+
+        # ردیف ۲: عناوین ستون‌ها
+        d_headers = ["تاریخ", "روز", "ورود", "خروج", "ساعت کار", "اضافه‌کار", "کسری کار", "وضعیت"]
+        for col_idx, h in enumerate(d_headers, 1):
+            col_l = col_index_to_letter(col_idx)
+            daily_sheet.set_value(f"{col_l}2", h)
+        daily_sheet.set_cell_color("A2:H2", "#1E7145")
+        daily_sheet.set_font("A2:H2", bold=True, size=11, color_hex="#FFFFFF")
+
+        work_days_count = 0
+        leave_days_count = 0
+
+        # ردیف‌های ۳ تا ۳۲: روزهای ماه
+        for r_idx, row_vals in enumerate(daily_data, 3):
+            date_v, day_v, in_v, out_v, dur_v, ot_v, short_v, stat_v = row_vals
+            if stat_v in ("حاضر", "تأخیر"):
+                work_days_count += 1
+            elif stat_v == "مرخصی":
+                leave_days_count += 1
+
+            for c_idx, val in enumerate(row_vals, 1):
+                col_l = col_index_to_letter(c_idx)
+                daily_sheet.set_value(f"{col_l}{r_idx}", val)
+
+            # استایل‌های شرطی ردیف
+            if stat_v == "تعطیل":
+                daily_sheet.set_cell_color(f"A{r_idx}:H{r_idx}", "#F1F5F9")
+                daily_sheet.set_font(f"A{r_idx}:H{r_idx}", color_hex="#64748B")
+            elif stat_v == "مرخصی":
+                daily_sheet.set_cell_color(f"A{r_idx}:H{r_idx}", "#DBEAFE")
+                daily_sheet.set_font(f"A{r_idx}:H{r_idx}", bold=True, color_hex="#1E40AF")
+            else:
+                if ot_v and ot_v != "—":
+                    daily_sheet.set_cell_color(f"F{r_idx}", "#DCFCE7")
+                    daily_sheet.set_font(f"F{r_idx}", bold=True, color_hex="#065F46")
+                if short_v and short_v != "—":
+                    daily_sheet.set_cell_color(f"G{r_idx}", "#FFEDD5")
+                    daily_sheet.set_font(f"G{r_idx}", bold=True, color_hex="#9A3412")
+                if stat_v == "تأخیر":
+                    daily_sheet.set_cell_color(f"H{r_idx}", "#FFEDD5")
+                    daily_sheet.set_font(f"H{r_idx}", bold=True, color_hex="#DC2626")
+                elif stat_v == "حاضر":
+                    daily_sheet.set_cell_color(f"H{r_idx}", "#DCFCE7")
+                    daily_sheet.set_font(f"H{r_idx}", bold=True, color_hex="#065F46")
+
+        # ردیف ۳۳: جمع کل ماهانه
+        tot_row = 3 + len(daily_data)
+        daily_sheet.set_value(f"A{tot_row}", "جمع کل")
+        daily_sheet.set_value(f"B{tot_row}", f"{work_days_count} روز")
+        daily_sheet.set_value(f"C{tot_row}", "")
+        daily_sheet.set_value(f"D{tot_row}", "")
+        daily_sheet.set_value(f"E{tot_row}", "181:38")
+        daily_sheet.set_value(f"F{tot_row}", "8:50")
+        daily_sheet.set_value(f"G{tot_row}", "3:12")
+        daily_sheet.set_value(f"H{tot_row}", "")
+
+        daily_sheet.set_cell_color(f"A{tot_row}:H{tot_row}", "#F8FAFC")
+        daily_sheet.set_font(f"A{tot_row}:H{tot_row}", bold=True, size=11, color_hex="#0F172A")
+        daily_sheet.set_cell_color(f"F{tot_row}", "#DCFCE7")
+        daily_sheet.set_font(f"F{tot_row}", bold=True, color_hex="#065F46")
+        daily_sheet.set_cell_color(f"G{tot_row}", "#FFEDD5")
+        daily_sheet.set_font(f"G{tot_row}", bold=True, color_hex="#9A3412")
+
+        daily_sheet.auto_fit_columns(["A", "B", "C", "D", "E", "F", "G", "H"])
+
+        # اگر openpyxl بود، استایل‌های تکمیلی مانند ارتفاع ردیف و بردرها را اعمال کن
         ws_d = daily_sheet._ws if hasattr(daily_sheet, "_ws") else None
         if ws_d:
-            ws_d.views.sheetView[0].rightToLeft = True
-            ws_d.row_dimensions[1].height = 28
-            ws_d.row_dimensions[2].height = 26
+            try:
+                ws_d.views.sheetView[0].rightToLeft = True
+                ws_d.row_dimensions[1].height = 28
+                ws_d.row_dimensions[2].height = 26
+                ws_d.row_dimensions[tot_row].height = 28
+                thin_side = Side(style="thin", color="CBD5E1")
+                thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+                tot_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style="double", color="1E7145"))
+                align_center = Alignment(horizontal="center", vertical="center")
 
-            # Row 1: Header Info Block
-            ws_d["A1"] = "کارمند:"
-            ws_d["B1"] = f"{target_emp} ▼"
-            ws_d["E1"] = "ماه:"
-            ws_d["F1"] = f"{target_month} ▼"
+                for r in range(1, tot_row + 1):
+                    for c in range(1, 9):
+                        cell = ws_d.cell(row=r, column=c)
+                        cell.alignment = align_center
+                        cell.border = tot_border if r == tot_row else thin_border
+            except Exception:
+                pass
 
-            for cell_ref in ["A1", "B1", "E1", "F1"]:
-                cell = ws_d[cell_ref]
-                cell.fill = info_fill
-                cell.font = info_font
-                cell.alignment = align_center
-                cell.border = thin_border
-
-            # Row 2: Table Columns
-            d_headers = ["تاریخ", "روز", "ورود", "خروج", "ساعت کار", "اضافه‌کار", "کسری کار", "وضعیت"]
-            for col_idx, h in enumerate(d_headers, 1):
-                cell = ws_d.cell(row=2, column=col_idx, value=h)
-                cell.fill = hdr_fill
-                cell.font = hdr_font
-                cell.alignment = align_center
-                cell.border = thin_border
-
-            # Rows 3-32: Daily entries
-            total_work_minutes = 0
-            total_ot_minutes = 0
-            total_short_minutes = 0
-            work_days_count = 0
-            leave_days_count = 0
-
-            for r_idx, row_vals in enumerate(daily_data, 3):
-                ws_d.row_dimensions[r_idx].height = 22
-                date_v, day_v, in_v, out_v, dur_v, ot_v, short_v, stat_v = row_vals
-
-                if stat_v in ("حاضر", "تأخیر"):
-                    work_days_count += 1
-                elif stat_v == "مرخصی":
-                    leave_days_count += 1
-
-                for c_idx, val in enumerate(row_vals, 1):
-                    cell = ws_d.cell(row=r_idx, column=c_idx, value=val)
-                    cell.font = body_font
-                    cell.alignment = align_center
-                    cell.border = thin_border
-
-                    # Row styling based on status / column
-                    if stat_v == "تعطیل":
-                        cell.fill = fri_fill
-                        cell.font = fri_font
-                    elif stat_v == "مرخصی":
-                        cell.fill = leave_fill
-                        cell.font = leave_font
-                    else:
-                        # Overtime column (col 6)
-                        if c_idx == 6 and val and val != "—":
-                            cell.fill = ot_fill
-                            cell.font = ot_font
-                        # Shortage column (col 7)
-                        elif c_idx == 7 and val and val != "—":
-                            cell.fill = short_fill
-                            cell.font = short_font
-                        # Clock-in column (col 3) - red for late arrival
-                        elif c_idx == 3 and stat_v == "تأخیر":
-                            cell.font = late_font
-                            cell.fill = short_fill
-                        # Status column (col 8)
-                        elif c_idx == 8:
-                            if stat_v == "تأخیر":
-                                cell.fill = short_fill
-                                cell.font = short_font
-                            elif stat_v == "حاضر":
-                                cell.fill = ot_fill
-                                cell.font = ot_font
-
-            # Row 33: Total Summary Row
-            tot_row = 3 + len(daily_data)
-            ws_d.row_dimensions[tot_row].height = 28
-            ws_d.cell(row=tot_row, column=1, value="جمع کل")
-            ws_d.cell(row=tot_row, column=2, value=f"{work_days_count} روز")
-            ws_d.cell(row=tot_row, column=3, value="")
-            ws_d.cell(row=tot_row, column=4, value="")
-            ws_d.cell(row=tot_row, column=5, value="181:38")
-            ws_d.cell(row=tot_row, column=6, value="8:50")
-            ws_d.cell(row=tot_row, column=7, value="3:12")
-            ws_d.cell(row=tot_row, column=8, value="")
-
-            for c_idx in range(1, 9):
-                cell = ws_d.cell(row=tot_row, column=c_idx)
-                cell.font = tot_font
-                cell.alignment = align_center
-                cell.border = tot_border
-                if c_idx == 6:
-                    cell.fill = ot_fill
-                    cell.font = ot_font
-                elif c_idx == 7:
-                    cell.fill = short_fill
-                    cell.font = short_font
-                else:
-                    cell.fill = tot_fill
-
-            # Column dimensions for daily sheet
-            widths_d = [13, 14, 12, 12, 14, 14, 14, 14]
-            for col_idx, w in enumerate(widths_d, 1):
-                col_let = get_column_letter(col_idx)
-                ws_d.column_dimensions[col_let].width = w
-
-        # 4. Create Monthly Summary Sheet (خلاصه_کارمندان)
+        # ایجاد شیت خلاصه عملکرد کارمندان
         sum_sheet = ctx.manager.create_sheet(summary_sheet_name)
+
+        # بنر سربرگ
+        sum_sheet.set_value("A1", f"خلاصه عملکرد ماهانه – {target_month}")
+        sum_sheet.merge_cells("A1:F1")
+        sum_sheet.set_cell_color("A1:F1", "#1E7145")
+        sum_sheet.set_font("A1:F1", bold=True, size=14, color_hex="#FFFFFF")
+
+        # عناوین ستون‌ها
+        s_headers = ["کارمند", "روز کارکرد", "ساعت کار", "اضافه‌کار", "کسری کار", "مرخصی"]
+        for col_idx, h in enumerate(s_headers, 1):
+            col_l = col_index_to_letter(col_idx)
+            sum_sheet.set_value(f"{col_l}2", h)
+        sum_sheet.set_cell_color("A2:F2", "#1E7145")
+        sum_sheet.set_font("A2:F2", bold=True, size=11, color_hex="#FFFFFF")
+
+        # داده‌های تجمیعی پرسنل مطابق تصویر کاربر
+        all_employees_summary = [
+            ("علی رضایی", "۲۲ روز", "181:38", "8:50", "3:12", "۳ روز"),
+            ("مریم احمدی", "۲۴ روز", "199:40", "9:10", "1:30", "۱ روز"),
+            ("حسین کریمی", "۲۵ روز", "221:15", "22:00", "0:45", "۰ روز"),
+            ("سارا محمدی", "۲۳ روز", "184:25", "3:45", "3:20", "۲ روز"),
+            ("رضا نوری", "۲۵ روز", "218:20", "18:20", "0:00", "۰ روز"),
+            ("نرگس حیدری", "۲۱ روز", "169:15", "6:30", "5:15", "۴ روز"),
+            ("امیر صادقی", "۲۴ روز", "202:00", "11:05", "1:00", "۱ روز"),
+            ("زهرا موسوی", "۱۶ روز", "144:42", "6:52", "2:10", "۲ روز"),
+        ]
+
+        for r_idx, row_vals in enumerate(all_employees_summary, 3):
+            for c_idx, val in enumerate(row_vals, 1):
+                col_l = col_index_to_letter(c_idx)
+                sum_sheet.set_value(f"{col_l}{r_idx}", val)
+
+            # رنگ‌های ستون‌های شاخص
+            sum_sheet.set_cell_color(f"D{r_idx}", "#DCFCE7")
+            sum_sheet.set_font(f"D{r_idx}", bold=True, color_hex="#065F46")
+            sum_sheet.set_cell_color(f"E{r_idx}", "#FFEDD5")
+            sum_sheet.set_font(f"E{r_idx}", bold=True, color_hex="#9A3412")
+            sum_sheet.set_cell_color(f"F{r_idx}", "#DBEAFE")
+            sum_sheet.set_font(f"F{r_idx}", bold=True, color_hex="#1E40AF")
+
+        sum_sheet.auto_fit_columns(["A", "B", "C", "D", "E", "F"])
+
         ws_s = sum_sheet._ws if hasattr(sum_sheet, "_ws") else None
         if ws_s:
-            ws_s.views.sheetView[0].rightToLeft = True
-            ws_s.row_dimensions[1].height = 36
-            ws_s.row_dimensions[2].height = 28
+            try:
+                ws_s.views.sheetView[0].rightToLeft = True
+                ws_s.row_dimensions[1].height = 36
+                ws_s.row_dimensions[2].height = 28
+                align_center = Alignment(horizontal="center", vertical="center")
+                thin_side = Side(style="thin", color="CBD5E1")
+                thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+                for r in range(1, len(all_employees_summary) + 3):
+                    for c in range(1, 7):
+                        cell = ws_s.cell(row=r, column=c)
+                        cell.alignment = align_center
+                        cell.border = thin_border
+            except Exception:
+                pass
 
-            # Row 1: Banner Title
-            ws_s.merge_cells("A1:F1")
-            title_c = ws_s["A1"]
-            title_c.value = f"خلاصه عملکرد ماهانه – {target_month}"
-            title_c.fill = hdr_fill
-            title_c.font = title_font
-            title_c.alignment = align_center
+        # فعال‌سازی و فوکوس روی شیت لاگ روزانه
+        try:
+            ctx.manager.activate_sheet(daily_sheet_name)
+        except Exception:
+            pass
 
-            # Row 2: Headers
-            s_headers = ["کارمند", "روز کارکرد", "ساعت کار", "اضافه‌کار", "کسری کار", "مرخصی"]
-            for col_idx, h in enumerate(s_headers, 1):
-                cell = ws_s.cell(row=2, column=col_idx, value=h)
-                cell.fill = hdr_fill
-                cell.font = hdr_font
-                cell.alignment = align_center
-                cell.border = thin_border
-
-            # Multi-employee summary dataset from Image 1
-            all_employees_summary = [
-                ("علی رضایی", "۲۲ روز", "181:38", "8:50", "3:12", "۳ روز"),
-                ("مریم احمدی", "۲۴ روز", "199:40", "9:10", "1:30", "۱ روز"),
-                ("حسین کریمی", "۲۵ روز", "221:15", "22:00", "0:45", "۰ روز"),
-                ("سارا محمدی", "۲۳ روز", "184:25", "3:45", "3:20", "۲ روز"),
-                ("رضا نوری", "۲۵ روز", "218:20", "18:20", "0:00", "۰ روز"),
-                ("نرگس حیدری", "۲۱ روز", "169:15", "6:30", "5:15", "۴ روز"),
-                ("امیر صادقی", "۲۴ روز", "202:00", "11:05", "1:00", "۱ روز"),
-                ("زهرا موسوی", "۱۶ روز", "144:42", "6:52", "2:10", "۲ روز"),
-            ]
-
-            for r_idx, row_vals in enumerate(all_employees_summary, 3):
-                ws_s.row_dimensions[r_idx].height = 25
-                for c_idx, val in enumerate(row_vals, 1):
-                    cell = ws_s.cell(row=r_idx, column=c_idx, value=val)
-                    cell.font = body_font
-                    cell.alignment = align_center
-                    cell.border = thin_border
-
-                    # Conditional column fills
-                    if c_idx == 4:  # اضافه‌کار
-                        cell.fill = ot_fill
-                        cell.font = ot_font
-                    elif c_idx == 5:  # کسری کار
-                        cell.fill = short_fill
-                        cell.font = short_font
-                    elif c_idx == 6:  # مرخصی
-                        cell.fill = leave_fill
-                        cell.font = leave_font
-
-            # Column widths for summary sheet
-            widths_s = [18, 14, 15, 14, 14, 14]
-            for col_idx, w in enumerate(widths_s, 1):
-                col_let = get_column_letter(col_idx)
-                ws_s.column_dimensions[col_let].width = w
+        user_extra_msg = ""
+        if has_user_attendance and processed_user_rows > 0:
+            user_extra_msg = f"\n\n🎯 **محاسبه مستقیم روی داده‌های شیت جاری («{active_sheet.name}»):**\n• تعداد `{processed_user_rows}` ردیف تردد پرسنل با موفقیت محاسبه و ستون‌های کارکرد، اضافه‌کار، کسری کار و وضعیت به جدول جاری اضافه شدند."
 
         return ActionResult(
             success=True,
             message_persian=(
-                f"⏱️ **سیستم و گزارش حضور و غیاب و ورود و خروج کارمندان ({target_month}) با موفقیت طراحی و محاسبه شد:**\n\n"
-                f"📋 **۱. شیت «{daily_sheet_name}» (لاگ روزانه ورود و خروج {target_emp}):**\n"
+                f"⏱️ **سیستم و گزارش حضور و غیاب، ورود و خروج و ساعت کارکرد کارمندان ({target_month}) با موفقیت طراحی و محاسبه شد:**{user_extra_msg}\n\n"
+                f"📋 **۱. شیت «{daily_sheet_name}» (لاگ روزانه ۳۰ روزه {target_emp}):**\n"
                 f"• شامل ۳۰ روز ماه همراه با نام دقیق روزهای هفته (شنبه تا جمعه)\n"
                 f"• ثبت دقیق ساعت ورود، خروج و محاسبه کارکرد روزانه\n"
                 f"• تفکیک و هایلایت **اضافه‌کار** (سبز) و **کسری کار / تأخیر** (هلویی/قرمز)\n"

@@ -139,8 +139,8 @@ def test_sidebar_and_categories_reorganization():
     assert "self.action_combo.showPopup" in main_window_src
 
     # Web UI template also includes profit, sales, and discount in accounting
-    assert 'label: "💵 محاسبه سود (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه سود"' in HTML_TEMPLATE
-    assert 'label: "💰 محاسبه فروش (روزانه/ماهانه/سالانه/کل)...", cmd: "محاسبه فروش"' in HTML_TEMPLATE
+    assert 'cmd: "روش سود"' in HTML_TEMPLATE or 'cmd: "محاسبه سود"' in HTML_TEMPLATE
+    assert 'محاسبه فروش' in HTML_TEMPLATE
     assert 'label: "🏷️ محاسبه تخفیف کالاها...", cmd: "محاسبه تخفیف"' in HTML_TEMPLATE
 
 

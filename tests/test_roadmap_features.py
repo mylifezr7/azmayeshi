@@ -1415,6 +1415,89 @@ def test_attendance_calculation(test_manager):
     assert summary.get_value("B10") == "۱۶ روز"
 
 
+def test_attendance_user_sheet_and_phrases(test_manager):
+    """Verify that colloquial attendance phrases parse correctly and user active sheet attendance columns are computed."""
+    from excel_assistant.nlp.parser import PersianIntentParser
+    from excel_assistant.nlp.intent_models import AttendanceAction
+    from excel_assistant.actions.accounting_actions import AccountingActionHandler
+
+    parser = PersianIntentParser()
+    for phrase in ["محاسبه ساعت کاری", "ساعت کاری", "محاسبه ساعات کاری", "ساعت کارکرد", "حضور غیاب", "ورود خروج"]:
+        act = parser.parse(phrase)
+        assert isinstance(act, AttendanceAction), f"Failed for phrase: {phrase}"
+
+    # Active sheet calculation test
+    sheet = test_manager.get_active_sheet()
+    sheet.set_value("A1", "تاریخ")
+    sheet.set_value("B1", "ساعت ورود")
+    sheet.set_value("C1", "ساعت خروج")
+    sheet.set_value("A2", "1405/08/01")
+    sheet.set_value("B2", "08:14")
+    sheet.set_value("C2", "16:16")
+
+    action = AttendanceAction()
+    ctx = ActionContext(manager=test_manager, sheet=sheet)
+    res = AccountingActionHandler.execute_attendance(action, ctx)
+
+    assert res.success is True
+    assert sheet.get_value("D1") == "ساعت کار"
+    assert sheet.get_value("E1") == "اضافه‌کار"
+    assert sheet.get_value("F1") == "کسری کار"
+    assert sheet.get_value("G1") == "وضعیت"
+    assert sheet.get_value("D2") == "8:02"
+    assert sheet.get_value("E2") == "0:02"
+    assert sheet.get_value("G2") == "حاضر"
+
+
+def test_profit_compare_fifo_lifo(test_manager):
+    """Verify that comparing profit across FIFO, LIFO, and Average creates comparison sheet and returns side-by-side metrics."""
+    from excel_assistant.nlp.parser import PersianIntentParser
+    from excel_assistant.nlp.intent_models import ProfitCalculationAction
+    from excel_assistant.actions.math_actions import MathActionHandler
+
+    parser = PersianIntentParser()
+    act = parser.parse("مقایسه سود به روش فایفو و لایفو")
+    assert isinstance(act, ProfitCalculationAction)
+    assert act.valuation_method == "compare"
+
+    # Setup sales and purchase sheets
+    s1 = test_manager.get_sheet(test_manager.get_sheet_names()[0])
+    s1.set_value("A1", "تاریخ")
+    s1.set_value("B1", "کالا")
+    s1.set_value("C1", "تعداد فروش")
+    s1.set_value("D1", "قیمت فروش")
+    s1.set_value("A2", "1405/01/05")
+    s1.set_value("B2", "ماوس")
+    s1.set_value("C2", 10)
+    s1.set_value("D2", 150000)
+
+    s2 = test_manager.create_sheet("خرید")
+    s2.set_value("A1", "تاریخ")
+    s2.set_value("B1", "کالا")
+    s2.set_value("C1", "تعداد خرید")
+    s2.set_value("D1", "قیمت خرید")
+    s2.set_value("A2", "1405/01/01")
+    s2.set_value("B2", "ماوس")
+    s2.set_value("C2", 5)
+    s2.set_value("D2", 100000)
+    s2.set_value("A3", "1405/01/03")
+    s2.set_value("B3", "ماوس")
+    s2.set_value("C3", 10)
+    s2.set_value("D3", 120000)
+
+    ctx = ActionContext(manager=test_manager, sheet=s1)
+    res = MathActionHandler.execute_profit_calculation(act, ctx)
+
+    assert res.success is True
+    assert "مقایسه تطبیقی سود" in res.message_persian
+    assert "مقایسه_روش‌های_سود" in test_manager.get_sheet_names()
+    cmp_sheet = test_manager.get_sheet("مقایسه_روش‌های_سود")
+    assert "فایفو" in str(cmp_sheet.get_value("A1"))
+    assert res.data["profit_fifo"] > res.data["profit_lifo"]
+    assert res.data["profit_difference"] == 100000.0
+
+
+
 
 
 

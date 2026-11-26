@@ -931,8 +931,134 @@ class MathActionHandler:
         purchase_sheet_name = resolve_sheet_name(action.purchase_sheet, default_purch, auto_purch_sheet)
 
         val_method = getattr(action, "valuation_method", "fifo") or "fifo"
-        if val_method not in ["fifo", "lifo", "average"]:
+        if val_method not in ["fifo", "lifo", "average", "compare"]:
             val_method = "fifo"
+
+        if val_method == "compare":
+            # Run calculations for FIFO, LIFO, and Average without creating separate individual report sheets
+            action_fifo = action.model_copy(update={"valuation_method": "fifo", "create_report_sheet": False})
+            action_lifo = action.model_copy(update={"valuation_method": "lifo", "create_report_sheet": False})
+            action_avg = action.model_copy(update={"valuation_method": "average", "create_report_sheet": False})
+
+            res_fifo = cls.execute_profit_calculation(action_fifo, ctx)
+            res_lifo = cls.execute_profit_calculation(action_lifo, ctx)
+            res_avg = cls.execute_profit_calculation(action_avg, ctx)
+
+            d_f = res_fifo.data or {}
+            d_l = res_lifo.data or {}
+            d_a = res_avg.data or {}
+
+            tot_sales = d_f.get("total_sales", 0.0)
+            cogs_fifo = d_f.get("total_purchase", 0.0)
+            cogs_lifo = d_l.get("total_purchase", 0.0)
+            cogs_avg = d_a.get("total_purchase", 0.0)
+
+            profit_fifo = d_f.get("total_profit", 0.0)
+            profit_lifo = d_l.get("total_profit", 0.0)
+            profit_avg = d_a.get("total_profit", 0.0)
+
+            margin_fifo = d_f.get("margin_pct", 0.0)
+            margin_lifo = d_l.get("margin_pct", 0.0)
+            margin_avg = d_a.get("margin_pct", 0.0)
+
+            stock_val_fifo = d_f.get("stock_value", 0.0)
+            stock_val_lifo = d_l.get("stock_value", 0.0)
+            stock_val_avg = d_a.get("stock_value", 0.0)
+
+            rem_stock = d_f.get("remaining_stock", 0.0)
+            expenses = d_f.get("operating_expenses", 0.0)
+            profit_diff = profit_fifo - profit_lifo
+
+            report_sheet_name = "مقایسه_روش‌های_سود"
+            if action.create_report_sheet:
+                existing = driver.get_sheet_names()
+                cnt = 1
+                t_name = report_sheet_name
+                while t_name in existing:
+                    t_name = f"{report_sheet_name}_{cnt}"
+                    cnt += 1
+                rep_s = driver.create_sheet(t_name)
+                report_sheet_name = t_name
+
+                rep_s.set_value("A1", "📊 جدول مقایسه جامع و تطبیقی سود به روش‌های فایفو (FIFO)، لایفو (LIFO) و میانگین موزون")
+                rep_s.merge_cells("A1:E1")
+                rep_s.set_cell_color("A1:E1", "#09132B")
+                rep_s.set_font("A1:E1", bold=True, size=13, color_hex="#38BDF8")
+
+                cmp_headers = ["شاخص کلیدی مالی", "روش فایفو (FIFO)", "روش لایفو (LIFO)", "روش میانگین موزون", "تفاوت (فایفو منهای لایفو)"]
+                for i, h in enumerate(cmp_headers, 1):
+                    col_l = col_index_to_letter(i)
+                    rep_s.set_value(f"{col_l}3", h)
+                rep_s.set_cell_color("A3:E3", "#1E3A8A")
+                rep_s.set_font("A3:E3", bold=True, color_hex="#FFFFFF")
+
+                rows_data = [
+                    ("فروش ناخالص دوره", f"{tot_sales:,.0f} تومان", f"{tot_sales:,.0f} تومان", f"{tot_sales:,.0f} تومان", "۰ تومان (فروش یکسان)"),
+                    ("بهای تمام‌شده کالای فروش‌رفته (COGS)", f"{cogs_fifo:,.0f} تومان", f"{cogs_lifo:,.0f} تومان", f"{cogs_avg:,.0f} تومان", f"{cogs_fifo - cogs_lifo:,.0f} تومان"),
+                    ("سود ناخالص دوره", f"{profit_fifo:,.0f} تومان", f"{profit_lifo:,.0f} تومان", f"{profit_avg:,.0f} تومان", f"{profit_diff:,.0f} تومان"),
+                    ("درصد حاشیه سود ناخالص", f"{margin_fifo:.1f}%", f"{margin_lifo:.1f}%", f"{margin_avg:.1f}%", f"{margin_fifo - margin_lifo:+.1f}%"),
+                    ("هزینه‌های عملیاتی", f"{expenses:,.0f} تومان", f"{expenses:,.0f} تومان", f"{expenses:,.0f} تومان", "۰ تومان"),
+                    ("سود خالص دوره", f"{profit_fifo - expenses:,.0f} تومان", f"{profit_lifo - expenses:,.0f} تومان", f"{profit_avg - expenses:,.0f} تومان", f"{profit_diff:,.0f} تومان"),
+                    ("ارزش ریالی موجودی پایان دوره انبار", f"{stock_val_fifo:,.0f} تومان", f"{stock_val_lifo:,.0f} تومان", f"{stock_val_avg:,.0f} تومان", f"{stock_val_fifo - stock_val_lifo:,.0f} تومان"),
+                    ("مانده فیزیکی انبار (تعداد کالا)", f"{rem_stock:,.0f} عدد", f"{rem_stock:,.0f} عدد", f"{rem_stock:,.0f} عدد", "تعداد یکسان"),
+                ]
+
+                for r_i, r_vals in enumerate(rows_data, 4):
+                    for c_i, val in enumerate(r_vals, 1):
+                        col_l = col_index_to_letter(c_i)
+                        rep_s.set_value(f"{col_l}{r_i}", val)
+                    if r_i in (6, 9):
+                        rep_s.set_cell_color(f"A{r_i}:E{r_i}", "#DCFCE7")
+                        rep_s.set_font(f"A{r_i}:E{r_i}", bold=True, color_hex="#065F46")
+                    elif r_i == 10:
+                        rep_s.set_cell_color(f"A{r_i}:E{r_i}", "#E0F2FE")
+                        rep_s.set_font(f"A{r_i}:E{r_i}", bold=True, color_hex="#0369A1")
+
+                rep_s.auto_fit_columns(["A", "B", "C", "D", "E"])
+                try:
+                    ctx.manager.activate_sheet(report_sheet_name)
+                except Exception:
+                    pass
+
+            diff_sign_desc = "بیشتر" if profit_diff >= 0 else "کمتر"
+            msg = (
+                f"⚖️ **گزارش و جدول مقایسه تطبیقی سود (فایفو vs لایفو vs میانگین موزون):**\n\n"
+                f"• **روش فایفو (FIFO):**\n"
+                f"  - بهای تمام‌شده (COGS): `{cogs_fifo:,.0f}` تومان\n"
+                f"  - سود ناخالص: `{profit_fifo:,.0f}` تومان (حاشیه سود: `{margin_fifo:.1f}%`)\n"
+                f"  - ارزش موجودی پایان دوره انبار: `{stock_val_fifo:,.0f}` تومان\n\n"
+                f"• **روش لایفو (LIFO):**\n"
+                f"  - بهای تمام‌شده (COGS): `{cogs_lifo:,.0f}` تومان\n"
+                f"  - سود ناخالص: `{profit_lifo:,.0f}` تومان (حاشیه سود: `{margin_lifo:.1f}%`)\n"
+                f"  - ارزش موجودی پایان دوره انبار: `{stock_val_lifo:,.0f}` تومان\n\n"
+                f"• **روش میانگین موزون (Average):**\n"
+                f"  - بهای تمام‌شده (COGS): `{cogs_avg:,.0f}` تومان\n"
+                f"  - سود ناخالص: `{profit_avg:,.0f}` تومان (حاشیه سود: `{margin_avg:.1f}%`)\n"
+                f"  - ارزش موجودی پایان دوره انبار: `{stock_val_avg:,.0f}` تومان\n\n"
+                f"📊 **تحلیل مقایسه‌ای:** روش فایفو سود ناخالص را `{abs(profit_diff):,.0f}` تومان {diff_sign_desc} از روش لایفو نشان می‌دهد.\n"
+                f"💡 **نکته مدیریتی و مالیاتی:** در شرایط تورمی، فایفو بالاترین سود دفتری را گزارش می‌دهد در حالی که لایفو با انعکاس آخرین هزینه‌ها به عنوان بهای تمام‌شده، سود محافظه‌کارانه‌تر و صرفه‌جویی مالیاتی در زمان تورم به همراه دارد.\n"
+                f"📑 جدول مقایسه هر ۳ روش در شیت **«{report_sheet_name}»** ثبت گردید."
+            )
+
+            return ActionResult(
+                success=True,
+                message_persian=msg,
+                affected_range=report_sheet_name,
+                data={
+                    "valuation_method": "compare",
+                    "total_sales": tot_sales,
+                    "profit_fifo": profit_fifo,
+                    "profit_lifo": profit_lifo,
+                    "profit_avg": profit_avg,
+                    "cogs_fifo": cogs_fifo,
+                    "cogs_lifo": cogs_lifo,
+                    "cogs_avg": cogs_avg,
+                    "stock_val_fifo": stock_val_fifo,
+                    "stock_val_lifo": stock_val_lifo,
+                    "stock_val_avg": stock_val_avg,
+                    "profit_difference": profit_diff,
+                }
+            )
 
         method_persian = {
             "fifo": "فایفو (FIFO)",
@@ -952,6 +1078,10 @@ class MathActionHandler:
             return to_float_safe(v, default=0.0)
 
         # Auto-detect columns in Sales Sheet
+        tot_rem_stock = 0.0
+        tot_stock_val = 0.0
+        tot_expenses = 0.0
+        exp_count = 0
         s_qty_col = None
         s_price_col = None
         s_prod_col = None

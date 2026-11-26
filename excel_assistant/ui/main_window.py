@@ -140,12 +140,9 @@ class MainWindow(QMainWindow):
             "accounting": {
                 "title": "💼 ۲. قابلیت‌های حسابداری",
                 "commands": [
-                    ("🟢 ۱. محاسبه سود به روش فایفو (FIFO)", "محاسبه سود به روش فایفو"),
-                    ("🔵 ۲. محاسبه سود به روش لایفو (LIFO)", "محاسبه سود به روش لایفو"),
-                    ("🟣 ۳. محاسبه سود با میانگین موزون (Average)", "محاسبه سود با میانگین موزون"),
-                    ("🏷️ انتخاب سریع روش محاسبه سود (فایفو/لایفو/میانگین)...", "روش سود"),
+                    ("💵 محاسبه و مقایسه سود (فایفو / لایفو / میانگین موزون)...", "روش سود"),
+                    ("⏱️ محاسبه ساعت کاری، ورود و خروج کارمندان (تایم‌شیت)", "محاسبه ساعت کاری"),
                     ("💰 گزارش جامع فروش (تشخیص خودکار ستون‌ها)", "محاسبه فروش"),
-                    ("⏱️ محاسبه ورود و خروج و کارکرد پرسنل (تایم‌شیت)", "محاسبه ورود و خروج کارمندان"),
                     ("💼 لیست حقوق و دستمزد، بیمه و مالیات (تشخیص خودکار)", "محاسبه حقوق و دستمزد"),
                     ("⚖️ مغایرت‌گیری دو ستون (Reconciliation)", "مغایرت‌گیری ستون A و B"),
                     ("📊 تهیه تراز آزمایشی چهار ستونه", "تهیه تراز آزمایشی"),
@@ -416,7 +413,10 @@ class MainWindow(QMainWindow):
         cmd = self.action_combo.itemData(index) or self.action_combo.itemText(index)
         if cmd:
             self.input_edit.setText(cmd)
-            self.input_edit.setFocus()
+            self._on_quick_chip_clicked(cmd)
+            self.action_combo.blockSignals(True)
+            self.action_combo.setCurrentIndex(0)
+            self.action_combo.blockSignals(False)
 
     def _on_run_action_clicked(self):
         curr_idx = self.action_combo.currentIndex()
@@ -489,12 +489,14 @@ class MainWindow(QMainWindow):
             self._execute_action_pipeline(action)
 
     def _open_profit_method_dialog(self):
-        """Opens quick 1-click method selector for FIFO, LIFO, or Weighted Average."""
+        """Opens quick 1-click method selector for FIFO, LIFO, Weighted Average, or Side-by-Side Comparison."""
         from excel_assistant.ui.profit_dialog import ProfitMethodSelectorDialog
         dialog = ProfitMethodSelectorDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
             if dialog.open_advanced:
                 self._open_profit_dialog()
+            elif dialog.selected_method == "compare":
+                self._on_message_submitted("مقایسه سود به روش فایفو و لایفو")
             else:
                 method_names = {
                     "fifo": "فایفو (FIFO)",
