@@ -726,6 +726,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             background: rgba(3, 16, 14, 0.95);
             border-top: 1px solid rgba(16, 185, 129, 0.25);
             backdrop-filter: blur(8px);
+            z-index: 1000;
         }
 
         .search-input-box {
@@ -802,7 +803,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
             max-height: 280px;
             overflow-y: auto;
-            z-index: 1000;
+            z-index: 99999;
             display: flex;
             flex-direction: column;
             padding: 6px;
@@ -864,11 +865,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         /* Input Area */
         .input-bar {
+            position: relative;
             padding: 12px 18px;
             background: linear-gradient(180deg, #09132B, #04091A);
             display: flex;
             gap: 10px;
             border-top: 1px solid var(--border-subtle);
+            z-index: 950;
+        }
+
+        .chat-input-popup {
+            position: absolute;
+            bottom: 100%;
+            right: 18px;
+            left: 18px;
+            margin-bottom: 6px;
+            background: #031412;
+            border: 2px solid #10B981;
+            border-radius: 12px;
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
+            max-height: 260px;
+            overflow-y: auto;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
         }
 
         .input-bar input {
@@ -1044,9 +1065,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Input Bar -->
             <div class="input-bar">
-                <input type="text" id="commandInput" placeholder="دستور خود را به زبان فارسی وارد کنید... (مثلاً: ستون A را در ستون B ضرب کن و در C بنویس)" onkeydown="if(event.key==='Enter') sendInput();">
+                <input type="text" id="commandInput"
+                       placeholder="دستور خود را به زبان فارسی وارد کنید... (مثلاً: محاسبه بهای تمام شده، سود سالانه، کارکرد، فروش)"
+                       oninput="onChatInputChanged(this.value)"
+                       onkeydown="onChatInputKeyDown(event);"
+                       autocomplete="off">
                 <button class="btn-send" onclick="sendInput()">ارسال دستور ✈️</button>
                 <button class="btn-stop" onclick="cancelAction()">توقف ⏹</button>
+                <div id="chatInputPopup" class="chat-input-popup" style="display: none;"></div>
             </div>
         </div>
 
@@ -1418,7 +1444,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function promptPreventDuplicates() {
-            const mode = confirm("مدیریت یکتاسازی ستون اکسل:\n\nبرای [اعمال قفل یکتایی] روی OK کلیک کنید.\nبرای [لغو قفل یکتایی] روی Cancel کلیک کنید.");
+            const mode = confirm(`مدیریت یکتاسازی ستون اکسل:\n\nبرای [اعمال قفل یکتایی] روی OK کلیک کنید.\nبرای [لغو قفل یکتایی] روی Cancel کلیک کنید.`);
             if (mode) {
                 const col = prompt("📌 ستون مورد نظر برای اعمال قفل یکتایی (مثلاً: L یا 12):", "L");
                 if (!col || !col.trim()) return;
@@ -1899,7 +1925,126 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const popup = document.getElementById('searchResultsPopup');
                 if (popup) popup.style.display = 'none';
             }
+            const inputBar = document.querySelector('.input-bar');
+            if (inputBar && !inputBar.contains(e.target)) {
+                const chatPopup = document.getElementById('chatInputPopup');
+                if (chatPopup) chatPopup.style.display = 'none';
+            }
         });
+
+        // ==========================================
+        // Chat Input Suggestions & Autocomplete
+        // ==========================================
+        let activeChatSuggestIndex = -1;
+        let currentChatSuggestResults = [];
+
+        function onChatInputChanged(val) {
+            const popup = document.getElementById('chatInputPopup');
+            if (!popup) return;
+            const qNorm = normalizePersianText(val);
+            if (!qNorm || qNorm.length < 1) {
+                popup.style.display = 'none';
+                popup.innerHTML = '';
+                currentChatSuggestResults = [];
+                activeChatSuggestIndex = -1;
+                return;
+            }
+
+            const scored = [];
+            COMMAND_SEARCH_REGISTRY.forEach((item, idx) => {
+                let score = 0;
+                const cNorm = normalizePersianText(item.cmd);
+                const tNorm = normalizePersianText(item.title);
+
+                if (qNorm === cNorm || qNorm === tNorm) score += 150;
+                else if (cNorm.startsWith(qNorm) || tNorm.startsWith(qNorm)) score += 100;
+                else if (cNorm.includes(qNorm)) score += 70;
+                else if (tNorm.includes(qNorm)) score += 60;
+
+                for (const kw of item.keywords) {
+                    const kwNorm = normalizePersianText(kw);
+                    if (qNorm === kwNorm) score += 85;
+                    else if (qNorm.includes(kwNorm)) score += 55;
+                    else if (kwNorm.includes(qNorm)) score += 45;
+                }
+
+                if (score > 0) scored.push({ score, index: idx, item });
+            });
+
+            scored.sort((a, b) => b.score - a.score || a.index - b.index);
+            currentChatSuggestResults = scored.slice(0, 8).map(s => s.item);
+            activeChatSuggestIndex = -1;
+
+            if (currentChatSuggestResults.length === 0) {
+                popup.style.display = 'none';
+                return;
+            }
+
+            let html = '';
+            currentChatSuggestResults.forEach((res, idx) => {
+                html += `<div class="search-result-item" id="chat-suggest-${idx}" onclick="selectChatSuggestResult(${idx})">
+                    <span>${res.title}</span>
+                    <span class="search-result-category">${res.category}</span>
+                </div>`;
+            });
+            popup.innerHTML = html;
+            popup.style.display = 'flex';
+        }
+
+        function selectChatSuggestResult(idx) {
+            if (idx < 0 || idx >= currentChatSuggestResults.length) return;
+            const selected = currentChatSuggestResults[idx];
+            document.getElementById('commandInput').value = selected.cmd;
+            const popup = document.getElementById('chatInputPopup');
+            if (popup) {
+                popup.style.display = 'none';
+                popup.innerHTML = '';
+            }
+            executeCommandDirectly(selected.cmd);
+        }
+
+        function onChatInputKeyDown(e) {
+            const popup = document.getElementById('chatInputPopup');
+            if (popup && popup.style.display !== 'none' && currentChatSuggestResults.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    activeChatSuggestIndex = (activeChatSuggestIndex + 1) % currentChatSuggestResults.length;
+                    updateChatSuggestHighlight();
+                    return;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    activeChatSuggestIndex = (activeChatSuggestIndex - 1 + currentChatSuggestResults.length) % currentChatSuggestResults.length;
+                    updateChatSuggestHighlight();
+                    return;
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (activeChatSuggestIndex >= 0 && activeChatSuggestIndex < currentChatSuggestResults.length) {
+                        selectChatSuggestResult(activeChatSuggestIndex);
+                    } else {
+                        selectChatSuggestResult(0);
+                    }
+                    return;
+                } else if (e.key === 'Escape') {
+                    popup.style.display = 'none';
+                    return;
+                }
+            }
+
+            if (e.key === 'Enter') {
+                sendInput();
+            }
+        }
+
+        function updateChatSuggestHighlight() {
+            document.querySelectorAll('#chatInputPopup .search-result-item').forEach((el, idx) => {
+                if (idx === activeChatSuggestIndex) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ block: 'nearest' });
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
 
         function onCategoryChanged(catKey) {
             const actSelect = document.getElementById('actSelect');
