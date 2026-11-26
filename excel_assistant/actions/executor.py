@@ -34,6 +34,7 @@ from excel_assistant.nlp.intent_models import (
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    CostOfGoodsSoldAction,
     FilterDataAction,
     ConvertTextToNumberAction,
     SplitTextAction,
@@ -232,6 +233,9 @@ class ActionExecutor:
 
         elif isinstance(action, FinancialStatementAction):
             return AccountingActionHandler.execute_financial_statement(action, ctx)
+
+        elif isinstance(action, CostOfGoodsSoldAction):
+            return AccountingActionHandler.execute_cogs(action, ctx)
 
         elif isinstance(action, DeepFileAuditAction):
             audit_res = DeepFileAuditor.audit_sheet(ctx.sheet)

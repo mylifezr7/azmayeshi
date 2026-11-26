@@ -376,6 +376,21 @@ class PdfExportAction(BaseActionModel):
     description_persian: str = "تولید خروجی PDF از فایل اکسل"
 
 
+class CostOfGoodsSoldAction(BaseActionModel):
+    action_type: Literal["cogs_calculation"] = "cogs_calculation"
+    method: Literal["periodic", "fifo", "lifo", "average", "compare"] = "periodic"
+    beginning_inventory: Optional[float] = None
+    purchases: Optional[float] = None
+    freight_in: Optional[float] = None
+    purchase_returns: Optional[float] = None
+    ending_inventory: Optional[float] = None
+    sales_amount: Optional[float] = None
+    sales_sheet: Optional[str] = None
+    purchase_sheet: Optional[str] = None
+    create_report_sheet: bool = True
+    description_persian: str = "محاسبه بهای تمام شده کالای فروش رفته (COGS)"
+
+
 class UndoLastAction(BaseActionModel):
     action_type: Literal["undo_last_action"] = "undo_last_action"
 
@@ -400,6 +415,7 @@ ExcelAction = Union[
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    CostOfGoodsSoldAction,
     FilterDataAction,
     ConvertTextToNumberAction,
     SplitTextAction,

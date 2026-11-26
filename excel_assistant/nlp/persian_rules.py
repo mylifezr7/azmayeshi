@@ -26,6 +26,7 @@ from excel_assistant.nlp.intent_models import (
     AnalyzeSheetAction,
     SalesSummaryAction,
     ProfitCalculationAction,
+    CostOfGoodsSoldAction,
     FilterDataAction,
     ConvertTextToNumberAction,
     SplitTextAction,
@@ -179,13 +180,13 @@ class PersianRuleParser:
             return PayrollAction(description_persian="محاسبه لیست حقوق، اضافه‌کاری، بیمه و مالیات")
 
         # 1.109 Inventory Valuation (FIFO, LIFO, Weighted Average) / ارزش‌گذاری انبار به روش‌های فایفو، لایفو و میانگین
-        if any(w in text_lower for w in [
+        if (any(w in text_lower for w in [
             "ارزش‌گذاری انبار", "ارزش گذاری انبار", "ارزش‌گذاری موجودی", "ارزش گذاری موجودی",
             "کاردکس", "کاردکس کالا"
         ]) or (
             any(w in text_lower for w in ["فایفو", "fifo", "لایفو", "lifo", "میانگین موزون"])
-            and not any(w in text_lower for w in ["سود", "زیان", "سودآوری", "حاشیه سود"])
-        ):
+            and not any(w in text_lower for w in ["سود", "زیان", "سودآوری", "حاشیه سود", "بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs"])
+        )) and not any(w in text_lower for w in ["بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs"]):
             v_method = "fifo"
             if any(w in text_lower for w in ["مقایسه", "هر سه", "هر ۳", "کاردکس"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
                 v_method = "compare"
@@ -494,6 +495,44 @@ class PersianRuleParser:
                 discount_percent=fixed_pct,
                 target_col=target_c,
                 description_persian=f"محاسبه تخفیف کالاها: ستون قیمت {price_c} با درصد {d_str}{' و درج در ستون ' + target_c if target_c else ''}"
+            )
+
+        # 7.54 Cost of Goods Sold (COGS) / محاسبه بهای تمام شده کالای فروش رفته
+        if any(w in text_lower for w in ["بهای تمام شده", "بهای تمام‌شده", "قیمت تمام شده", "قیمت تمام‌شده", "cogs"]) or \
+           ("بهای" in text_lower and any(k in text_lower for k in ["فروش رفته", "فروش‌رفته", "کالای فروش"])):
+            v_method = "periodic"
+            if any(w in text_lower for w in ["مقایسه", "تطبیقی", "همزمان", "compare"]) or ("فایفو" in text_lower and "لایفو" in text_lower):
+                v_method = "compare"
+            elif any(w in text_lower for w in ["فایفو", "fifo"]):
+                v_method = "fifo"
+            elif any(w in text_lower for w in ["لایفو", "lifo"]):
+                v_method = "lifo"
+            elif any(w in text_lower for w in ["میانگین", "موزون", "average"]):
+                v_method = "average"
+
+            method_fa = {
+                "periodic": "صورت استاندارد ادواری (فرمول جامع)",
+                "fifo": "فایفو (FIFO)",
+                "lifo": "لایفو (LIFO)",
+                "average": "میانگین موزون",
+                "compare": "مقایسه جامع فایفو، لایفو و میانگین"
+            }.get(v_method, "صورت استاندارد ادواری")
+
+            sheets_found = re.findall(r'(?:شیت|شیلد|sheet|صفحه)\s*([0-9]+|[A-Za-z0-9_]+)', text, flags=re.IGNORECASE)
+            sales_s = None
+            purchase_s = None
+            if len(sheets_found) >= 2:
+                sales_s = sheets_found[0]
+                purchase_s = sheets_found[1]
+            elif len(sheets_found) == 1:
+                sales_s = sheets_found[0]
+
+            return CostOfGoodsSoldAction(
+                method=v_method,
+                sales_sheet=sales_s,
+                purchase_sheet=purchase_s,
+                create_report_sheet=True,
+                description_persian=f"محاسبه بهای تمام شده کالای فروش رفته (COGS) به روش {method_fa}"
             )
 
         # 7.55 Profit Calculation: محاسبه سود (روزانه، ماهانه، سالانه، کل / فروش منهای خرید)
